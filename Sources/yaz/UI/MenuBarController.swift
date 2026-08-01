@@ -13,9 +13,12 @@ final class MenuBarController {
     var onQuit: (() -> Void)?
     var onOpenSettings: (() -> Void)?
     var onOpenHistory: (() -> Void)?
+    var onFixPermission: (() -> Void)?
 
     private let item: NSStatusItem
     private let statusLine = NSMenuItem(title: "hazırlanıyor…", action: nil, keyEquivalent: "")
+    private let permissionItem = NSMenuItem(
+        title: "⚠︎  Erişilebilirlik izni ver…", action: nil, keyEquivalent: "")
     private let summary: String
 
     init(summary: String) {
@@ -28,7 +31,7 @@ final class MenuBarController {
     /// Reflect what the daemon is doing.
     func update(_ state: IndicatorState) {
         guard let button = item.button else { return }
-        button.image = Self.glyph(for: state)
+        button.image = StatusIcon.image(for: state)
 
         statusLine.title = switch state {
         case .idle: "dinlemeye hazır"
@@ -43,20 +46,34 @@ final class MenuBarController {
         statusLine.title = text
     }
 
-    deinit {
-        // The status bar keeps its own reference; without this the icon
-        // survives the controller and lingers after quit.
-        MainActor.assumeIsolated {
-            NSStatusBar.system.removeStatusItem(item)
+    /// Surface or hide the "grant permission" action.
+    func setNeedsPermission(_ needed: Bool) {
+        permissionItem.isHidden = !needed
+        if needed {
+            statusLine.title = "kısayol çalışmıyor — izin gerekli"
+            item.button?.toolTip = "yaz — erişilebilirlik izni gerekli"
+        } else {
+            item.button?.toolTip = "yaz — \(summary)"
         }
+    }
+
+    /// Remove the item from the menu bar.
+    ///
+    /// Explicit rather than in `deinit`: a deinit is not guaranteed to run on
+    /// the main actor, and tearing the item down there once hid a lifetime bug
+    /// instead of surfacing it — the controller was being deallocated early and
+    /// the icon quietly vanished. The daemon calls this when it shuts down; on
+    /// process exit macOS reclaims it anyway.
+    func remove() {
+        NSStatusBar.system.removeStatusItem(item)
     }
 
     // MARK: -
 
     private func configureButton() {
         guard let button = item.button else { return }
-        button.image = Self.glyph(for: .idle)
-        button.image?.isTemplate = true
+        button.image = StatusIcon.image(for: .idle)
+        button.imagePosition = .imageOnly
         button.toolTip = "yaz — \(summary)"
     }
 
@@ -65,6 +82,15 @@ final class MenuBarController {
 
         statusLine.isEnabled = false
         menu.addItem(statusLine)
+
+        // Shown only while the grant is missing. Without it the menu says
+        // "waiting for permission" and offers no way to act on that, which is
+        // how a user ends up pressing the hotkey and concluding the app is
+        // broken.
+        permissionItem.target = self
+        permissionItem.action = #selector(fixPermission)
+        permissionItem.isHidden = true
+        menu.addItem(permissionItem)
 
         let detail = NSMenuItem(title: summary, action: nil, keyEquivalent: "")
         detail.isEnabled = false
@@ -92,38 +118,9 @@ final class MenuBarController {
         update(.idle)
     }
 
+    @objc private func fixPermission() { onFixPermission?() }
     @objc private func openSettings() { onOpenSettings?() }
     @objc private func openHistory() { onOpenHistory?() }
     @objc private func quit() { onQuit?() }
 
-    /// SF Symbols, with a drawn fallback.
-    ///
-    /// A `.accessory` binary with no bundle still gets SF Symbols, but the
-    /// fallback matters: an image that fails to load leaves a zero-width status
-    /// item, which looks exactly like the daemon failing to start.
-    private static func glyph(for state: IndicatorState) -> NSImage {
-        let name = switch state {
-        case .idle: "pencil.and.scribble"
-        case .recording: "waveform"
-        case .transcribing, .refining: "ellipsis"
-        }
-
-        if let image = NSImage(systemSymbolName: name, accessibilityDescription: "yaz") {
-            image.isTemplate = true
-            return image
-        }
-        return fallback(filled: state != .idle)
-    }
-
-    private static func fallback(filled: Bool) -> NSImage {
-        let size = NSSize(width: 14, height: 14)
-        let image = NSImage(size: size, flipped: false) { rect in
-            let path = NSBezierPath(ovalIn: rect.insetBy(dx: 2, dy: 2))
-            NSColor.black.set()
-            if filled { path.fill() } else { path.lineWidth = 1.5; path.stroke() }
-            return true
-        }
-        image.isTemplate = true
-        return image
-    }
 }

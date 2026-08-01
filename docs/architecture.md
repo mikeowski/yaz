@@ -882,6 +882,99 @@ yazılıyor ki dosya elle düzenlenebilir kalsın.
 yalnızca kolaylık değil: menüden tıklamayı otomatikleştiremediğim için
 SwiftUI yollarının derlenmekle kalmayıp **çalıştığını** doğrulamanın tek yolu.
 
+
+## Kullanılamayan uygulama — üç hata
+
+Kullanıcı `.app`'i çalıştırdı ve "basınca bir şey olmuyor" dedi. Üç ayrı hata
+vardı ve yalnızca biri kod okunarak bulunabilirdi.
+
+### 1. Model hiç yüklenmiyordu (asıl sebep)
+
+```swift
+Task { [weak self] in await self?.loadModel() }   // ← hiç çalışmıyor
+```
+
+`Daemon` bir `@MainActor` tipi, dolayısıyla içindeki `Task { }` ana aktörü
+miras alıyor. Ana aktör ise bir sonraki satırda `NSApplication.run()` ile
+sürecin ömrü boyunca meşgul oluyor. Task sıraya giriyor ve **sırası hiç
+gelmiyor.**
+
+Sonuç: uygulama "dinleniyor" yazıyor, menü barı görünüyor, ama arkasında motor
+yok — `ready` hep `false`. İzin verilmiş olsaydı bile kısayola basmak hiçbir
+şey yapmayacaktı.
+
+`Task.detached` kooperatif havuzda çalışıyor ve UI'ya dokunmak için ana aktöre
+geri dönüyor. Kanıt, stderr'de artık görünen iki satır:
+
+```
+dinleniyor · fn (🌐) basılı tut · pano (⌘V) · ^C ile çık
+model yükleniyor…
+✓ large-v3-turbo hazır — 7.0 sn
+```
+
+### 2. Daemon çalışırken yok ediliyordu
+
+```swift
+try await Daemon(config: config, verbose: verbose).run()
+```
+
+ARC bir geçici nesneyi **son kullanımından sonra** serbest bırakabiliyor ve
+`app.run()` içinde `self` bir daha kullanılmıyor. Daemon run loop başlar
+başlamaz yok ediliyordu; `deinit` status item'ı menü barından söküyor,
+`[weak self]` task'ler nil buluyordu.
+
+Süreç ömrü boyunca güçlü bir referans tutuluyor artık. `deinit` içindeki
+`MainActor.assumeIsolated` de kaldırıldı: deinit ana aktörde çalışmayabilir ve
+orada temizlik yapmak bu hatayı gizliyordu.
+
+### 3. Run loop model bitene kadar başlamıyordu
+
+`app.run()` en sondaydı, yani menü barı model yüklenene kadar tıklamaya yanıt
+vermiyordu. İlk kurulumda Core ML derlemesi dakikalar sürüyor — o süre boyunca
+uygulama bozuk görünüyor. Yükleme artık run loop içinde.
+
+### Yanlış alarm: "menü barı ikonu yok"
+
+`CGWindowListCopyWindowInfo` ile status item aranıp bulunamayınca ikonun hiç
+oluşmadığı sanıldı. Yanlıştı — status item'lar uygulamanın sahip olduğu bir
+pencere olarak listelenmiyor. Doğrudan ölçüm gerçeği gösterdi:
+
+```
+[tanı] status item kuruldu · button=true · length=-1.0 · visible=true · image=(18.0, 18.0)
+```
+
+İkon baştan beri oradaydı. Doğrulama yöntemi hatalıydı, kod değil.
+
+### İzin artık menüden çözülüyor
+
+"İzin bekleniyor" deyip hiçbir eylem sunmayan bir menü, kullanıcıyı kısayola
+basıp uygulamanın bozuk olduğu sonucuna varmaya bırakıyor. Menüde artık izin
+eksikken görünen tıklanabilir bir madde var:
+
+```
+⚠︎  Erişilebilirlik izni ver…
+```
+
+## Menü barı ikonu
+
+Üç aday çizilip **gerçek boyutta** basılarak karşılaştırıldı; 18 pt'lik bir
+işareti kaynak koddan değerlendirmek tahmin yürütmektir.
+
+- Gövdesi sinüs dalgası olan imleç — 8×'te çarpıcı, 18 pt'te okunmaz lapa.
+- Yuvarlak çubuklardan dalga formu — okunaklı ama tamamen jenerik; makinedeki
+  her ses uygulamasında var ve diğer uçtan metin çıktığını hiç söylemiyor.
+- **Kazanan:** sola doğru açılan iki yay, sağda kalın bir I-beam imleç.
+  Tek şekilde "ses → metin".
+
+Durumlar aynı iskeleti paylaşıyor: imleç hiç kıpırdamıyor, yalnızca solundaki
+değişiyor. Boşta bir yay (hiç yay reads "bozuk"), kayıtta iki yay, çalışırken
+üç nokta. Noktalar ilk denemede imleç gövdesine değiyordu; imlece göre sağa
+hizalanıp gerçek boşluk verildi.
+
+`NSBezierPath` ile çiziliyor, varlık dosyası değil: her ölçekte net, durumlar
+tek geometriyi paylaşıyor, ve CLI ikilisinin kaynak paketi olmadığı için bir
+asset catalog `.app` içinde çalışıp dışında sessizce başarısız olurdu.
+
 ## Durum
 
 - **M1 — tamam.** Motor katmanı, `Transcriber` protokolü, Whisper + Parakeet

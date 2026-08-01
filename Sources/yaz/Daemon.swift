@@ -15,7 +15,13 @@ final class Daemon {
     private let pipeline: TranscriptPipeline
     private let history: TranscriptHistory
     private let overlay: RecordingOverlay?
-    private let menuBar: MenuBarController?
+    /// Created in `run()`, not in `init`.
+    ///
+    /// `NSStatusBar.system` reaches into AppKit's application object. Building
+    /// a status item before `NSApplication.shared` has been touched and the
+    /// activation policy set produces an item that either never appears or
+    /// appears and ignores clicks — which is exactly what happened.
+    fileprivate var menuBar: MenuBarController?
     private let settings = SettingsWindowController()
     private let verbose: Bool
 
@@ -38,9 +44,6 @@ final class Daemon {
         self.pipeline = TranscriptPipeline(config: config)
         self.history = TranscriptHistory(limit: config.historyLimit, enabled: config.history)
         self.overlay = config.overlay ? RecordingOverlay() : nil
-        self.menuBar = config.menuBar
-            ? MenuBarController(summary: Self.summary(of: config))
-            : nil
         self.verbose = verbose
     }
 
@@ -53,9 +56,14 @@ final class Daemon {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
+        if config.menuBar {
+            menuBar = MenuBarController(summary: Self.summary(of: config))
+        }
+
         menuBar?.onQuit = { [weak self] in self?.shutdown() }
         menuBar?.onOpenSettings = { [settings] in settings.showSettings() }
         menuBar?.onOpenHistory = { [settings] in settings.showHistory() }
+        menuBar?.onFixPermission = { [weak self] in self?.presentPermissionAlert() }
         capture.onLevel = { [overlay] level in overlay?.pushLevel(level) }
 
         // Launched as an app, a missing Accessibility grant must not be fatal.
@@ -65,33 +73,24 @@ final class Daemon {
         var awaitingPermission = false
         if !HotkeyMonitor.hasAccessibilityPermission && AppEnvironment.isBundledApp {
             awaitingPermission = true
-            menuBar?.note("erişilebilirlik izni bekleniyor")
+            menuBar?.setNeedsPermission(true)
             HotkeyMonitor.requestAccessibilityPermission()
             waitForAccessibility()
         } else {
             try startMonitor()
         }
 
-        log("model yükleniyor…")
-        let started = Date()
-        do {
-            try await engine.prepare()
-        } catch {
-            monitor.stop()
-            throw error
-        }
-        log(String(format: "✓ %@ hazır — %.1f sn", engine.model, Date().timeIntervalSince(started)))
+        // Load the model *inside* the run loop, not before it.
+        //
+        // `app.run()` is what makes the menu bar respond and timers fire, so
+        // anything awaited before it happens with the UI frozen. On a first
+        // launch Core ML compilation takes minutes — the whole time the icon
+        // would be present and dead, which is indistinguishable from a broken
+        // app. Loading as a task means the menu works immediately and says
+        // what it is doing.
+        menuBar?.note("model yükleniyor…")
+        startModelLoad()
 
-        // Only now will a key press start a recording. The tap exists earlier,
-        // but no events are delivered until the run loop below starts, and
-        // `ready` guards the case where one slips through.
-        ready = true
-        setIndicator(.idle)
-
-        // The explanatory alert is deferred to the first turn of the run loop.
-        // Run modally before `app.run()` it would block startup — including the
-        // model load — until the user clicked something, so the app would sit
-        // there doing nothing behind its own dialog.
         if awaitingPermission {
             DispatchQueue.main.async { [weak self] in self?.presentPermissionAlert() }
         }
@@ -102,6 +101,43 @@ final class Daemon {
     }
 
     // MARK: -
+
+    /// Prepare the engine off the main actor, then come back to report.
+    ///
+    /// `Task { }` inside a `@MainActor` type inherits the main actor, and the
+    /// main actor is about to be occupied by `NSApplication.run()` for the life
+    /// of the process. Such a task is enqueued and never gets a turn — the
+    /// model silently never loaded and the daemon sat there "listening" with no
+    /// engine behind it. `Task.detached` runs on the cooperative pool instead,
+    /// and hops back here only to touch UI.
+    private func startModelLoad() {
+        let engine = self.engine
+        Task.detached(priority: .userInitiated) {
+            log("model yükleniyor…")
+            let started = Date()
+            do {
+                try await engine.prepare()
+            } catch {
+                log("model yüklenemedi: \(error)")
+                await MainActor.run { DaemonHolder.live?.menuBar?.note("model yüklenemedi") }
+                return
+            }
+            let elapsed = Date().timeIntervalSince(started)
+            log(String(format: "✓ %@ hazır — %.1f sn", engine.model, elapsed))
+            await MainActor.run { DaemonHolder.live?.engineBecameReady() }
+        }
+    }
+
+    /// Called on the main actor once the engine is loaded.
+    fileprivate func engineBecameReady() {
+        ready = true
+        if HotkeyMonitor.hasAccessibilityPermission {
+            setIndicator(.idle)
+            menuBar?.note("dinlemeye hazır")
+        } else {
+            menuBar?.setNeedsPermission(true)
+        }
+    }
 
     private func startMonitor() throws {
         try monitor.start { [weak self] event in
@@ -130,6 +166,7 @@ final class Daemon {
                 do {
                     try self.startMonitor()
                     log("✓ erişilebilirlik verildi — dinleniyor")
+                    self.menuBar?.setNeedsPermission(false)
                     self.menuBar?.note("dinlemeye hazır")
                     self.setIndicator(.idle)
                 } catch {
@@ -278,6 +315,7 @@ final class Daemon {
         monitor.stop()
         capture.stop()
         overlay?.hide()
+        menuBar?.remove()
         NSApp.terminate(nil)
     }
 

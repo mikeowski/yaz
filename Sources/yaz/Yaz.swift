@@ -55,8 +55,31 @@ struct Run: AsyncParsableCommand {
             }
         }
 
-        try await Daemon(config: config, verbose: verbose).run()
+        // Strong reference for the life of the process.
+        //
+        // `Daemon(...).run()` alone is not enough: ARC may release a temporary
+        // after its last *use*, and `self` is never touched again once
+        // `app.run()` starts spinning. The daemon was being deallocated the
+        // moment the run loop began — `deinit` pulled the status item back out
+        // of the menu bar and the `[weak self]` model-loading task found nil.
+        // The app ran, showed nothing, and did nothing.
+        let daemon = await MainActor.run {
+            let daemon = Daemon(config: config, verbose: verbose)
+            DaemonHolder.live = daemon
+            return daemon
+        }
+        try await daemon.run()
     }
+}
+
+/// Keeps the running daemon alive for the life of the process.
+///
+/// See the comment in `Run.run()`: without a strong reference held somewhere
+/// that outlives the call, ARC deallocates the daemon as soon as `app.run()`
+/// stops touching `self`.
+@MainActor
+enum DaemonHolder {
+    static var live: Daemon?
 }
 
 /// Report on permissions, models, and settings.
@@ -313,7 +336,57 @@ struct Preview: AsyncParsableCommand {
     @Option(name: .long, help: "Her durumun ekranda kalma süresi (saniye).")
     var dwell: Double = 1.6
 
+    @Option(name: .long, help: "Menü barı ikonunu bu PNG'ye bas ve çık (tasarım denetimi).")
+    var renderIcon: String?
+
     func run() async throws {
+        if let renderIcon {
+            try await MainActor.run { try Self.writeIconSheet(to: renderIcon) }
+            return
+        }
+        try await runPreview()
+    }
+
+    /// Render every icon state onto one sheet, scaled up, so the drawing can be
+    /// looked at rather than assumed. A menu bar mark is 18 pt; judging it from
+    /// source is guessing.
+    @MainActor
+    static func writeIconSheet(to path: String) throws {
+        let states: [IndicatorState] = [.idle, .recording, .transcribing, .refining]
+        let scale: CGFloat = 8
+        let cell = StatusIcon.size.width * scale
+        let sheet = NSImage(
+            size: NSSize(width: cell * CGFloat(states.count), height: cell + 52))
+
+        sheet.lockFocus()
+        NSColor.white.setFill()
+        NSRect(origin: .zero, size: sheet.size).fill()
+        for (index, state) in states.enumerated() {
+            let icon = StatusIcon.image(for: state)
+            let x = cell * CGFloat(index)
+            icon.draw(
+                in: NSRect(x: x, y: 44, width: cell, height: cell),
+                from: .zero, operation: .sourceOver, fraction: 1)
+            // Gerçek boyut, 1× ve 2×: mark 18 pt'te okunmuyorsa büyükte güzel
+            // olması hiçbir şey ifade etmiyor.
+            icon.draw(in: NSRect(x: x + 24, y: 16, width: 18, height: 18),
+                      from: .zero, operation: .sourceOver, fraction: 1)
+            icon.draw(in: NSRect(x: x + 56, y: 10, width: 36, height: 36),
+                      from: .zero, operation: .sourceOver, fraction: 1)
+        }
+        sheet.unlockFocus()
+
+        guard
+            let tiff = sheet.tiffRepresentation,
+            let rep = NSBitmapImageRep(data: tiff),
+            let png = rep.representation(using: .png, properties: [:])
+        else { throw ValidationError("ikon çizilemedi") }
+
+        try png.write(to: URL(fileURLWithPath: path))
+        log("yazıldı: \(path) — sırayla idle, recording, transcribing, refining")
+    }
+
+    private func runPreview() async throws {
         await MainActor.run {
             let app = NSApplication.shared
             app.setActivationPolicy(.accessory)
