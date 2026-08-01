@@ -14,11 +14,14 @@ final class MenuBarController {
     var onOpenSettings: (() -> Void)?
     var onOpenHistory: (() -> Void)?
     var onFixPermission: (() -> Void)?
+    var onUseFallbackHotkey: (() -> Void)?
 
     private let item: NSStatusItem
     private let statusLine = NSMenuItem(title: "starting…", action: nil, keyEquivalent: "")
     private let permissionItem = NSMenuItem(
         title: "⚠︎  Grant Accessibility permission…", action: nil, keyEquivalent: "")
+    private let hotkeyConflictItem = NSMenuItem(
+        title: "⚠︎  fn is claimed by macOS — use right option", action: nil, keyEquivalent: "")
     private let summary: String
 
     init(summary: String) {
@@ -92,6 +95,14 @@ final class MenuBarController {
         permissionItem.isHidden = true
         menu.addItem(permissionItem)
 
+        // macOS can own the globe key outright, in which case the tap never
+        // sees it and the app looks dead. One click to a key that works beats
+        // a sentence explaining System Settings.
+        hotkeyConflictItem.target = self
+        hotkeyConflictItem.action = #selector(useFallbackHotkey)
+        hotkeyConflictItem.isHidden = true
+        menu.addItem(hotkeyConflictItem)
+
         let detail = NSMenuItem(title: summary, action: nil, keyEquivalent: "")
         detail.isEnabled = false
         menu.addItem(detail)
@@ -118,6 +129,16 @@ final class MenuBarController {
         update(.idle)
     }
 
+    /// Surface or hide the "macOS owns the fn key" escape hatch.
+    func setHotkeyConflict(_ conflicted: Bool) {
+        hotkeyConflictItem.isHidden = !conflicted
+        if conflicted {
+            statusLine.title = "fn is claimed by macOS — hotkey inactive"
+            item.button?.toolTip = "yaz — the fn key is claimed by macOS"
+        }
+    }
+
+    @objc private func useFallbackHotkey() { onUseFallbackHotkey?() }
     @objc private func fixPermission() { onFixPermission?() }
     @objc private func openSettings() { onOpenSettings?() }
     @objc private func openHistory() { onOpenHistory?() }

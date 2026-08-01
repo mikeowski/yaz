@@ -8,7 +8,7 @@ struct Yaz: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "yaz",
         abstract: "On-device dictation for Turkish. Hold the key, speak, release — the text lands at your cursor.",
-        subcommands: [Run.self, Settings.self, Doctor.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self],
+        subcommands: [Run.self, Settings.self, Doctor.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self],
         defaultSubcommand: Run.self
     )
 }
@@ -203,6 +203,44 @@ struct Settings: AsyncParsableCommand {
                 }
             }
             app.run()
+        }
+    }
+}
+
+/// Show what the app has been doing.
+///
+/// Exists because a `.app` launched from Finder has no terminal: its stderr
+/// goes nowhere, so when the hotkey did nothing there was no evidence at all
+/// to work from.
+struct Logs: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Show the app log (~/Library/Logs/yaz.log)."
+    )
+
+    @Option(name: .long, help: "How many lines to show.")
+    var lines: Int = 40
+
+    @Flag(name: .long, help: "Follow the log as it grows.")
+    var follow = false
+
+    func run() async throws {
+        let recent = Log.tail(lines: lines)
+        if recent.isEmpty {
+            print("log is empty — \(Log.fileURL.path)")
+            print("  (the app writes here as soon as it runs)")
+            return
+        }
+        for line in recent { print(line) }
+
+        guard follow else { return }
+        var seen = recent.count
+        while true {
+            try await Task.sleep(for: .milliseconds(400))
+            let all = Log.tail(lines: 10_000)
+            if all.count > seen {
+                for line in all[seen...] { print(line) }
+                seen = all.count
+            }
         }
     }
 }
@@ -839,6 +877,4 @@ extension Hotkey: ExpressibleByArgument {}
 extension TextInjector.Mode: ExpressibleByArgument {}
 extension RefineMode: ExpressibleByArgument {}
 
-func log(_ message: String) {
-    FileHandle.standardError.write(Data("\(message)\n".utf8))
-}
+

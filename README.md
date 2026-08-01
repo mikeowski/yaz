@@ -10,6 +10,34 @@ onun bilerek reddettiği üç şeyi hedefliyor: **çok dilli varsayılan**,
 **Gerekiyor:** macOS 26+, Apple Silicon.
 
 
+
+## Permissions — there are two, and a third thing that isn't one
+
+**Accessibility** lets yaz paste text at your cursor.
+**Input Monitoring** lets yaz *see* the push-to-talk key. Different list, same
+Settings pane. Granting only the first produces a tap that installs cleanly
+and never fires — measured here as: permission granted, tap created, zero
+events, no error anywhere.
+
+Then there is the **fn key itself**. macOS claims the globe key as soon as a
+second keyboard layout exists or Dictation is on, and consumes the press
+before any app sees it. Two ways out:
+
+```
+System Settings → Keyboard → "Press 🌐 key to" → Do Nothing
+```
+
+or click **"⚠︎ fn is claimed by macOS — use right option"** in the menu bar,
+which switches the hotkey and saves it.
+
+`yaz doctor` reports all three, and the app writes the same to
+`~/Library/Logs/yaz.log`:
+
+```sh
+yaz doctor
+yaz logs --follow
+```
+
 ## Models — downloaded, not bundled
 
 `yaz.app` is 14 MB; `whisper large-v3-turbo` is 1.6 GB. Bundling the weights

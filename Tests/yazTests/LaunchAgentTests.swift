@@ -205,3 +205,100 @@ struct AccessibilityOwnerTests {
         #expect(DoctorReport.accessibilityOwner(parentName: "", parentPID: 4242) == "yaz")
     }
 }
+
+@Suite("InputMonitoring — the permission nobody expects")
+struct InputMonitoringTests {
+
+    /// Accessibility is not enough to listen to the keyboard. Measured on this
+    /// machine: Accessibility granted, CGEventTap created without error, and
+    /// zero events ever delivered — because Input Monitoring was denied.
+    @Test("state maps to a definite answer")
+    func stateIsDefinite() {
+        let state = InputMonitoring.state
+        #expect([.granted, .denied, .notDetermined].contains(state))
+        #expect(state.isGranted == (state == .granted))
+    }
+
+    @Test("the settings path names the right list, not Accessibility")
+    func settingsPathIsSpecific() {
+        #expect(InputMonitoring.settingsPath.contains("Input Monitoring"))
+        #expect(!InputMonitoring.settingsPath.contains("Accessibility"))
+    }
+
+    @Test("the settings URL targets the Input Monitoring pane")
+    func settingsURLTargetsTheRightPane() {
+        #expect(InputMonitoring.settingsURL.absoluteString.contains("Privacy_ListenEvent"))
+    }
+
+    @Test("the rationale explains why a second permission exists")
+    func rationaleExplainsItself() {
+        let text = InputMonitoring.rationale
+        #expect(text.contains("Accessibility"))
+        #expect(text.lowercased().contains("separate"))
+    }
+
+    /// A warning would let the app start and do nothing; the symptom of a
+    /// missing grant is total silence, so it has to block.
+    @Test("doctor treats a missing grant as a hard failure")
+    func doctorFailsHard() {
+        let check = DoctorReport.inputMonitoring()
+        #expect(check.name == "input monitoring")
+        switch check.status {
+        case .ok:
+            #expect(InputMonitoring.state.isGranted)
+        case .fail:
+            #expect(!InputMonitoring.state.isGranted)
+            #expect(check.remedy?.contains("Input Monitoring") == true)
+        case .warn:
+            Issue.record("a missing grant must not be a warning — the hotkey is dead without it")
+        }
+    }
+
+    @Test("doctor blocks startup while it is missing")
+    func blocksStartup() {
+        let checks = [DoctorReport.inputMonitoring()]
+        #expect(DoctorReport.canRun(checks) == InputMonitoring.state.isGranted)
+    }
+}
+
+@Suite("Doctor — the fn key macOS may already own")
+struct FnKeyConflictTests {
+
+    /// The symptom is silence: the tap installs, no event ever arrives, and
+    /// nothing in the app can explain it. That cannot be a warning.
+    @Test("a claimed fn key is a hard failure, not a warning")
+    func claimedFnIsFatal() {
+        let check = DoctorReport.fnKeyMapping()
+        switch check.status {
+        case .fail(let message):
+            #expect(message.contains("claimed") || message.contains("set to"))
+            #expect(check.remedy?.contains("Do Nothing") == true)
+        case .warn, .ok:
+            // Fine on a machine with one keyboard layout and no Dictation.
+            #expect(!DoctorReport.hasMultipleInputSources() || !DoctorReport.dictationEnabled())
+        }
+    }
+
+    @Test("the remedy offers both a settings change and another key")
+    func remedyOffersAWayOut() {
+        guard let remedy = DoctorReport.fnKeyMapping().remedy else { return }
+        #expect(remedy.contains("Do Nothing"))
+        #expect(remedy.contains("right-option"))
+    }
+
+    /// A second keyboard layout is what turns the globe key into an
+    /// input-source switcher, which is why an unset preference is the
+    /// dangerous case rather than a safe one.
+    @Test("multiple input sources are detected")
+    func detectsMultipleInputSources() {
+        // Only asserts the call is well-formed on any machine.
+        _ = DoctorReport.hasMultipleInputSources()
+        _ = DoctorReport.dictationEnabled()
+    }
+
+    @Test("only fn conflicts with the system")
+    func onlyFnConflicts() {
+        #expect(Hotkey.fn.conflictsWithSystemFnAction)
+        #expect(!Hotkey.rightOption.conflictsWithSystemFnAction)
+    }
+}

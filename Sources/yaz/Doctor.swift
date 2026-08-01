@@ -23,6 +23,7 @@ enum DoctorReport {
         var checks = [
             microphone(),
             accessibility(),
+            inputMonitoring(),
             model(config: config),
             injection(config: config),
             refinement(config: config),
@@ -79,6 +80,29 @@ enum DoctorReport {
         guard let parentName, !parentName.isEmpty else { return "yaz" }
         if parentPID <= 1 || parentName == "launchd" { return "yaz" }
         return parentName
+    }
+
+    /// Accessibility is not enough to listen to the keyboard; this is.
+    ///
+    /// Reported as a hard failure because the symptom without it is not a
+    /// degraded experience, it is total silence: the tap installs and never
+    /// fires, and nothing in the app can tell you why.
+    static func inputMonitoring() -> Check {
+        switch InputMonitoring.state {
+        case .granted:
+            return Check(name: "input monitoring", status: .ok(nil), remedy: nil)
+        case .notDetermined:
+            return Check(
+                name: "input monitoring",
+                status: .fail("not granted — the hotkey cannot work without it"),
+                remedy: "\(InputMonitoring.settingsPath) → enable yaz"
+                    + " (this is a different list from Accessibility)")
+        case .denied:
+            return Check(
+                name: "input monitoring",
+                status: .fail("denied — the hotkey cannot work without it"),
+                remedy: "\(InputMonitoring.settingsPath) → enable yaz")
+        }
     }
 
     static func model(config: Config) -> Check {
@@ -166,17 +190,32 @@ enum DoctorReport {
             remedy: nil)
     }
 
-    /// macOS routes the Fn key to emoji, dictation, or input switching unless
-    /// told otherwise. The tap still sees the press, but the system action
-    /// fires too, so the user gets an emoji picker every time they dictate.
+    /// Whether macOS has claimed the globe/fn key.
+    ///
+    /// This is not cosmetic. When the system owns the key it consumes the press
+    /// before a session-level `CGEventTap` ever sees it, so the hotkey does
+    /// nothing at all — no indicator, no error, nothing in the log. Measured on
+    /// this machine: Accessibility granted, Input Monitoring granted, tap
+    /// installed, and zero modifier events delivered.
+    ///
+    /// An *unset* `AppleFnUsageType` is the dangerous case, not a safe one: the
+    /// default binds the key to input-source switching as soon as a second
+    /// keyboard layout exists, and to Dictation when that is enabled. Treating
+    /// "unreadable" as a warning let exactly that configuration through.
     static func fnKeyMapping() -> Check {
-        let remedy = "System Settings → Keyboard → Press 🌐 key to → Do Nothing"
+        let remedy = "System Settings → Keyboard → \"Press 🌐 key to\" → Do Nothing"
+            + "  ·  or pick another key in Settings (right-option has no conflict)"
+
         guard let raw = readDefault(domain: "com.apple.HIToolbox", key: "AppleFnUsageType"),
               let value = Int(raw)
         else {
+            // Unset. Work out whether the system default will claim it.
+            let claimed = hasMultipleInputSources() || dictationEnabled()
             return Check(
                 name: "fn key",
-                status: .warn("setting unreadable — the system default may intercept it"),
+                status: claimed
+                    ? .fail("claimed by macOS — the hotkey cannot reach yaz")
+                    : .warn("not configured — the system default may intercept it"),
                 remedy: remedy)
         }
         switch value {
@@ -186,6 +225,19 @@ enum DoctorReport {
         case 3: return Check(name: "fn key", status: .fail("set to Start Dictation"), remedy: remedy)
         default: return Check(name: "fn key", status: .warn("unknown value \(value)"), remedy: remedy)
         }
+    }
+
+    /// More than one keyboard layout makes the globe key an input-source
+    /// switcher by default.
+    static func hasMultipleInputSources() -> Bool {
+        guard let raw = readDefault(domain: "com.apple.HIToolbox", key: "AppleEnabledInputSources")
+        else { return false }
+        return raw.components(separatedBy: "Keyboard Layout Name").count > 2
+    }
+
+    /// Dictation binds the globe key too.
+    static func dictationEnabled() -> Bool {
+        readDefault(domain: "com.apple.HIToolbox", key: "AppleDictationAutoEnable") == "1"
     }
 
     // MARK: -

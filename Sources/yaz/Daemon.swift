@@ -10,7 +10,8 @@ final class Daemon {
 
     private let config: Config
     private let engine: any Transcriber
-    private let monitor: HotkeyMonitor
+    private var monitor: HotkeyMonitor
+    private var activeHotkey: Hotkey
     private let capture = AudioCapture()
     private let pipeline: TranscriptPipeline
     private let history: TranscriptHistory
@@ -41,6 +42,7 @@ final class Daemon {
         self.config = config
         self.engine = config.makeEngine()
         self.monitor = HotkeyMonitor(hotkey: config.hotkey, debug: verbose)
+        self.activeHotkey = config.hotkey
         self.pipeline = TranscriptPipeline(config: config)
         self.history = TranscriptHistory(limit: config.historyLimit, enabled: config.history)
         self.overlay = config.overlay ? RecordingOverlay() : nil
@@ -64,18 +66,49 @@ final class Daemon {
         menuBar?.onOpenSettings = { [settings] in settings.showSettings() }
         menuBar?.onOpenHistory = { [settings] in settings.showHistory() }
         menuBar?.onFixPermission = { [weak self] in self?.presentPermissionAlert() }
+        menuBar?.onUseFallbackHotkey = { [weak self] in self?.switchToFallbackHotkey() }
+
+        // macOS owns the globe key whenever a second keyboard layout or
+        // Dictation is enabled, and then it consumes the press before any
+        // session tap sees it — the hotkey does nothing, silently.
+        if config.hotkey == .fn, case .fail = DoctorReport.fnKeyMapping().status {
+            log("warning: the fn key is claimed by macOS — the hotkey will not reach yaz")
+            log("  fix: System Settings → Keyboard → \"Press 🌐 key to\" → Do Nothing")
+            log("  or:  menu bar → use right option")
+            menuBar?.setHotkeyConflict(true)
+        }
         capture.onLevel = { [overlay] level in overlay?.pushLevel(level) }
 
         // Launched as an app, a missing Accessibility grant must not be fatal.
         // The user double-clicked an icon; exiting silently would look like the
         // app is broken. Instead prompt as *yaz* — which is the whole point of
         // shipping a bundle — and wait for the grant to arrive.
+        // Two permissions, not one. Accessibility lets yaz post the paste;
+        // Input Monitoring lets it *see* the hotkey. Missing the second one
+        // produces a tap that installs cleanly and never fires — which is
+        // indistinguishable from a broken app.
         var awaitingPermission = false
-        if !HotkeyMonitor.hasAccessibilityPermission && AppEnvironment.isBundledApp {
+        let hasAccessibility = HotkeyMonitor.hasAccessibilityPermission
+        let inputState = InputMonitoring.state
+        // Logged every launch: when the hotkey does nothing, the first thing
+        // anyone needs is the app's own view of its permissions, not the
+        // terminal's.
+        log("permissions · accessibility=\(hasAccessibility)"
+            + " inputMonitoring=\(inputState) bundled=\(AppEnvironment.isBundledApp)"
+            + " path=\(Bundle.main.bundlePath)")
+
+        let hasPermissions = hasAccessibility && inputState.isGranted
+
+        if !hasPermissions && AppEnvironment.isBundledApp {
             awaitingPermission = true
             menuBar?.setNeedsPermission(true)
-            HotkeyMonitor.requestAccessibilityPermission()
-            waitForAccessibility()
+            if !HotkeyMonitor.hasAccessibilityPermission {
+                HotkeyMonitor.requestAccessibilityPermission()
+            }
+            if !InputMonitoring.state.isGranted {
+                InputMonitoring.request()
+            }
+            waitForPermissions()
         } else {
             try startMonitor()
         }
@@ -168,6 +201,30 @@ final class Daemon {
         }
     }
 
+    /// Move to a key macOS does not claim, and persist the choice.
+    private func switchToFallbackHotkey() {
+        let fallback: Hotkey = .rightOption
+        log("switching hotkey to \(fallback.rawValue)")
+
+        monitor.stop()
+        monitor = HotkeyMonitor(hotkey: fallback, debug: verbose)
+        activeHotkey = fallback
+
+        var updated = config
+        updated.hotkey = fallback
+        try? updated.save()
+
+        do {
+            try startMonitor()
+            menuBar?.setHotkeyConflict(false)
+            menuBar?.note("ready — hold \(fallback.displayName)")
+            log("✓ hotkey is now \(fallback.displayName)")
+        } catch {
+            log("couldn't install the fallback hotkey: \(error)")
+            menuBar?.note("hotkey unavailable")
+        }
+    }
+
     private func startMonitor() throws {
         try monitor.start { [weak self] event in
             // The tap callback already hops to main; assume that rather than
@@ -182,19 +239,20 @@ final class Daemon {
     /// ticks the box, so polling means the app starts working without being
     /// quit and reopened — which is what every other dictation tool asks for
     /// and nobody enjoys.
-    private func waitForAccessibility() {
+    private func waitForPermissions() {
         // The timer is held on the actor rather than captured in its own
         // closure: Swift 6 will not let a task-isolated `Timer` cross into a
         // main-actor closure, and holding it here also keeps it alive.
         permissionPoll?.invalidate()
         permissionPoll = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             MainActor.assumeIsolated {
-                guard HotkeyMonitor.hasAccessibilityPermission else { return }
+                guard HotkeyMonitor.hasAccessibilityPermission,
+                      InputMonitoring.state.isGranted else { return }
                 self.permissionPoll?.invalidate()
                 self.permissionPoll = nil
                 do {
                     try self.startMonitor()
-                    log("✓ accessibility granted — listening")
+                    log("✓ permissions granted — listening")
                     self.menuBar?.setNeedsPermission(false)
                     self.menuBar?.note("ready to listen")
                     self.setIndicator(.idle)

@@ -86,6 +86,16 @@ final class HotkeyMonitor: @unchecked Sendable {
     private var source: CFRunLoopSource?
     private var isDown = false
 
+    /// Raw modifier events logged at startup, then it goes quiet.
+    ///
+    /// "The hotkey does nothing" has two very different causes — the tap never
+    /// sees the key, or it sees it and the mask does not match — and no way to
+    /// tell them apart without looking at what actually arrives. Logging the
+    /// first handful answers that on any machine without asking the user to
+    /// run anything special.
+    private var eventsLogged = 0
+    private static let eventsToLog = 24
+
     init(hotkey: Hotkey = .fn, debug: Bool = false) {
         self.hotkey = hotkey
         self.debug = debug
@@ -125,6 +135,7 @@ final class HotkeyMonitor: @unchecked Sendable {
 
         self.tap = tap
         self.source = source
+        log("hotkey listener installed for \(hotkey.rawValue) (mask \(String(hotkey.flag.rawValue, radix: 16)))")
     }
 
     func stop() {
@@ -166,12 +177,22 @@ final class HotkeyMonitor: @unchecked Sendable {
             held = flagHeld
         }
 
-        if debug {
-            log("  [debug] flags=\(String(flags.rawValue, radix: 16)) keycode=\(keyCode) held=\(held)")
+        if debug || eventsLogged < Self.eventsToLog {
+            eventsLogged += 1
+            log("  modifier event: flags=\(String(flags.rawValue, radix: 16))"
+                + " keycode=\(keyCode) wanted=\(String(hotkey.flag.rawValue, radix: 16))"
+                + " match=\(held)")
+            if eventsLogged == Self.eventsToLog {
+                log("  (further modifier events will not be logged)")
+            }
         }
 
         guard held != isDown else { return }
         isDown = held
+        // Logged unconditionally, not behind --verbose: when the hotkey does
+        // nothing, whether the tap saw the key at all is the first question
+        // and there was previously no way to answer it.
+        log("hotkey \(held ? "down" : "up")")
         handler?(held ? .pressed : .released)
     }
 }
