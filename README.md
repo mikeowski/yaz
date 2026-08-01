@@ -11,7 +11,7 @@ onun bilerek reddettiği üç şeyi hedefliyor: **çok dilli varsayılan**,
 
 ## Durum
 
-**Uçtan uca çalışıyor.** Bas-konuş → çeviri → terim düzeltme → temizlik → imlece yapıştırma. 156 test.
+**Uçtan uca çalışıyor.** Bas-konuş → çeviri → terim düzeltme → temizlik → imlece yapıştırma. 176 test.
 
 ```sh
 swift build -c release
@@ -77,6 +77,7 @@ yaz vocab test "<metin>"               # sözlük düzeltmesini dene, puanları 
 yaz vocab refine --mode llm "<metin>"  # son işlemeyi dene
 yaz vocab explain "<terim>" "<duyulan>"  # fonetik anahtarları karşılaştır
 
+yaz preview                            # kayıt göstergesini dene (mikrofon gerekmez)
 yaz doctor [--request]                 # izinler, model, ayarlar
 yaz models list
 yaz models download [--force]
@@ -96,6 +97,21 @@ Desteklenmeyen motor/dil çifti model indirilmeden reddedilir:
 $ yaz transcribe --engine-name parakeet --language tr fixtures/t1.wav
 Error: parakeet motoru 'tr' dilini desteklemiyor (desteklenen: bg, hr, cs, da, nl, en, et, fi…)
 ```
+
+## Gösterge
+
+Kayıt sırasında ekranın altında küçük bir pil beliriyor — canlı dalga formu,
+sonra çeviri ve düzeltme durumları. Tıklamaları geçirir, odağı çalmaz (metin
+imlecin olduğu yere yapıştırılacağı için bu şart). Menü barında da bir durum
+öğesi var.
+
+Nasıl göründüğünü mikrofon olmadan görmek için:
+
+```sh
+yaz preview
+```
+
+İkisi de config'den kapatılabilir (`"overlay": false`, `"menu_bar": false`).
 
 ## Son işleme
 
@@ -132,6 +148,8 @@ temizlik adımı yüzünden dikte kaybolmaz.
   "inject_mode": "paste",
   "keep_model_loaded": true,
   "refine": "fillers",
+  "overlay": true,
+  "menu_bar": true,
   "on_transcript": "my-hook",
   "vocabulary": [
     "Slack", "pull request", "CI pipeline", "Kubernetes",

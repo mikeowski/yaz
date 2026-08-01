@@ -27,6 +27,12 @@ struct Config: Sendable, Equatable {
     /// Post-processing applied to the finished transcript. Defaults to the
     /// deterministic filter: it costs nothing and cannot change meaning.
     var refine: RefineMode = .fillers
+    /// The on-screen pill shown while dictating. Push-to-talk's one honest
+    /// failure mode is not knowing the microphone was live.
+    var overlay: Bool = true
+    /// The menu bar item. Off makes sense for a foreground terminal run, where
+    /// the log already says what is happening.
+    var menuBar: Bool = true
 
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/yaz/config.json")
@@ -86,6 +92,8 @@ struct Config: Sendable, Equatable {
             if let value = RefineMode(rawValue: raw) { refine = value }
             else { warn("refine", raw, RefineMode.allCases.map(\.rawValue)) }
         }
+        if let value = json["overlay"] as? Bool { overlay = value }
+        if let value = json["menu_bar"] as? Bool { menuBar = value }
         if let raw = json["vocabulary"] {
             vocabulary = Self.parseVocabulary(raw, source: source)
         }
@@ -139,7 +147,9 @@ struct Config: Sendable, Equatable {
           "hotkey": "fn",
           "inject_mode": "paste",
           "keep_model_loaded": true,
-          "refine": "fillers"
+          "refine": "fillers",
+          "overlay": true,
+          "menu_bar": true
         }
 
         """

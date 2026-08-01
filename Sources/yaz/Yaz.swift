@@ -1,3 +1,4 @@
+import AppKit
 import ArgumentParser
 import FluidAudio
 import Foundation
@@ -7,7 +8,7 @@ struct Yaz: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "yaz",
         abstract: "Türkçe konuşan geliştiriciler için on-device dikte. Bas-konuş, bırak, metin imlece gelir.",
-        subcommands: [Run.self, Doctor.self, Transcribe.self, Models.self, Vocab.self],
+        subcommands: [Run.self, Doctor.self, Transcribe.self, Models.self, Vocab.self, Preview.self],
         defaultSubcommand: Run.self
     )
 }
@@ -127,6 +128,74 @@ struct Models: AsyncParsableCommand {
             await engine.release()
             let status = ModelStore.status(for: whisperModel.whisperKitID)
             log(String(format: "✓ hazır — %.0f sn · %@", Date().timeIntervalSince(started), status.sizeDescription))
+        }
+    }
+}
+
+/// Show the recording indicator without a microphone or a hotkey.
+///
+/// The overlay and the menu bar are the only parts of yaz that cannot be
+/// reached from a test: they need a run loop, a screen, and — via the daemon —
+/// an Accessibility grant. This command drives them directly, so the AppKit
+/// and SwiftUI paths get exercised rather than merely compiled.
+struct Preview: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Kayıt göstergesini ekranda göster (mikrofon gerekmez)."
+    )
+
+    @Option(name: .long, help: "Her durumun ekranda kalma süresi (saniye).")
+    var dwell: Double = 1.6
+
+    func run() async throws {
+        try await MainActor.run {
+            let app = NSApplication.shared
+            app.setActivationPolicy(.accessory)
+
+            let config = Config.load()
+            let overlay = RecordingOverlay()
+            let menuBar = config.menuBar
+                ? MenuBarController(summary: "önizleme")
+                : nil
+
+            log("gösterge önizlemesi — ekranın altına bak, menü barını kontrol et")
+
+            let states: [IndicatorState] = [.recording, .transcribing, .refining]
+            var elapsed: Double = 0
+
+            for state in states {
+                Timer.scheduledTimer(withTimeInterval: elapsed, repeats: false) { _ in
+                    MainActor.assumeIsolated {
+                        log("  \(state.label)")
+                        overlay.show(state)
+                        menuBar?.update(state)
+                    }
+                }
+                // Feed the waveform only while the recording state is up, so
+                // the meter is exercised with real-looking values.
+                if state == .recording {
+                    let start = elapsed
+                    for tick in stride(from: 0.0, to: dwell, by: 0.05) {
+                        Timer.scheduledTimer(withTimeInterval: start + tick, repeats: false) { _ in
+                            let phase = Float(tick) * 6
+                            overlay.pushLevel(0.05 + 0.3 * abs(sin(phase)))
+                        }
+                    }
+                }
+                elapsed += dwell
+            }
+
+            Timer.scheduledTimer(withTimeInterval: elapsed, repeats: false) { _ in
+                MainActor.assumeIsolated {
+                    overlay.hide()
+                    menuBar?.update(.idle)
+                }
+            }
+            Timer.scheduledTimer(withTimeInterval: elapsed + 0.8, repeats: false) { _ in
+                log("önizleme bitti")
+                NSApp.terminate(nil)
+            }
+
+            app.run()
         }
     }
 }

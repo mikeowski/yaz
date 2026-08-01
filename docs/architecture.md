@@ -623,6 +623,79 @@ doğrulaması bunu (normalize ederek karşılaştırdığı için) kayıp saymad
 yaz vocab refine --mode llm "ıı yarın şey toplantı var"
 ```
 
+
+## M6 — kayıt göstergesi ve menü barı
+
+Bas-konuş'un tek dürüst arıza biçimi şu: tuşu basılı tutuyorsun, konuşuyorsun,
+ama kimse dinlemiyormuş. Geri bildirim olmadan bunu ancak metin gelmeyince
+anlarsın. Gösterge bu sorunun tamamının cevabı.
+
+### Test edilebilir çekirdek ayrı
+
+`LevelMeter` ve `IndicatorState` içinde hiç AppKit yok. İlginç kısım —
+ham tepe değerinin çubuk yüksekliğine dönüşmesi — pencere sunucusu
+başlatmadan sınanabilecek bir aritmetik.
+
+Konuşma tepe değerleri dahili mikrofonda kabaca 0.05–0.7. Doğrusal çizilirse
+ölü bir çizgi çıkıyor, o yüzden `sqrt` ile sıkıştırılıp 3.4 kazançla
+ölçekleniyor: bağırınca metre tavana yapışıp düzleşmiyor, sessiz cümle
+görünür kalıyor.
+
+Sonlu olmayan bir değer **tabanda** kalıyor, tavanda değil. `NaN` veya
+`infinity` buraya geldiyse okuma bozuk demektir, oda gürültülü demek değil —
+tavana yapışmış bir metre, düz olandan daha kendinden emin bir yalan olur.
+
+`showsWaveform` yalnızca `.recording` durumunda doğru. Kayıt bittikten sonra
+oynayan bir dalga formu yalan söyler: o noktada ses çoktan yakalanmıştır.
+
+### Pil — tıklamayı geçiren panel
+
+Borderless, `nonactivatingPanel` bir `NSPanel`. Üç ayar taşıyıcı:
+
+- `ignoresMouseEvents` — tıklamalar altındaki uygulamaya geçiyor.
+- `orderFrontRegardless`, `makeKeyAndOrderFront` değil — panel dikte edilen
+  alandan **asla** key durumunu almamalı. Alsaydı ürünün kendisi bozulurdu,
+  çünkü metin imlecin bulunduğu yere yapıştırılıyor.
+- `canJoinAllSpaces` + `fullScreenAuxiliary` — tam ekran uygulamada da görünür.
+
+Konum, farenin bulunduğu ekranın alt ortası: çok monitörlü masada pil
+kullanıcıyı takip ediyor, dizüstünde kalmıyor.
+
+### Menü barı
+
+yaz dock ikonu ve penceresi olmayan bir `.accessory` süreç. Terminalden
+çalıştırıldığında log yeterli; **login'de başlayan bir LaunchAgent için
+değil** — kullanıcının daemon'ın orada olduğunu görecek ve onu kapatacak bir
+yolu olmalı.
+
+SF Symbols kullanılıyor, ama çizilmiş bir yedek var: yüklenemeyen bir görsel
+sıfır genişlikte bir status item bırakır, bu da tam olarak "daemon başlamadı"
+gibi görünür.
+
+### UI kodu derlenmekle kalmadı, çalıştırıldı
+
+Overlay ve menü barı testten erişilemeyen tek parça: run loop, ekran ve
+daemon üzerinden erişilebilirlik izni istiyorlar. `yaz preview` bunları
+doğrudan sürüyor — mikrofon ve kısayol olmadan, durumlar arasında gezerek ve
+dalga formunu gerçekçi değerlerle besleyerek.
+
+```
+$ yaz preview
+gösterge önizlemesi — ekranın altına bak, menü barını kontrol et
+  dinliyor
+  çeviriyor
+  düzeltiyor
+önizleme bitti
+```
+
+Böylece AppKit/SwiftUI yolu "derleniyor" seviyesinden "çalışıyor" seviyesine
+çıkıyor.
+
+### Config
+
+`overlay` ve `menu_bar` ayrı ayrı kapatılabiliyor. Ön planda terminal
+çalıştırması için ikisi de gereksiz olabilir; log zaten her şeyi söylüyor.
+
 ## Durum
 
 - **M1 — tamam.** Motor katmanı, `Transcriber` protokolü, Whisper + Parakeet
@@ -641,7 +714,8 @@ yaz vocab refine --mode llm "ıı yarın şey toplantı var"
 - **M5 — tamam.** Son işleme: `FillerFilter` (deterministik),
   `Refiner` + FoundationModels (opsiyonel), `RefinementGuard`,
   `TranscriptPipeline`. 156 test.
-- **M6** — menü barı + kayıt göstergesi.
+- **M6 — tamam.** `LevelMeter`, `IndicatorState`, tıklama geçiren overlay
+  pili, `MenuBarController`, `yaz preview`. 176 test.
 - **M7** — LaunchAgent, install betiği.
 
 ## Ölçüm disiplini

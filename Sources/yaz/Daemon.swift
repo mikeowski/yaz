@@ -13,6 +13,8 @@ final class Daemon {
     private let monitor: HotkeyMonitor
     private let capture = AudioCapture()
     private let pipeline: TranscriptPipeline
+    private let overlay: RecordingOverlay?
+    private let menuBar: MenuBarController?
     private let verbose: Bool
 
     /// Set while a transcription is running so a second press cannot start a
@@ -29,6 +31,10 @@ final class Daemon {
         self.engine = config.makeEngine()
         self.monitor = HotkeyMonitor(hotkey: config.hotkey, debug: verbose)
         self.pipeline = TranscriptPipeline(config: config)
+        self.overlay = config.overlay ? RecordingOverlay() : nil
+        self.menuBar = config.menuBar
+            ? MenuBarController(summary: Self.summary(of: config))
+            : nil
         self.verbose = verbose
     }
 
@@ -40,6 +46,10 @@ final class Daemon {
 
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
+
+        menuBar?.onQuit = { [weak self] in self?.shutdown() }
+        menuBar?.onOpenConfig = { Self.openConfig() }
+        capture.onLevel = { [overlay] level in overlay?.pushLevel(level) }
 
         try monitor.start { [weak self] event in
             // The tap callback already hops to main; assume that rather than
@@ -61,6 +71,7 @@ final class Daemon {
         // but no events are delivered until the run loop below starts, and
         // `ready` guards the case where one slips through.
         ready = true
+        setIndicator(.idle)
 
         installSignalHandlers()
         log("dinleniyor · \(config.hotkey.displayName) basılı tut · \(config.injectMode.displayName) · ^C ile çık")
@@ -83,8 +94,10 @@ final class Daemon {
             do {
                 try capture.start()
                 log("● kayıt")
+                setIndicator(.recording)
             } catch {
                 log("kayıt başlatılamadı: \(error)")
+                menuBar?.note("mikrofon açılamadı")
             }
 
         case .released:
@@ -93,13 +106,17 @@ final class Daemon {
             let sawSignal = capture.didSeeSignal
             let hitLimit = capture.didHitLimit
             if hitLimit { log("uyarı: kayıt üst sınıra ulaştı, kırpıldı") }
+            setIndicator(.transcribing)
             busy = true
             Task { await self.finish(samples, sawSignal: sawSignal) }
         }
     }
 
     private func finish(_ samples: [Float], sawSignal: Bool) async {
-        defer { busy = false }
+        defer {
+            busy = false
+            setIndicator(.idle)
+        }
 
         let started = Date()
         do {
@@ -109,6 +126,7 @@ final class Daemon {
             switch output.quality.verdict {
             case .rejected(let reason):
                 log("○ atlandı: \(reason)")
+                menuBar?.note("atlandı — \(reason)")
                 return
             case .lowConfidence(let reason):
                 log("! \(reason)")
@@ -120,6 +138,7 @@ final class Daemon {
             // transcript, because the ASR-level alternatives do not work on
             // this stack: Whisper returns empty output when given promptTokens,
             // and the on-device LLM cannot do fuzzy Turkish-phonetic matching.
+            if config.refine == .llm { setIndicator(.refining) }
             let processed = await pipeline.process(output.text)
             for correction in processed.corrections {
                 log("  sözlük: \(correction.from) → \(correction.to)")
@@ -146,6 +165,34 @@ final class Daemon {
         }
     }
 
+    /// Push a state to every indicator that is switched on.
+    private func setIndicator(_ state: IndicatorState) {
+        menuBar?.update(state)
+        if state.isVisible { overlay?.show(state) } else { overlay?.hide() }
+    }
+
+    private static func summary(of config: Config) -> String {
+        "\(config.whisperModel.rawValue) · \(config.language) · \(config.hotkey.displayName)"
+    }
+
+    private static func openConfig() {
+        let path = Config.path
+        if !FileManager.default.fileExists(atPath: path.path) {
+            try? FileManager.default.createDirectory(
+                at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? Data(Config.example.utf8).write(to: path)
+        }
+        NSWorkspace.shared.open(path)
+    }
+
+    private func shutdown() {
+        log("kapatılıyor")
+        monitor.stop()
+        capture.stop()
+        overlay?.hide()
+        NSApp.terminate(nil)
+    }
+
     /// Fire the configured shell command with the transcript as its argument.
     /// Detached: a slow hook must not delay the next utterance.
     private func runHook(with text: String) {
@@ -163,12 +210,7 @@ final class Daemon {
     private func installSignalHandlers() {
         let source = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
         source.setEventHandler {
-            MainActor.assumeIsolated {
-                log("\nkapatılıyor")
-                self.monitor.stop()
-                self.capture.stop()
-                NSApp.terminate(nil)
-            }
+            MainActor.assumeIsolated { self.shutdown() }
         }
         source.resume()
         signal(SIGINT, SIG_IGN)
