@@ -12,7 +12,7 @@ onun bilerek reddettiği üç şeyi hedefliyor: **çok dilli varsayılan**,
 ## Durum
 
 Erken. Şu an çalışan: **sağlamlaştırılmış** motor katmanı ve ölçüm koşum takımı.
-37 test (`swift test`).
+57 test (`swift test`).
 
 ```sh
 swift build -c release

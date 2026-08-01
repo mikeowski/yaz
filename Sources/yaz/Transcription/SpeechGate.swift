@@ -1,3 +1,4 @@
+import Accelerate
 import Foundation
 
 /// Cheap checks run on raw samples *before* paying for inference.
@@ -29,16 +30,24 @@ struct SpeechGate: Sendable {
         let seconds: Double
     }
 
+    /// Peak and RMS over the buffer.
+    ///
+    /// vDSP rather than a scalar loop: this runs on every utterance, and on a
+    /// long file the buffer is tens of millions of samples (one hour at
+    /// 16 kHz is 57.6 M). A gate that is supposed to be cheaper than inference
+    /// should not be the thing that costs.
     static func level(_ samples: [Float]) -> Level {
+        let seconds = Double(samples.count) / AudioLoader.sampleRate
+        guard !samples.isEmpty else { return Level(peak: 0, rms: 0, seconds: 0) }
+
         var peak: Float = 0
-        var sumSquares: Double = 0
-        for sample in samples {
-            let magnitude = abs(sample)
-            if magnitude > peak { peak = magnitude }
-            sumSquares += Double(sample) * Double(sample)
+        var rms: Float = 0
+        samples.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return }
+            vDSP_maxmgv(base, 1, &peak, vDSP_Length(buffer.count))
+            vDSP_rmsqv(base, 1, &rms, vDSP_Length(buffer.count))
         }
-        let rms = samples.isEmpty ? 0 : Float((sumSquares / Double(samples.count)).squareRoot())
-        return Level(peak: peak, rms: rms, seconds: Double(samples.count) / AudioLoader.sampleRate)
+        return Level(peak: peak, rms: rms, seconds: seconds)
     }
 
     /// Throw a benign `YazError` when this buffer is not worth transcribing.

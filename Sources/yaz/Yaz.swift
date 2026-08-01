@@ -122,11 +122,14 @@ struct Transcribe: AsyncParsableCommand {
             format: "  gecikme %.0f ms · RTF %.3f · tepe %.3f · rms %.3f",
             best * 1000, best / max(seconds, 0.001), output.level.peak, output.level.rms))
 
-        let signals = output.quality.signals
-        if signals != TranscriptionQuality.Signals() {
+        if let signals = output.quality.signals {
             print(String(
                 format: "  noSpeech %.2f · logProb %.2f · sıkıştırma %.2f",
                 signals.noSpeechProb, signals.avgLogProb, signals.compressionRatio))
+        } else {
+            // Say so rather than printing zeros, which would look like a
+            // flawless decode instead of a silent engine.
+            print("  (motor güven sinyali vermiyor — karar yalnızca metne dayanıyor)")
         }
 
         switch output.quality.verdict {

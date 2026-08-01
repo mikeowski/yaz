@@ -219,12 +219,95 @@ edilen gerçek parantezli ifadeleri de götürüyor. yaz yalnızca bilinen not
 sözcüklerini (`sessizlik`, `müzik`, `applause`…) ve 40 karakteri aşmayan
 span'ları siliyor; "toplantı (yarın değil, öbür gün) yapılacak" olduğu gibi kalıyor.
 
+
+## Sağlamlaştırma — ikinci tur
+
+İlk tur girdi ve çıktıyı savundu. İkinci tur kodu kendine karşı savunuyor:
+üç gerçek hata bulundu, üçü de kod okunarak.
+
+### Actor reentrancy — modeli iki kez yükleme
+
+```swift
+func prepare() async throws {
+    guard box.kit == nil else { return }        // ← 1. çağrı buradan geçer
+    box.kit = try await WhisperKit(...)         // ← burada askıya alınır
+}                                               //   2. çağrı guard'ı geçer!
+```
+
+Actor **ifadeleri** serileştirir, askıya alma noktasını aşan **işlemleri**
+değil. `await` sırasında ikinci çağrı içeri girip aynı 1.6 GB modeli bir daha
+yüklüyordu.
+
+`SingleFlight` bunu tek uçuşa indiriyor. Bekleyenler kazananın sonucunu görür.
+Başarısız yükleme **önbelleğe alınmaz** — sebebi genelde geçici bir indirme
+hatası, sonraki çağrı yeniden denemeli.
+
+### Sinyal yokluğu ≠ kusursuz sinyal
+
+`Signals` alanlarının hepsi sıfır varsayılanlı. Ama `avgLogProb: 0` = log(1.0) =
+**mümkün olan en yüksek güven**, `noSpeechProb: 0` = kesinlikle konuşma. Yani
+sıfırlanmış bir `Signals`, "veri yok"u "kusursuz decode" diye raporluyordu.
+
+Parakeet segment başına güven vermiyor ve tam da bunu geçiyordu — sonuç:
+**her Parakeet transkripti kalite kapılarından otomatik geçiyordu.**
+
+Artık tip bunu ifade ediyor: `signals: Signals?`. `nil` geçildiğinde yalnızca
+metin-temelli kontroller (boş çıktı, tekrar döngüsü) uygulanıyor — bunlar
+motordan bağımsız olarak imlece ulaşan hata türleri. CLI de sıfır basmak
+yerine durumu söylüyor:
+
+```
+  (motor güven sinyali vermiyor — karar yalnızca metne dayanıyor)
+```
+
+### İki gerçek veri yarışı
+
+`PipelineBox` `@unchecked Sendable`'dı ama senkronizasyonu yoktu. `box.kit`
+actor üzerinde `prepare()`/`release()` tarafından yazılıyor, zaman aşımı
+sarmalayıcısının **task-group child task'ından** okunuyordu. Artık `NSLock`
+korumalı ve `current()` güçlü referans döndürüyor: eşzamanlı bir `release()`
+uçuştaki transkripsiyonun altından pipeline'ı çekemez.
+
+İkincisi daha sinsi: actor `transcribe()`'ı serileştirmiyor. Method `await`'te
+askıya alınınca ikinci çağrı içeri girip Core ML pipeline'ına **paralel**
+ulaşabiliyordu. WhisperKit reentrancy garantisi vermiyor — bu yavaşlık değil,
+tanımsız davranış. `SerialGate` işleri geliş sırasına göre kuyruğa alıyor;
+hata veren iş zinciri koparmıyor.
+
+`release()` de artık kuyruğu boşaltmadan ağırlıkları düşürmüyor.
+
+### Ölçüm kapısı ölçülmeye değmemeli
+
+`SpeechGate.level` skaler döngüydü. Bu kapı her ifadede çalışıyor ve uzun bir
+dosyada tampon on milyonlarca örnek (bir saat @ 16 kHz = 57.6 M). Çıkarımdan
+ucuz olması gereken kontrol, maliyetin kendisi olmamalı — `vDSP_maxmgv` /
+`vDSP_rmsqv`'ye geçildi. Skaler referansla birebir eşleştiği test ediliyor.
+
+### Gerçek mikrofon formatları
+
+Gerçek girişler 16 kHz mono değil: dahili mikrofonlar 48 kHz, USB arayüzler
+44.1 kHz, kulaklıklar bazen 8 kHz, ve quill'in rca-001'i **dokuz kanallı** bir
+route bulmuştu. Fixture'lara stereo 44.1 kHz, mono 48 kHz ve mono 8 kHz
+varyantları eklendi.
+
+Test yalnızca süreyi değil **sinyalin hayatta kaldığını** da doğruluyor —
+rca-001'in tuzağı tam olarak doğru süreli ama dijital sessiz dosyaydı. Stereo
+44.1 kHz girdi, 16 kHz mono ile birebir aynı transkripti veriyor.
+
+### Sayılar
+
+57 test, 10 suite. Yeni kapsam: tek-uçuş yükleme, seri kuyruk, sinyal
+yokluğu, vDSP doğruluğu, dört giriş formatı, pencere sınırında kare kaybı.
+
 ## Durum
 
 - **M1 — tamam.** Motor katmanı, `Transcriber` protokolü, Whisper + Parakeet
   conformance'ları, `yaz transcribe` ölçüm koşum takımı, sabit Türkçe fixture'lar.
-- **M1.5 — tamam.** Sağlamlaştırma: `SpeechGate`, `TranscriptionQuality`,
-  `YazError`, zaman aşımı, dil doğrulaması, pencereli `AudioLoader`, 37 test.
+- **M1.5 — tamam.** Sağlamlaştırma turu 1: `SpeechGate`, `TranscriptionQuality`,
+  `YazError`, zaman aşımı, dil doğrulaması, pencereli `AudioLoader`.
+- **M1.6 — tamam.** Sağlamlaştırma turu 2: actor reentrancy düzeltmesi
+  (`SingleFlight`), çıkarım serileştirme (`SerialGate`), veri yarışı kapatma,
+  `Signals?` ayrımı, vDSP ölçüm, çok formatlı ses testleri. 57 test.
 - **M2** — mikrofon yakalama + yapılandırılabilir kısayol (parrot'ta `--hotkey`
   belgelenmiş ama kodda yok; burada gerçekten olacak).
 - **M3** — pano yapıştırma ile metin yerleştirme, CGEvent yedeği.

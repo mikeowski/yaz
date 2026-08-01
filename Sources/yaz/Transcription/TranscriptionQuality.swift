@@ -55,6 +55,12 @@ struct TranscriptionQuality: Sendable, Equatable {
     }
 
     /// Per-segment decoder signals, averaged over the utterance.
+    ///
+    /// Every field defaults to a value that reads as *maximum* confidence
+    /// (`avgLogProb: 0` is log(1.0); `noSpeechProb: 0` is "definitely speech").
+    /// That is why callers pass `nil` rather than `Signals()` when an engine
+    /// exposes no confidence data — an absence of evidence must not be
+    /// mistaken for evidence of quality. Parakeet is exactly this case.
     struct Signals: Sendable, Equatable {
         var noSpeechProb: Float = 0
         var avgLogProb: Float = 0
@@ -62,12 +68,21 @@ struct TranscriptionQuality: Sendable, Equatable {
     }
 
     let verdict: Verdict
-    let signals: Signals
+    /// `nil` when the engine reports no per-segment confidence.
+    let signals: Signals?
+
+    /// True when the verdict rests only on the text, because the engine gave
+    /// us nothing else to go on.
+    var isTextOnlyJudgement: Bool { signals == nil }
 
     /// Judge a finished transcript.
+    ///
+    /// With `signals == nil` only the text-shaped checks apply (empty output,
+    /// repetition loops). Those are the failure modes that survive into the
+    /// user's cursor regardless of engine, so the gate still earns its keep.
     static func assess(
         text: String,
-        signals: Signals,
+        signals: Signals?,
         thresholds: Thresholds = .default
     ) -> TranscriptionQuality {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -75,33 +90,40 @@ struct TranscriptionQuality: Sendable, Equatable {
         if trimmed.isEmpty {
             return .init(verdict: .rejected(reason: "boş çıktı"), signals: signals)
         }
-        if signals.noSpeechProb > thresholds.maxNoSpeechProb {
-            return .init(
-                verdict: .rejected(
-                    reason: String(format: "konuşma değil (noSpeech %.2f)", signals.noSpeechProb)),
-                signals: signals)
+        if let signals {
+            if signals.noSpeechProb > thresholds.maxNoSpeechProb {
+                return .init(
+                    verdict: .rejected(
+                        reason: String(format: "konuşma değil (noSpeech %.2f)", signals.noSpeechProb)),
+                    signals: signals)
+            }
+            if signals.compressionRatio > thresholds.maxCompressionRatio {
+                return .init(
+                    verdict: .rejected(
+                        reason: String(
+                            format: "tekrar döngüsü (sıkıştırma %.2f)", signals.compressionRatio)),
+                    signals: signals)
+            }
         }
-        if signals.compressionRatio > thresholds.maxCompressionRatio {
-            return .init(
-                verdict: .rejected(
-                    reason: String(
-                        format: "tekrar döngüsü (sıkıştırma %.2f)", signals.compressionRatio)),
-                signals: signals)
-        }
+
+        // Text-shaped checks run for every engine, with or without signals.
         if repeatsExcessively(trimmed, limit: thresholds.maxTokenRepeats) {
             return .init(verdict: .rejected(reason: "aynı kelime üst üste tekrarlandı"), signals: signals)
         }
-        if signals.avgLogProb < thresholds.minAvgLogProb {
-            return .init(
-                verdict: .rejected(
-                    reason: String(format: "güven çok düşük (logProb %.2f)", signals.avgLogProb)),
-                signals: signals)
-        }
-        if signals.avgLogProb < thresholds.lowConfidenceLogProb {
-            return .init(
-                verdict: .lowConfidence(
-                    reason: String(format: "düşük güven (logProb %.2f)", signals.avgLogProb)),
-                signals: signals)
+
+        if let signals {
+            if signals.avgLogProb < thresholds.minAvgLogProb {
+                return .init(
+                    verdict: .rejected(
+                        reason: String(format: "güven çok düşük (logProb %.2f)", signals.avgLogProb)),
+                    signals: signals)
+            }
+            if signals.avgLogProb < thresholds.lowConfidenceLogProb {
+                return .init(
+                    verdict: .lowConfidence(
+                        reason: String(format: "düşük güven (logProb %.2f)", signals.avgLogProb)),
+                    signals: signals)
+            }
         }
         return .init(verdict: .good, signals: signals)
     }

@@ -25,14 +25,30 @@ actor WhisperTranscriber: Transcriber {
     private let language: String
 
     /// `WhisperKit` is not `Sendable`, so an actor cannot pass a `self`-isolated
-    /// reference into WhisperKit's own nonisolated methods. Holding it in an
-    /// explicitly-unchecked box severs that isolation link; serialisation is
-    /// still real, because every path to the box runs on this actor.
+    /// reference into WhisperKit's own nonisolated methods. The box severs that
+    /// isolation link.
+    ///
+    /// The lock is not ceremony: the pointer is written on the actor by
+    /// `prepare()`/`release()` and read from a task-group child task inside the
+    /// timeout wrapper, which is a genuine cross-thread access. `current()`
+    /// returns a strong reference, so a concurrent `release()` cannot drop the
+    /// pipeline out from under an in-flight transcription.
     private let box = PipelineBox()
 
     private final class PipelineBox: @unchecked Sendable {
-        var kit: WhisperKit?
+        private let lock = NSLock()
+        private var kit: WhisperKit?
+
+        func current() -> WhisperKit? { lock.withLock { kit } }
+        func set(_ newValue: WhisperKit?) { lock.withLock { kit = newValue } }
+        var isLoaded: Bool { lock.withLock { kit != nil } }
     }
+
+    /// Collapses concurrent `prepare()` calls so the 1.6 GB model is loaded
+    /// once, and serialises inference because WhisperKit makes no reentrancy
+    /// guarantee.
+    private let loader = SingleFlight()
+    private let inference = SerialGate()
 
     init(model: WhisperModel = .largeV3Turbo, language: String = "tr") {
         self.model = model.id
@@ -53,13 +69,21 @@ actor WhisperTranscriber: Transcriber {
     }
 
     func prepare() async throws {
-        guard box.kit == nil else { return }
-        do {
-            box.kit = try await WhisperKit(WhisperKitConfig(
-                model: whisperKitID, verbose: false, prewarm: true, load: true
-            ))
-        } catch {
-            throw YazError.modelLoadFailed(model: model, underlying: "\(error)")
+        if box.isLoaded { return }
+        let box = self.box
+        let whisperKitID = self.whisperKitID
+        let modelID = self.model
+        try await loader.run {
+            // Re-check inside the single-flight barrier: a queued caller may
+            // arrive after the winning load already finished.
+            if box.isLoaded { return }
+            do {
+                box.set(try await WhisperKit(WhisperKitConfig(
+                    model: whisperKitID, verbose: false, prewarm: true, load: true
+                )))
+            } catch {
+                throw YazError.modelLoadFailed(model: modelID, underlying: "\(error)")
+            }
         }
     }
 
@@ -69,7 +93,7 @@ actor WhisperTranscriber: Transcriber {
         // Cheap rejections first: a hotkey tap or a muted mic must not cost a
         // model round trip.
         let level = try options.gate.check(samples)
-        guard box.kit != nil else { throw YazError.engineNotPrepared(engine: name) }
+        guard box.isLoaded else { throw YazError.engineNotPrepared(engine: name) }
 
         // Whisper's own decoder handles segmentation; we only pin the language
         // so it never wastes a pass auto-detecting, and pin temperature so
@@ -82,11 +106,14 @@ actor WhisperTranscriber: Transcriber {
             // Capture the box (@unchecked Sendable), not the WhisperKit
             // instance, which is not Sendable and cannot cross into the group.
             let box = self.box
-            results = try await withTranscriptionTimeout(options.timeout, engine: engineName) {
-                guard let kit = box.kit else {
-                    throw YazError.engineNotPrepared(engine: engineName)
+            results = try await inference.run {
+                try await withTranscriptionTimeout(options.timeout, engine: engineName) {
+                    guard let kit = box.current() else {
+                        throw YazError.engineNotPrepared(engine: engineName)
+                    }
+                    return try await kit.transcribe(
+                        audioArray: samples, decodeOptions: decodeOptions)
                 }
-                return try await kit.transcribe(audioArray: samples, decodeOptions: decodeOptions)
             }
         } catch let error as YazError {
             throw error
@@ -118,16 +145,22 @@ actor WhisperTranscriber: Transcriber {
     }
 
     func release() async {
-        box.kit = nil
+        // Wait for any queued inference to finish before dropping the weights,
+        // so release() cannot strand a transcription mid-flight.
+        _ = try? await inference.run { }
+        box.set(nil)
+        await loader.reset()
     }
 
     // MARK: -
 
     /// Average the decoder's per-segment confidence signals, weighted by
     /// segment length so a stray one-word segment cannot drag the verdict.
-    static func signals(from results: [TranscriptionResult]) -> TranscriptionQuality.Signals {
+    /// Returns `nil` when the decoder produced no segments — the caller must
+    /// not read that as perfect confidence.
+    static func signals(from results: [TranscriptionResult]) -> TranscriptionQuality.Signals? {
         let segments = results.flatMap { (r: TranscriptionResult) in r.segments }
-        guard !segments.isEmpty else { return .init() }
+        guard !segments.isEmpty else { return nil }
 
         var weightTotal: Float = 0
         var noSpeech: Float = 0
@@ -141,7 +174,7 @@ actor WhisperTranscriber: Transcriber {
             logProb += segment.avgLogprob * weight
             compression = max(compression, segment.compressionRatio)
         }
-        guard weightTotal > 0 else { return .init() }
+        guard weightTotal > 0 else { return nil }
 
         return .init(
             noSpeechProb: noSpeech / weightTotal,

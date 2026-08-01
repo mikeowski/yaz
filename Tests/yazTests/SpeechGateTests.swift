@@ -67,3 +67,46 @@ struct SpeechGateTests {
 }
 
 import func Foundation.sin
+
+@Suite("SpeechGate — vDSP ölçümü skaler referansla aynı sonucu vermeli")
+struct LevelAccuracyTests {
+
+    /// vDSP'ye geçerken sonuç değişmemeli; referans skaler hesap burada.
+    static func reference(_ samples: [Float]) -> (peak: Float, rms: Float) {
+        var peak: Float = 0
+        var sum: Double = 0
+        for s in samples {
+            peak = max(peak, abs(s))
+            sum += Double(s) * Double(s)
+        }
+        return (peak, samples.isEmpty ? 0 : Float((sum / Double(samples.count)).squareRoot()))
+    }
+
+    @Test("sinüs dalgasında vDSP ve skaler eşleşir")
+    func matchesOnTone() {
+        let samples = (0..<50_000).map { 0.3 * Float(sin(Double($0) * 0.01)) }
+        let fast = SpeechGate.level(samples)
+        let slow = Self.reference(samples)
+        #expect(abs(fast.peak - slow.peak) < 1e-5)
+        #expect(abs(fast.rms - slow.rms) < 1e-4)
+    }
+
+    @Test("negatif tepe genliği mutlak değer olarak alınır")
+    func peakUsesMagnitude() {
+        let level = SpeechGate.level([-0.9, 0.1, 0.2])
+        #expect(abs(level.peak - 0.9) < 1e-6)
+    }
+
+    @Test("tek örneklik tampon çökmez")
+    func singleSample() {
+        let level = SpeechGate.level([0.5])
+        #expect(abs(level.peak - 0.5) < 1e-6)
+        #expect(abs(level.rms - 0.5) < 1e-6)
+    }
+
+    @Test("süre örnek sayısından doğru hesaplanır")
+    func durationIsCorrect() {
+        let level = SpeechGate.level([Float](repeating: 0.1, count: 16_000))
+        #expect(abs(level.seconds - 1.0) < 1e-9)
+    }
+}

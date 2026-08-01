@@ -22,6 +22,11 @@ actor ParakeetTranscriber: Transcriber {
     private let version: AsrModelVersion
     private var manager: AsrManager?
 
+    /// Same protections as the Whisper path: one load under concurrent
+    /// `prepare()` calls, and no overlapping inference.
+    private let loader = SingleFlight()
+    private let inference = SerialGate()
+
     init(version: AsrModelVersion = .v3) {
         self.version = version
         switch version {
@@ -49,15 +54,28 @@ actor ParakeetTranscriber: Transcriber {
     }
 
     func prepare() async throws {
-        guard manager == nil else { return }
-        do {
-            let models = try await AsrModels.downloadAndLoad(version: version)
-            let manager = AsrManager()
-            try await manager.loadModels(models)
-            self.manager = manager
-        } catch {
-            throw YazError.modelLoadFailed(model: model, underlying: "\(error)")
+        if manager != nil { return }
+        let version = self.version
+        let modelID = self.model
+        let box = ManagerBox()
+        try await loader.run {
+            do {
+                let models = try await AsrModels.downloadAndLoad(version: version)
+                let manager = AsrManager()
+                try await manager.loadModels(models)
+                box.value = manager
+            } catch {
+                throw YazError.modelLoadFailed(model: modelID, underlying: "\(error)")
+            }
         }
+        // A queued caller finds the winner already installed and skips its own.
+        if manager == nil { manager = box.value }
+    }
+
+    /// Carries the loaded manager out of the `@Sendable` single-flight closure.
+    /// `AsrManager` is an actor, so the reference itself is safe to move.
+    private final class ManagerBox: @unchecked Sendable {
+        var value: AsrManager?
     }
 
     func transcribe(
@@ -69,9 +87,11 @@ actor ParakeetTranscriber: Transcriber {
         let engineName = name
         let result: ASRResult
         do {
-            result = try await withTranscriptionTimeout(options.timeout, engine: engineName) {
-                var state = try TdtDecoderState()
-                return try await manager.transcribe(samples, decoderState: &state)
+            result = try await inference.run {
+                try await withTranscriptionTimeout(options.timeout, engine: engineName) {
+                    var state = try TdtDecoderState()
+                    return try await manager.transcribe(samples, decoderState: &state)
+                }
             }
         } catch let error as YazError {
             throw error
@@ -85,22 +105,25 @@ actor ParakeetTranscriber: Transcriber {
             ? (text.isEmpty ? [] : [TranscriptSegment(start: 0, end: result.duration, text: text)])
             : Self.segments(from: words)
 
-        // Parakeet exposes no per-segment confidence, so the decoder-signal
-        // gates cannot fire. Repetition is still detectable from the text
-        // itself, which is the failure mode that actually reaches the cursor.
-        let signals = TranscriptionQuality.Signals()
+        // Parakeet exposes no per-segment confidence. Passing `nil` rather
+        // than a zeroed `Signals()` matters: the zero value reads as maximum
+        // confidence, so the absence of data would otherwise wave every
+        // Parakeet transcript through. Text-shaped checks still apply.
         return TranscriptionOutput(
             text: text,
             segments: segments,
             duration: level.seconds,
             level: level,
-            quality: .assess(text: text, signals: signals, thresholds: options.thresholds)
+            quality: .assess(text: text, signals: nil, thresholds: options.thresholds)
         )
     }
 
     func release() async {
+        // Drain queued inference before tearing the models down.
+        _ = try? await inference.run { }
         if let manager { await manager.cleanup() }
         manager = nil
+        await loader.reset()
     }
 
     /// Group word timings into readable segments: break on sentence-ending

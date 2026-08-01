@@ -82,3 +82,49 @@ struct TranscriptionQualityTests {
         #expect(!q.verdict.isUsable)
     }
 }
+
+@Suite("TranscriptionQuality — sinyal yokluğu kusursuzluk değildir")
+struct MissingSignalsTests {
+
+    /// Signals() alanlarının hepsi sıfır; avgLogProb 0 = log(1.0) = mümkün olan
+    /// EN İYİ güven, noSpeechProb 0 = kesinlikle konuşma. Yani sıfırlanmış bir
+    /// Signals, "veri yok"u "kusursuz" diye raporlar. Motorlar bu yüzden nil
+    /// geçmeli.
+    @Test("sıfırlanmış Signals mükemmel güven gibi okunur — bu yüzden nil kullanılır")
+    func zeroedSignalsLookPerfect() {
+        let zeroed = TranscriptionQuality.Signals()
+        let q = TranscriptionQuality.assess(text: "herhangi bir metin", signals: zeroed)
+        #expect(q.verdict == .good)
+        #expect(!q.isTextOnlyJudgement)
+    }
+
+    @Test("nil sinyal metin-temelli karar olarak işaretlenir")
+    func nilSignalsAreFlagged() {
+        let q = TranscriptionQuality.assess(text: "herhangi bir metin", signals: nil)
+        #expect(q.verdict == .good)
+        #expect(q.isTextOnlyJudgement)
+        #expect(q.signals == nil)
+    }
+
+    @Test("sinyal olmasa da boş çıktı reddedilir")
+    func stillRejectsEmptyWithoutSignals() {
+        let q = TranscriptionQuality.assess(text: "  ", signals: nil)
+        #expect(!q.verdict.isUsable)
+    }
+
+    @Test("sinyal olmasa da tekrar döngüsü yakalanır — imlece giden asıl hata")
+    func stillCatchesRepeatsWithoutSignals() {
+        let q = TranscriptionQuality.assess(
+            text: "tamam tamam tamam tamam tamam tamam", signals: nil)
+        #expect(!q.verdict.isUsable)
+    }
+
+    @Test("sinyal yoksa güven eşikleri sessizce uygulanmaz")
+    func confidenceGatesSkippedWithoutSignals() {
+        // Aynı metin, düşük güven sinyalleriyle reddedilirdi.
+        let low = TranscriptionQuality.Signals(
+            noSpeechProb: 0.1, avgLogProb: -2.0, compressionRatio: 1.0)
+        #expect(!TranscriptionQuality.assess(text: "belirsiz", signals: low).verdict.isUsable)
+        #expect(TranscriptionQuality.assess(text: "belirsiz", signals: nil).verdict.isUsable)
+    }
+}
