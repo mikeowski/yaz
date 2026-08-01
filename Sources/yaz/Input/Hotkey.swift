@@ -20,10 +20,10 @@ enum Hotkey: String, CaseIterable, Sendable {
     var displayName: String {
         switch self {
         case .fn: "fn (🌐)"
-        case .rightOption: "sağ option"
-        case .rightCommand: "sağ command"
-        case .rightControl: "sağ control"
-        case .rightShift: "sağ shift"
+        case .rightOption: "right option"
+        case .rightCommand: "right command"
+        case .rightControl: "right control"
+        case .rightShift: "right shift"
         }
     }
 
@@ -72,9 +72,9 @@ final class HotkeyMonitor: @unchecked Sendable {
         var description: String {
             switch self {
             case .accessibilityDenied:
-                return "Erişilebilirlik izni yok — Sistem Ayarları → Gizlilik ve Güvenlik → Erişilebilirlik"
+                return "no Accessibility permission — System Settings → Privacy & Security → Accessibility"
             case .tapCreationFailed:
-                return "klavye dinleyicisi kurulamadı (CGEvent tap)"
+                return "couldn't install the keyboard listener (CGEvent tap)"
             }
         }
     }
@@ -141,7 +141,7 @@ final class HotkeyMonitor: @unchecked Sendable {
     /// stops responding without saying anything.
     fileprivate func reenable() {
         guard let tap else { return }
-        log("uyarı: klavye dinleyicisi sistem tarafından kapatıldı — yeniden açılıyor")
+        log("warning: the system disabled the keyboard listener — re-enabling")
         CGEvent.tapEnable(tap: tap, enable: true)
     }
 

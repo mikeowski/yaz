@@ -29,10 +29,10 @@ enum AudioLoader {
         // thing the user needs to know.
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDirectory) else {
-            throw YazError.audioUnreadable(path: path, underlying: "dosya bulunamadı")
+            throw YazError.audioUnreadable(path: path, underlying: "file not found")
         }
         guard !isDirectory.boolValue else {
-            throw YazError.audioUnreadable(path: path, underlying: "bu bir klasör")
+            throw YazError.audioUnreadable(path: path, underlying: "that is a directory")
         }
 
         let file: AVAudioFile
@@ -40,7 +40,7 @@ enum AudioLoader {
             file = try AVAudioFile(forReading: url)
         } catch {
             throw YazError.audioUnreadable(
-                path: path, underlying: "ses dosyası olarak açılamadı (\(url.pathExtension) desteklenmiyor olabilir)")
+                path: path, underlying: "couldn't open it as audio (\(url.pathExtension) may be unsupported)")
         }
 
         let sourceFormat = file.processingFormat
@@ -60,7 +60,7 @@ enum AudioLoader {
             channels: 1,
             interleaved: false
         ) else {
-            throw YazError.audioConversionFailed(path: path, detail: "hedef format kurulamadı")
+            throw YazError.audioConversionFailed(path: path, detail: "couldn't build the target format")
         }
 
         // Same-format files still go through the converter: it is a no-op cost
@@ -83,7 +83,7 @@ enum AudioLoader {
             guard let input = AVAudioPCMBuffer(
                 pcmFormat: sourceFormat, frameCapacity: min(windowFrames, remaining)
             ) else {
-                throw YazError.audioConversionFailed(path: path, detail: "giriş tamponu ayrılamadı")
+                throw YazError.audioConversionFailed(path: path, detail: "couldn't allocate the input buffer")
             }
 
             do {
@@ -129,7 +129,7 @@ enum AudioLoader {
     ) throws -> [Float] {
         let capacity = AVAudioFrameCount(Double(input.frameLength) * ratio) + 1024
         guard let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else {
-            throw YazError.audioConversionFailed(path: path, detail: "çıkış tamponu ayrılamadı")
+            throw YazError.audioConversionFailed(path: path, detail: "couldn't allocate the output buffer")
         }
 
         // AVAudioConverterInputBlock is @Sendable but runs synchronously inside
@@ -150,7 +150,7 @@ enum AudioLoader {
             throw YazError.audioConversionFailed(path: path, detail: "\(error.localizedDescription)")
         }
         guard status != .error else {
-            throw YazError.audioConversionFailed(path: path, detail: "converter hata döndü")
+            throw YazError.audioConversionFailed(path: path, detail: "the converter reported an error")
         }
         return output.floats
     }

@@ -39,32 +39,32 @@ enum DoctorReport {
     static func microphone() -> Check {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
-            return Check(name: "mikrofon", status: .ok(nil), remedy: nil)
+            return Check(name: "microphone", status: .ok(nil), remedy: nil)
         case .notDetermined:
             return Check(
-                name: "mikrofon",
-                status: .warn("henüz istenmedi — ilk kayıtta sorulacak"),
-                remedy: "bir kez kısayola bas; macOS izin soracak")
+                name: "microphone",
+                status: .warn("not requested yet — macOS will ask on the first recording"),
+                remedy: "press the hotkey once and macOS will prompt")
         case .denied, .restricted:
             return Check(
-                name: "mikrofon",
-                status: .fail("reddedilmiş"),
-                remedy: "Sistem Ayarları → Gizlilik ve Güvenlik → Mikrofon")
+                name: "microphone",
+                status: .fail("denied"),
+                remedy: "System Settings → Privacy & Security → Microphone")
         @unknown default:
-            return Check(name: "mikrofon", status: .fail("bilinmeyen durum"), remedy: nil)
+            return Check(name: "microphone", status: .fail("unknown state"), remedy: nil)
         }
     }
 
     static func accessibility() -> Check {
         guard HotkeyMonitor.hasAccessibilityPermission else {
             return Check(
-                name: "erişilebilirlik",
-                status: .fail("verilmemiş"),
-                remedy: "Sistem Ayarları → Gizlilik ve Güvenlik → Erişilebilirlik → "
+                name: "accessibility",
+                status: .fail("not granted"),
+                remedy: "System Settings → Privacy & Security → Accessibility → enable "
                     + "\(accessibilityOwner(parentName: parentProcessName(), parentPID: getppid()))"
-                    + " etkinleştir")
+                    + " in the list")
         }
-        return Check(name: "erişilebilirlik", status: .ok(nil), remedy: nil)
+        return Check(name: "accessibility", status: .ok(nil), remedy: nil)
     }
 
     /// Which entry the user has to tick in the Accessibility list.
@@ -85,11 +85,11 @@ enum DoctorReport {
         guard config.engine == .whisper else {
             let engine = ParakeetTranscriber(version: .v3)
             return engine.isDownloaded
-                ? Check(name: "model", status: .ok("parakeet indirili"), remedy: nil)
+                ? Check(name: "model", status: .ok("parakeet downloaded"), remedy: nil)
                 : Check(
                     name: "model",
-                    status: .warn("parakeet indirilmemiş (~600 MB)"),
-                    remedy: "ilk çeviride otomatik iner — önemli bir iş öncesi bir kez dene")
+                    status: .warn("parakeet not downloaded (~600 MB)"),
+                    remedy: "downloads on first use — try one short run before anything important")
         }
 
         let status = ModelStore.status(for: config.whisperModel.whisperKitID)
@@ -100,27 +100,27 @@ enum DoctorReport {
                 // Not a failure, but the user should know 1.6 GB landed in a
                 // folder iCloud may be syncing.
                 remedy: status.path.contains("Documents")
-                    ? "not: ağırlıklar \(status.path) altında — iCloud Documents senkronu açıksa buluta gidebilir"
+                    ? "note: weights live in \(status.path) — if iCloud Documents sync is on, they go to the cloud"
                     : nil)
         }
         if status.sizeBytes == 0 {
             return Check(
                 name: "model",
-                status: .warn("\(config.whisperModel.rawValue) indirilmemiş (~\(config.whisperModel.sizeMB) MB)"),
-                remedy: "yaz models download ile önceden indir")
+                status: .warn("\(config.whisperModel.rawValue) not downloaded (~\(config.whisperModel.sizeMB) MB)"),
+                remedy: "pre-fetch it with: yaz models download")
         }
         return Check(
             name: "model",
-            status: .fail("yarım indirilmiş — eksik: \(status.missing.joined(separator: ", "))"),
-            remedy: "yaz models download --force ile yeniden indir")
+            status: .fail("partially downloaded — missing: \(status.missing.joined(separator: ", "))"),
+            remedy: "re-download with: yaz models download --force")
     }
 
     static func injection(config: Config) -> Check {
         Check(
-            name: "metin yerleştirme",
+            name: "text insertion",
             status: .ok(config.injectMode.displayName),
             remedy: config.injectMode == .type
-                ? "not: tuş tuş yazma Electron uygulamalarında karakter düşürebilir — 'paste' daha güvenilir"
+                ? "note: typing can drop characters in Electron apps — 'paste' is more reliable"
                 : nil)
     }
 
@@ -131,16 +131,16 @@ enum DoctorReport {
         switch Refiner.availability(for: config.refine) {
         case .available:
             return Check(
-                name: "son işleme",
+                name: "post-processing",
                 status: .ok(config.refine.displayName),
                 remedy: config.refine == .llm
-                    ? "not: dil modeli her ifadeye ~0.3–1.4 sn ekler (uzunluğa göre); \"fillers\" ~1 ms"
+                    ? "note: the language model adds ~0.3–1.4 s per utterance; \"fillers\" costs ~1 ms"
                     : nil)
         case .unavailable(let reason):
             return Check(
-                name: "son işleme",
-                status: .warn("\(config.refine.rawValue) kullanılamıyor — \(reason)"),
-                remedy: "config'de \"refine\": \"fillers\" ile deterministik temizliğe düş")
+                name: "post-processing",
+                status: .warn("\(config.refine.rawValue) unavailable — \(reason)"),
+                remedy: "set \"refine\": \"fillers\" in the config to fall back to the deterministic filter")
         }
     }
 
@@ -150,19 +150,19 @@ enum DoctorReport {
         let state = LaunchAgent.status()
         guard state.isInstalled else {
             return Check(
-                name: "girişte başlatma",
-                status: .ok("kurulu değil"),
-                remedy: "istersen: yaz install --launch-at-login")
+                name: "launch at login",
+                status: .ok("not installed"),
+                remedy: "optional: yaz install --launch-at-login")
         }
         if state.isStale {
             return Check(
-                name: "girişte başlatma",
-                status: .fail("kayıtlı ikili dosya yok: \(state.binaryPath ?? "?")"),
-                remedy: "yaz install --launch-at-login ile tazele veya --uninstall ile kaldır")
+                name: "launch at login",
+                status: .fail("registered binary is missing: \(state.binaryPath ?? "?")"),
+                remedy: "refresh with: yaz install --launch-at-login, or remove with --uninstall")
         }
         return Check(
-            name: "girişte başlatma",
-            status: .ok(state.binaryPath ?? "kurulu"),
+            name: "launch at login",
+            status: .ok(state.binaryPath ?? "installed"),
             remedy: nil)
     }
 
@@ -170,21 +170,21 @@ enum DoctorReport {
     /// told otherwise. The tap still sees the press, but the system action
     /// fires too, so the user gets an emoji picker every time they dictate.
     static func fnKeyMapping() -> Check {
-        let remedy = "Sistem Ayarları → Klavye → 🌐 tuşuna basınca → Hiçbir şey yapma"
+        let remedy = "System Settings → Keyboard → Press 🌐 key to → Do Nothing"
         guard let raw = readDefault(domain: "com.apple.HIToolbox", key: "AppleFnUsageType"),
               let value = Int(raw)
         else {
             return Check(
-                name: "fn tuşu",
-                status: .warn("ayar okunamadı — sistem varsayılanı araya girebilir"),
+                name: "fn key",
+                status: .warn("setting unreadable — the system default may intercept it"),
                 remedy: remedy)
         }
         switch value {
-        case 0: return Check(name: "fn tuşu", status: .ok(nil), remedy: nil)
-        case 1: return Check(name: "fn tuşu", status: .fail("giriş kaynağı değiştirmeye ayarlı"), remedy: remedy)
-        case 2: return Check(name: "fn tuşu", status: .fail("emoji panelini açmaya ayarlı"), remedy: remedy)
-        case 3: return Check(name: "fn tuşu", status: .fail("dikteyi başlatmaya ayarlı"), remedy: remedy)
-        default: return Check(name: "fn tuşu", status: .warn("bilinmeyen değer \(value)"), remedy: remedy)
+        case 0: return Check(name: "fn key", status: .ok(nil), remedy: nil)
+        case 1: return Check(name: "fn key", status: .fail("set to Change Input Source"), remedy: remedy)
+        case 2: return Check(name: "fn key", status: .fail("set to Show Emoji & Symbols"), remedy: remedy)
+        case 3: return Check(name: "fn key", status: .fail("set to Start Dictation"), remedy: remedy)
+        default: return Check(name: "fn key", status: .warn("unknown value \(value)"), remedy: remedy)
         }
     }
 
@@ -201,7 +201,7 @@ enum DoctorReport {
         var lines: [String] = []
         for check in checks {
             let (mark, label): (String, String) = switch check.status {
-            case .ok(let detail): ("✓", detail ?? "tamam")
+            case .ok(let detail): ("✓", detail ?? "ok")
             case .warn(let message): ("!", message)
             case .fail(let message): ("✗", message)
             }

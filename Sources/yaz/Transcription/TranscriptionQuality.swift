@@ -88,40 +88,40 @@ struct TranscriptionQuality: Sendable, Equatable {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if trimmed.isEmpty {
-            return .init(verdict: .rejected(reason: "boş çıktı"), signals: signals)
+            return .init(verdict: .rejected(reason: "empty output"), signals: signals)
         }
         if let signals {
             if signals.noSpeechProb > thresholds.maxNoSpeechProb {
                 return .init(
                     verdict: .rejected(
-                        reason: String(format: "konuşma değil (noSpeech %.2f)", signals.noSpeechProb)),
+                        reason: String(format: "not speech (noSpeech %.2f)", signals.noSpeechProb)),
                     signals: signals)
             }
             if signals.compressionRatio > thresholds.maxCompressionRatio {
                 return .init(
                     verdict: .rejected(
                         reason: String(
-                            format: "tekrar döngüsü (sıkıştırma %.2f)", signals.compressionRatio)),
+                            format: "repetition loop (compression %.2f)", signals.compressionRatio)),
                     signals: signals)
             }
         }
 
         // Text-shaped checks run for every engine, with or without signals.
         if repeatsExcessively(trimmed, limit: thresholds.maxTokenRepeats) {
-            return .init(verdict: .rejected(reason: "aynı kelime üst üste tekrarlandı"), signals: signals)
+            return .init(verdict: .rejected(reason: "the same word repeated back to back"), signals: signals)
         }
 
         if let signals {
             if signals.avgLogProb < thresholds.minAvgLogProb {
                 return .init(
                     verdict: .rejected(
-                        reason: String(format: "güven çok düşük (logProb %.2f)", signals.avgLogProb)),
+                        reason: String(format: "confidence far too low (logProb %.2f)", signals.avgLogProb)),
                     signals: signals)
             }
             if signals.avgLogProb < thresholds.lowConfidenceLogProb {
                 return .init(
                     verdict: .lowConfidence(
-                        reason: String(format: "düşük güven (logProb %.2f)", signals.avgLogProb)),
+                        reason: String(format: "low confidence (logProb %.2f)", signals.avgLogProb)),
                     signals: signals)
             }
         }

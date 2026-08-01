@@ -47,7 +47,7 @@ struct TranscriptPipeline: Sendable {
                 text: corrected.text,
                 corrections: corrected.corrections,
                 refined: false,
-                refinementRejected: "son işleme \"\(lost)\" terimini düşürdü")
+                refinementRejected: "post-processing dropped the term \"\(lost)\"")
         }
 
         return Output(

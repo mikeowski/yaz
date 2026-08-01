@@ -101,7 +101,7 @@ enum LaunchAgent {
         if result.status != 0 {
             throw YazError.launchAgentFailed(
                 action: "bootstrap",
-                detail: result.error.isEmpty ? "çıkış kodu \(result.status)" : result.error)
+                detail: result.error.isEmpty ? "exit code \(result.status)" : result.error)
         }
     }
 
@@ -134,7 +134,7 @@ enum LaunchAgent {
         process.standardError = pipe
         process.standardOutput = Pipe()
 
-        guard (try? process.run()) != nil else { return (-1, "launchctl çalıştırılamadı") }
+        guard (try? process.run()) != nil else { return (-1, "couldn't run launchctl") }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         let message = String(data: data, encoding: .utf8)?

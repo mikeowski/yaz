@@ -115,7 +115,7 @@ func withTranscriptionTimeout<T: Sendable>(
                 seconds: Double(timeout.components.seconds))
         }
         guard let result = try await group.next() else {
-            throw YazError.transcriptionFailed(engine: engine, underlying: "sonuç üretilmedi")
+            throw YazError.transcriptionFailed(engine: engine, underlying: "no result produced")
         }
         group.cancelAll()
         return result

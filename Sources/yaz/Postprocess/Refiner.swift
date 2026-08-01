@@ -12,9 +12,9 @@ enum RefineMode: String, CaseIterable, Sendable {
 
     var displayName: String {
         switch self {
-        case .off: "kapalı"
-        case .fillers: "dolgu sesleri (deterministik)"
-        case .llm: "dil modeli (FoundationModels)"
+        case .off: "off"
+        case .fillers: "hesitation sounds (deterministic)"
+        case .llm: "language model (FoundationModels)"
         }
     }
 }
@@ -91,7 +91,7 @@ actor Refiner {
         } catch {
             return RefineResult(
                 text: stripped, changed: stripped != text,
-                rejection: "model yanıt vermedi (\(error))")
+                rejection: "the model did not respond (\(error))")
         }
 
         let candidate = RefinementGuard.clean(produced)
@@ -149,19 +149,19 @@ enum RefinementGuard {
 
     /// Returns a reason to discard, or nil to accept.
     static func reject(original: String, candidate: String) -> String? {
-        if candidate.isEmpty { return "model boş döndü" }
+        if candidate.isEmpty { return "the model returned nothing" }
 
         let ratio = Double(candidate.count) / Double(max(original.count, 1))
         if ratio < minLengthRatio {
-            return String(format: "çıktı çok kısaldı (%.2f×)", ratio)
+            return String(format: "output shrank too far (%.2f×)", ratio)
         }
         if ratio > maxLengthRatio {
-            return String(format: "çıktı uzadı — model ekleme yapmış (%.2f×)", ratio)
+            return String(format: "output grew — the model added something (%.2f×)", ratio)
         }
 
         let retention = contentRetention(original: original, candidate: candidate)
         if retention < minRetention {
-            return String(format: "içerik kelimelerinin %.0f%%'i kayboldu", (1 - retention) * 100)
+            return String(format: "%.0f%% of the content words disappeared", (1 - retention) * 100)
         }
         return nil
     }

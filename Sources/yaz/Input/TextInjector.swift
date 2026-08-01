@@ -28,8 +28,8 @@ enum TextInjector {
 
         var displayName: String {
             switch self {
-            case .paste: "pano (⌘V)"
-            case .type: "tuş tuş yazma"
+            case .paste: "paste (⌘V)"
+            case .type: "typing"
             }
         }
     }

@@ -54,7 +54,7 @@ struct AudioLoaderTests {
             _ = try AudioLoader.load(Self.path("t2.wav"), maxSeconds: 5)
             Issue.record("süre sınırı uygulanmadı")
         } catch let error as YazError {
-            #expect(error.description.contains("çok uzun"))
+            #expect(error.description.contains("too long"))
         } catch {
             Issue.record("YazError bekleniyordu")
         }
@@ -106,7 +106,7 @@ struct AudioLoaderErrorTests {
             _ = try AudioLoader.load("/yok/boyle/bir/dosya.wav")
             Issue.record("hata bekleniyordu")
         } catch let error as YazError {
-            #expect(error.description.contains("bulunamadı"))
+            #expect(error.description.contains("not found"))
             #expect(!error.description.contains("Code="))
             #expect(!error.description.contains("com.apple"))
         } catch {
@@ -120,7 +120,7 @@ struct AudioLoaderErrorTests {
             _ = try AudioLoader.load(AudioLoaderTests.fixtures.path)
             Issue.record("hata bekleniyordu")
         } catch let error as YazError {
-            #expect(error.description.contains("klasör"))
+            #expect(error.description.contains("directory"))
         } catch {
             Issue.record("YazError bekleniyordu")
         }
@@ -134,7 +134,7 @@ struct AudioLoaderErrorTests {
             _ = try AudioLoader.load(readme.path)
             Issue.record("hata bekleniyordu")
         } catch let error as YazError {
-            #expect(error.description.contains("açılamadı"))
+            #expect(error.description.contains("couldn't open"))
         } catch {
             Issue.record("YazError bekleniyordu")
         }

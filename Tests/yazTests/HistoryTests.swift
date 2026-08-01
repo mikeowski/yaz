@@ -252,3 +252,57 @@ struct HistoryConfigTests {
         #expect(Config.load(from: url).historyLimit == TranscriptHistory.defaultLimit)
     }
 }
+
+@Suite("ModelDownloader — progress reporting")
+struct ModelDownloaderTests {
+
+    typealias P = ModelDownloader.Progress
+
+    @Test("percent is derived from the fraction")
+    func percentFromFraction() {
+        #expect(P(fraction: 0.0, completedBytes: 0, totalBytes: 100).percent == 0)
+        #expect(P(fraction: 0.5, completedBytes: 50, totalBytes: 100).percent == 50)
+        #expect(P(fraction: 1.0, completedBytes: 100, totalBytes: 100).percent == 100)
+    }
+
+    /// A confident 0% that never moves is worse than saying "size unknown".
+    @Test("an unknown total reports no percent")
+    func unknownTotalHasNoPercent() {
+        let progress = P(fraction: nil, completedBytes: 1024, totalBytes: 0)
+        #expect(progress.percent == nil)
+        #expect(!progress.description.contains("%"))
+    }
+
+    @Test("description names both sides of the download")
+    func describesBothSides() {
+        let progress = P(fraction: 0.25, completedBytes: 400_000_000, totalBytes: 1_600_000_000)
+        #expect(progress.description.contains("of"))
+        #expect(progress.description.contains("25%"))
+    }
+
+    @Test("byte counts are human readable, not raw")
+    func humanReadableBytes() {
+        let progress = P(fraction: 0.5, completedBytes: 800_000_000, totalBytes: 1_600_000_000)
+        #expect(!progress.description.contains("800000000"))
+        #expect(progress.description.uppercased().contains("GB")
+            || progress.description.uppercased().contains("MB"))
+    }
+
+    @Test("the notice names the model and its size")
+    func noticeIsInformative() {
+        let notice = ModelDownloader.downloadNotice(for: .largeV3Turbo)
+        #expect(notice.contains("large-v3-turbo"))
+        #expect(notice.contains("1620"))
+        #expect(notice.lowercased().contains("first run"))
+    }
+
+    /// Calling it when the weights are present must be free — it runs on every
+    /// launch.
+    @Test("an already-downloaded model is a no-op")
+    func alreadyDownloadedIsNoOp() async throws {
+        let status = ModelStore.status(for: WhisperModel.largeV3Turbo.whisperKitID)
+        try #require(status.isComplete, "model not present — test skipped")
+        let didDownload = try await ModelDownloader.ensure(.largeV3Turbo)
+        #expect(!didDownload)
+    }
+}

@@ -92,7 +92,7 @@ actor TranscriptHistory {
 
             try trimIfNeeded()
         } catch {
-            log("geçmişe yazılamadı: \(error)")
+            log("couldn't write history: \(error)")
         }
     }
 

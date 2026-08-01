@@ -53,7 +53,7 @@ enum ModelStore {
         let fm = FileManager.default
 
         guard fm.fileExists(atPath: root.path) else {
-            return Status(isComplete: false, missing: ["(hiç indirilmemiş)"], sizeBytes: 0, path: root.path)
+            return Status(isComplete: false, missing: ["(never downloaded)"], sizeBytes: 0, path: root.path)
         }
 
         var missing: [String] = []

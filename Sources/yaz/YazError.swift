@@ -42,43 +42,43 @@ enum YazError: Error, CustomStringConvertible, Equatable {
     var description: String {
         switch self {
         case .audioUnreadable(let path, let underlying):
-            return "\(path) okunamadı: \(underlying)"
+            return "can't read \(path): \(underlying)"
         case .audioEmpty(let path):
-            return "\(path) boş — hiç ses karesi yok"
+            return "\(path) is empty — no audio frames"
         case .audioTooLong(let path, let seconds, let limit):
             return String(
-                format: "%@ çok uzun (%.1f sn, sınır %.0f sn) — --max-seconds ile artır",
+                format: "%@ is too long (%.1f s, limit %.0f s) — raise it with --max-seconds",
                 path, seconds, limit)
         case .audioFormatUnsupported(let path, let format):
-            return "\(path) formatı desteklenmiyor: \(format)"
+            return "unsupported audio format in \(path): \(format)"
         case .audioConversionFailed(let path, let detail):
-            return "\(path) 16 kHz mono'ya çevrilemedi: \(detail)"
+            return "couldn't convert \(path) to 16 kHz mono: \(detail)"
 
         case .engineNotPrepared(let engine):
-            return "\(engine) motoru prepare() çağrılmadan kullanıldı"
+            return "\(engine) was used before prepare()"
         case .modelLoadFailed(let model, let underlying):
-            return "\(model) yüklenemedi: \(underlying)"
+            return "couldn't load \(model): \(underlying)"
         case .transcriptionFailed(let engine, let underlying):
-            return "\(engine) çeviri yapamadı: \(underlying)"
+            return "\(engine) failed to transcribe: \(underlying)"
         case .transcriptionTimedOut(let engine, let seconds):
-            return String(format: "%@ %.0f sn içinde yanıt vermedi — iptal edildi", engine, seconds)
+            return String(format: "%@ did not respond within %.0f s — cancelled", engine, seconds)
         case .languageUnsupported(let engine, let language, let supported):
-            return "\(engine) motoru '\(language)' dilini desteklemiyor"
-                + " (desteklenen: \(supported.prefix(8).joined(separator: ", "))…)"
+            return "the \(engine) engine does not support '\(language)'"
+                + " (supported: \(supported.prefix(8).joined(separator: ", "))…)"
 
         case .refinementTimedOut(let seconds):
-            return String(format: "son işleme %.0f sn içinde bitmedi — ham metin kullanıldı", seconds)
+            return String(format: "post-processing did not finish within %.0f s — kept the raw text", seconds)
         case .refinerUnavailable(let detail):
-            return "son işleme kullanılamıyor: \(detail)"
+            return "post-processing unavailable: \(detail)"
 
         case .launchAgentFailed(let action, let detail):
-            return "launchctl \(action) başarısız: \(detail)"
+            return "launchctl \(action) failed: \(detail)"
 
         case .audioTooShort(let seconds, let minimum):
             return String(
-                format: "kayıt çok kısa (%.2f sn, en az %.2f sn gerekli)", seconds, minimum)
+                format: "recording too short (%.2f s, needs at least %.2f s)", seconds, minimum)
         case .audioSilent(let peak, let threshold):
-            return String(format: "kayıtta ses yok (tepe %.4f, eşik %.4f)", peak, threshold)
+            return String(format: "no sound in the recording (peak %.4f, threshold %.4f)", peak, threshold)
         }
     }
 

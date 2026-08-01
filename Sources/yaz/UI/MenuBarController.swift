@@ -16,9 +16,9 @@ final class MenuBarController {
     var onFixPermission: (() -> Void)?
 
     private let item: NSStatusItem
-    private let statusLine = NSMenuItem(title: "hazırlanıyor…", action: nil, keyEquivalent: "")
+    private let statusLine = NSMenuItem(title: "starting…", action: nil, keyEquivalent: "")
     private let permissionItem = NSMenuItem(
-        title: "⚠︎  Erişilebilirlik izni ver…", action: nil, keyEquivalent: "")
+        title: "⚠︎  Grant Accessibility permission…", action: nil, keyEquivalent: "")
     private let summary: String
 
     init(summary: String) {
@@ -34,10 +34,10 @@ final class MenuBarController {
         button.image = StatusIcon.image(for: state)
 
         statusLine.title = switch state {
-        case .idle: "dinlemeye hazır"
-        case .recording: "● kayıt"
-        case .transcribing: "çeviriyor…"
-        case .refining: "düzeltiyor…"
+        case .idle: "ready to listen"
+        case .recording: "● recording"
+        case .transcribing: "transcribing…"
+        case .refining: "refining…"
         }
     }
 
@@ -50,8 +50,8 @@ final class MenuBarController {
     func setNeedsPermission(_ needed: Bool) {
         permissionItem.isHidden = !needed
         if needed {
-            statusLine.title = "kısayol çalışmıyor — izin gerekli"
-            item.button?.toolTip = "yaz — erişilebilirlik izni gerekli"
+            statusLine.title = "hotkey inactive — permission required"
+            item.button?.toolTip = "yaz — Accessibility permission required"
         } else {
             item.button?.toolTip = "yaz — \(summary)"
         }
@@ -99,18 +99,18 @@ final class MenuBarController {
         menu.addItem(.separator())
 
         let settings = NSMenuItem(
-            title: "Ayarlar…", action: #selector(openSettings), keyEquivalent: ",")
+            title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
 
         let history = NSMenuItem(
-            title: "Geçmiş…", action: #selector(openHistory), keyEquivalent: "h")
+            title: "History…", action: #selector(openHistory), keyEquivalent: "h")
         history.target = self
         menu.addItem(history)
 
         menu.addItem(.separator())
 
-        let quit = NSMenuItem(title: "Çık", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 

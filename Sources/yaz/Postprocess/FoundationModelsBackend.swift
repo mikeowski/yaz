@@ -44,20 +44,20 @@ struct FoundationModelsBackend: RefinerBackend {
         case .unavailable(let reason):
             return .unavailable(describe(reason))
         @unknown default:
-            return .unavailable("bilinmeyen durum")
+            return .unavailable("unknown state")
         }
     }
 
     private static func describe(_ reason: SystemLanguageModel.Availability.UnavailableReason) -> String {
         switch reason {
         case .deviceNotEligible:
-            return "cihaz Apple Intelligence desteklemiyor"
+            return "this Mac does not support Apple Intelligence"
         case .appleIntelligenceNotEnabled:
-            return "Apple Intelligence kapalı — Sistem Ayarları → Apple Intelligence ve Siri"
+            return "Apple Intelligence is off — System Settings → Apple Intelligence & Siri"
         case .modelNotReady:
-            return "model henüz indirilmedi — bir süre bekleyip tekrar dene"
+            return "the model has not downloaded yet — wait a while and try again"
         @unknown default:
-            return "kullanılamıyor"
+            return "unavailable"
         }
     }
 
@@ -78,7 +78,7 @@ struct FoundationModelsBackend: RefinerBackend {
     }
 
     private static func availabilityDetail() -> String {
-        guard case .unavailable(let reason) = availability() else { return "kullanılamıyor" }
+        guard case .unavailable(let reason) = availability() else { return "unavailable" }
         return reason
     }
 }

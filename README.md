@@ -9,6 +9,43 @@ onun bilerek reddettiği üç şeyi hedefliyor: **çok dilli varsayılan**,
 
 **Gerekiyor:** macOS 26+, Apple Silicon.
 
+
+## Models — downloaded, not bundled
+
+`yaz.app` is 14 MB; `whisper large-v3-turbo` is 1.6 GB. Bundling the weights
+would make the app a hundred times larger and pin every user to one
+checkpoint, so the first run fetches them.
+
+It fetches them **automatically, with progress**. The menu bar shows
+`downloading — 412 MB of 1.6 GB (26%)` while it works; nothing has to be run
+by hand. To get it over with before you need it:
+
+```sh
+yaz models download          # fetch and compile ahead of time
+yaz models list              # what is on disk
+```
+
+Weights land in `~/Documents/huggingface` (WhisperKit's choice, not ours). If
+iCloud Documents sync is on, they will be uploaded — `yaz doctor` says so.
+
+## Accessibility permission — grant it once
+
+macOS attributes an Accessibility grant to the **code signing identity**. An
+ad-hoc signature has no identity beyond the binary's own hash, so every
+rebuild invalidates the permission you granted — the "I allowed it and it
+still asks" symptom.
+
+`scripts/bundle.sh` signs with a stable self-signed certificate, created once:
+
+```sh
+./scripts/signing-identity.sh    # one-time; asks for your login password
+```
+
+After that the designated requirement stays identical across rebuilds and the
+grant sticks. It is not a Developer ID — Gatekeeper still treats the app as
+unidentified on someone else's Mac — but it is the difference between granting
+permission once and granting it every time.
+
 ## Durum
 
 **Uçtan uca çalışıyor.** Bas-konuş → çeviri → terim düzeltme → temizlik → imlece yapıştırma. 221 test.

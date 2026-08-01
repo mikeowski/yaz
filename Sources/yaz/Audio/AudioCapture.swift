@@ -24,9 +24,9 @@ final class AudioCapture: @unchecked Sendable {
         var description: String {
             switch self {
             case .engineStartFailed(let detail):
-                return "mikrofon başlatılamadı: \(detail)"
+                return "couldn't start the microphone: \(detail)"
             case .converterUnavailable(let format):
-                return "mikrofon formatı 16 kHz mono'ya çevrilemedi: \(format)"
+                return "couldn't convert the microphone format to 16 kHz mono: \(format)"
             }
         }
     }

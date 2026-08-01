@@ -7,7 +7,7 @@ import Foundation
 struct Yaz: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "yaz",
-        abstract: "Türkçe konuşan geliştiriciler için on-device dikte. Bas-konuş, bırak, metin imlece gelir.",
+        abstract: "On-device dictation for Turkish. Hold the key, speak, release — the text lands at your cursor.",
         subcommands: [Run.self, Settings.self, Doctor.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self],
         defaultSubcommand: Run.self
     )
@@ -17,22 +17,22 @@ struct Yaz: AsyncParsableCommand {
 struct Run: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run",
-        abstract: "Dikte daemon'ını çalıştır (varsayılan)."
+        abstract: "Run the dictation daemon (default)."
     )
 
-    @Option(name: .long, help: "Kısayol tuşu: fn, right-option, right-command, right-control, right-shift.")
+    @Option(name: .long, help: "Push-to-talk key: fn, right-option, right-command, right-control, right-shift.")
     var hotkey: Hotkey?
 
-    @Option(name: .long, help: "Metin yerleştirme: paste veya type.")
+    @Option(name: .long, help: "Text insertion: paste or type.")
     var injectMode: TextInjector.Mode?
 
-    @Option(name: .long, help: "Dil kodu.")
+    @Option(name: .long, help: "Language code.")
     var language: String?
 
-    @Flag(name: .long, help: "Başlangıç kontrollerini atla.")
+    @Flag(name: .long, help: "Skip the startup checks.")
     var skipDoctor = false
 
-    @Flag(name: .long, help: "Ayrıntılı günlük.")
+    @Flag(name: .long, help: "Verbose logging.")
     var verbose = false
 
     func run() async throws {
@@ -48,9 +48,9 @@ struct Run: AsyncParsableCommand {
         if !skipDoctor && !AppEnvironment.isBundledApp {
             let checks = DoctorReport.run(config: config)
             guard DoctorReport.canRun(checks) else {
-                log("başlangıç kontrolleri başarısız:")
+                log("startup checks failed:")
                 DoctorReport.render(checks, toStandardError: true)
-                log("yukarıdakileri düzelt ya da --skip-doctor kullan")
+                log("fix the above, or pass --skip-doctor")
                 throw ExitCode(1)
             }
         }
@@ -85,24 +85,24 @@ enum DaemonHolder {
 /// Report on permissions, models, and settings.
 struct Doctor: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "İzinleri, modeli ve ayarları kontrol et."
+        abstract: "Check permissions, model and settings."
     )
 
-    @Flag(name: .long, help: "Eksik izinler için sistem penceresini aç.")
+    @Flag(name: .long, help: "Open the system prompt for any missing permission.")
     var request = false
 
     func run() async throws {
         let config = Config.load()
-        print("yapılandırma: \(FileManager.default.fileExists(atPath: Config.path.path) ? Config.path.path : "varsayılanlar (config dosyası yok)")")
-        print("motor: \(config.engine.rawValue) · dil: \(config.language) · kısayol: \(config.hotkey.displayName)")
-        print("sözlük: \(config.vocabulary.count) terim · son işleme: \(config.refine.displayName)")
+        print("config: \(FileManager.default.fileExists(atPath: Config.path.path) ? Config.path.path : "defaults (no config file)")")
+        print("engine: \(config.engine.rawValue) · language: \(config.language) · hotkey: \(config.hotkey.displayName)")
+        print("vocabulary: \(config.vocabulary.count) terms · post-processing: \(config.refine.displayName)")
         print()
 
         let checks = DoctorReport.run(config: config)
         DoctorReport.render(checks)
 
         if request && !HotkeyMonitor.hasAccessibilityPermission {
-            print("\nerişilebilirlik izni isteniyor…")
+            print("\nrequesting accessibility permission…")
             HotkeyMonitor.requestAccessibilityPermission()
         }
         if !DoctorReport.canRun(checks) { throw ExitCode(1) }
@@ -112,7 +112,7 @@ struct Doctor: AsyncParsableCommand {
 /// Download and inspect models.
 struct Models: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Modelleri listele ve indir.",
+        abstract: "List and download models.",
         subcommands: [List.self, Download.self]
     )
 
@@ -123,36 +123,50 @@ struct Models: AsyncParsableCommand {
                 let mark = status.isComplete ? "✓" : (status.sizeBytes > 0 ? "!" : " ")
                 let detail = status.isComplete
                     ? status.sizeDescription
-                    : (status.sizeBytes > 0 ? "yarım (\(status.sizeDescription))" : "indirilmemiş")
+                    : (status.sizeBytes > 0 ? "partial (\(status.sizeDescription))" : "not downloaded")
                 print("\(mark) whisper/\(model.rawValue.padding(toLength: 16, withPad: " ", startingAt: 0)) ~\(model.sizeMB) MB  \(detail)")
             }
             let parakeet = ParakeetTranscriber(version: .v3)
-            print("\(parakeet.isDownloaded ? "✓" : " ") parakeet/tdt-0.6b-v3    ~600 MB  (Türkçe YOK)")
+            print("\(parakeet.isDownloaded ? "✓" : " ") parakeet/tdt-0.6b-v3    ~600 MB  (NO Turkish)")
         }
     }
 
     struct Download: AsyncParsableCommand {
-        @Option(name: .long, help: "Whisper modeli.")
+        @Option(name: .long, help: "Whisper model.")
         var whisperModel: WhisperModel = .largeV3Turbo
 
-        @Flag(name: .long, help: "Yarım/bozuk indirmeyi silip yeniden indir.")
+        @Flag(name: .long, help: "Delete a partial download and fetch it again.")
         var force = false
 
         func run() async throws {
             if force {
                 let directory = ModelStore.directory(for: whisperModel.whisperKitID)
                 if FileManager.default.fileExists(atPath: directory.path) {
-                    log("siliniyor: \(directory.path)")
+                    log("removing: \(directory.path)")
                     try FileManager.default.removeItem(at: directory)
                 }
             }
-            let engine = WhisperTranscriber(model: whisperModel)
-            log("indiriliyor: \(whisperModel.rawValue) (~\(whisperModel.sizeMB) MB)…")
             let started = Date()
+            log(ModelDownloader.downloadNotice(for: whisperModel))
+
+            let downloaded = try await ModelDownloader.ensure(whisperModel) { progress in
+                // Overwrite one line rather than scrolling: a 1.6 GB download
+                // emits thousands of callbacks.
+                FileHandle.standardError.write(
+                    Data("\r  \(progress.description)          ".utf8))
+            }
+            if downloaded { FileHandle.standardError.write(Data("\n".utf8)) }
+            else { log("already downloaded") }
+
+            // Load once so Core ML compiles now rather than on the first
+            // utterance, which is where the minutes actually go.
+            log("compiling for the Neural Engine…")
+            let engine = WhisperTranscriber(model: whisperModel)
             try await engine.prepare()
             await engine.release()
+
             let status = ModelStore.status(for: whisperModel.whisperKitID)
-            log(String(format: "✓ hazır — %.0f sn · %@", Date().timeIntervalSince(started), status.sizeDescription))
+            log(String(format: "✓ ready — %.0f s · %@", Date().timeIntervalSince(started), status.sizeDescription))
         }
     }
 }
@@ -165,13 +179,13 @@ struct Models: AsyncParsableCommand {
 /// verify the SwiftUI paths actually run rather than merely compile.
 struct Settings: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Ayarlar penceresini aç."
+        abstract: "Open the settings window."
     )
 
-    @Flag(name: .long, help: "Ayarlar yerine geçmiş penceresini aç.")
+    @Flag(name: .long, help: "Open the history window instead of settings.")
     var history = false
 
-    @Option(name: .long, help: "Bu kadar saniye sonra kendiliğinden kapan (test için).")
+    @Option(name: .long, help: "Quit automatically after this many seconds (for testing).")
     var autoQuit: Double?
 
     func run() async throws {
@@ -184,7 +198,7 @@ struct Settings: AsyncParsableCommand {
 
             if let autoQuit {
                 Timer.scheduledTimer(withTimeInterval: autoQuit, repeats: false) { _ in
-                    log("otomatik kapanış")
+                    log("auto-quit")
                     NSApp.terminate(nil)
                 }
             }
@@ -196,19 +210,19 @@ struct Settings: AsyncParsableCommand {
 /// Read back what was dictated.
 struct History: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Dikte geçmişini göster (yalnızca metin, ses saklanmaz)."
+        abstract: "Show the dictation history (text only — no audio is stored)."
     )
 
-    @Option(name: .long, help: "Kaç kayıt gösterilsin.")
+    @Option(name: .long, help: "How many entries to show.")
     var limit: Int = 20
 
-    @Option(name: .long, help: "Metinde veya uygulama adında ara.")
+    @Option(name: .long, help: "Search the text or the app name.")
     var search: String?
 
-    @Flag(name: .long, help: "Tam kayıtları JSON olarak dök.")
+    @Flag(name: .long, help: "Dump full records as JSON.")
     var json = false
 
-    @Flag(name: .long, help: "Tüm geçmişi sil.")
+    @Flag(name: .long, help: "Delete the entire history.")
     var clear = false
 
     func run() async throws {
@@ -218,7 +232,7 @@ struct History: AsyncParsableCommand {
         if clear {
             let total = await store.count()
             await store.clear()
-            print("✓ \(total) kayıt silindi")
+            print("✓ deleted \(total) entries")
             return
         }
 
@@ -226,10 +240,10 @@ struct History: AsyncParsableCommand {
         guard !entries.isEmpty else {
             let total = await store.count()
             if total == 0 {
-                print("geçmiş boş")
-                if !config.history { print("  (config'de \"history\": false)") }
+                print("history is empty")
+                if !config.history { print("  (\"history\": false in the config)") }
             } else {
-                print("eşleşme yok (\(total) kayıt arasında)")
+                print("no matches (across \(total) entries)")
             }
             return
         }
@@ -251,28 +265,28 @@ struct History: AsyncParsableCommand {
             print("\(stamp)\(target)  (\(String(format: "%.1f", entry.seconds)) sn)")
             print("  \(entry.text)")
             if !entry.corrections.isEmpty {
-                print("  sözlük: \(entry.corrections.joined(separator: ", "))")
+                print("  vocabulary: \(entry.corrections.joined(separator: ", "))")
             }
             print()
         }
         let total = await store.count()
-        print("— \(entries.count) / \(total) kayıt")
+        print("— \(entries.count) of \(total) entries")
     }
 }
 
 /// Register or remove the login item.
 struct Install: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Girişte otomatik başlatmayı aç veya kapat."
+        abstract: "Enable or disable launching at login."
     )
 
-    @Flag(name: .long, help: "Girişte başlaması için kaydet.")
+    @Flag(name: .long, help: "Register to start at login.")
     var launchAtLogin = false
 
-    @Flag(name: .long, help: "Kaydı kaldır.")
+    @Flag(name: .long, help: "Remove the registration.")
     var uninstall = false
 
-    @Flag(name: .long, help: "Yalnızca durumu göster.")
+    @Flag(name: .long, help: "Only report the status.")
     var status = false
 
     func run() async throws {
@@ -281,43 +295,43 @@ struct Install: AsyncParsableCommand {
             return
         }
         guard launchAtLogin != uninstall else {
-            throw ValidationError("--launch-at-login veya --uninstall, ikisinden birini seç")
+            throw ValidationError("pass exactly one of --launch-at-login or --uninstall")
         }
 
         if uninstall {
             try LaunchAgent.remove()
-            print("✓ girişte başlatma kaldırıldı")
+            print("✓ launch at login removed")
             return
         }
 
         guard let binary = LaunchAgent.currentBinary() else {
-            throw ValidationError("çalışan ikili dosyanın yolu bulunamadı")
+            throw ValidationError("couldn't resolve the path of the running binary")
         }
         // A LaunchAgent pointing into a build directory breaks the moment the
         // tree is cleaned, and the failure is silent — say so now.
         if binary.path.contains("/.build/") {
-            log("uyarı: \(binary.path) bir derleme dizini —")
-            log("       önce /usr/local/bin altına kopyala, sonra oradan çalıştır")
+            log("warning: \(binary.path) is a build directory —")
+            log("         copy it to /usr/local/bin first and run it from there")
         }
 
         try LaunchAgent.install(binary: binary)
-        print("✓ girişte başlatma kuruldu")
-        print("  ikili : \(binary.path)")
-        print("  günlük: \(LaunchAgent.standardErrorPath)")
+        print("✓ launch at login installed")
+        print("  binary: \(binary.path)")
+        print("  log   : \(LaunchAgent.standardErrorPath)")
     }
 
     private func report() {
         let state = LaunchAgent.status()
         if !state.isInstalled {
-            print("girişte başlatma: kurulu değil")
+            print("launch at login: not installed")
             print("  → yaz install --launch-at-login")
             return
         }
-        print("girişte başlatma: kurulu")
-        print("  ikili : \(state.binaryPath ?? "?")")
+        print("launch at login: installed")
+        print("  binary: \(state.binaryPath ?? "?")")
         print("  plist : \(LaunchAgent.plistURL.path)")
         if state.isStale {
-            print("  ✗ ikili dosya bulunamıyor — yaz install --launch-at-login ile tazele")
+            print("  ✗ the registered binary is missing — refresh with: yaz install --launch-at-login")
         }
     }
 }
@@ -330,18 +344,32 @@ struct Install: AsyncParsableCommand {
 /// and SwiftUI paths get exercised rather than merely compiled.
 struct Preview: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Kayıt göstergesini ekranda göster (mikrofon gerekmez)."
+        abstract: "Show the recording indicator on screen (no microphone needed)."
     )
 
-    @Option(name: .long, help: "Her durumun ekranda kalma süresi (saniye).")
+    @Option(name: .long, help: "Seconds each state stays on screen.")
     var dwell: Double = 1.6
 
-    @Option(name: .long, help: "Menü barı ikonunu bu PNG'ye bas ve çık (tasarım denetimi).")
+    @Option(name: .long, help: "Render the menu bar icon to this PNG and exit (design review).")
     var renderIcon: String?
+
+    @Option(name: .long, help: "Render the app icon to this PNG and exit (design review).")
+    var renderAppIcon: String?
+
+    @Option(name: .long, help: "Write a complete .iconset directory (used by the bundle script).")
+    var writeIconset: String?
 
     func run() async throws {
         if let renderIcon {
             try await MainActor.run { try Self.writeIconSheet(to: renderIcon) }
+            return
+        }
+        if let renderAppIcon {
+            try await MainActor.run { try Self.writeAppIcon(to: renderAppIcon) }
+            return
+        }
+        if let writeIconset {
+            try await MainActor.run { try Self.writeIconset(to: writeIconset) }
             return
         }
         try await runPreview()
@@ -380,10 +408,88 @@ struct Preview: AsyncParsableCommand {
             let tiff = sheet.tiffRepresentation,
             let rep = NSBitmapImageRep(data: tiff),
             let png = rep.representation(using: .png, properties: [:])
-        else { throw ValidationError("ikon çizilemedi") }
+        else { throw ValidationError("couldn't render the icon") }
 
         try png.write(to: URL(fileURLWithPath: path))
-        log("yazıldı: \(path) — sırayla idle, recording, transcribing, refining")
+        log("wrote \(path) — idle, recording, transcribing, refining")
+    }
+
+    /// Render the app icon at several sizes onto one sheet. A 1024 pt icon
+    /// that falls apart at 32 pt in the Finder is not finished.
+    @MainActor
+    static func writeAppIcon(to path: String) throws {
+        let sizes: [CGFloat] = [512, 128, 64, 32, 16]
+        let gap: CGFloat = 24
+        let width = sizes.reduce(0, +) + gap * CGFloat(sizes.count + 1)
+        let height = sizes[0] + gap * 2
+
+        let sheet = NSImage(size: NSSize(width: width, height: height))
+        sheet.lockFocus()
+        NSColor(white: 0.92, alpha: 1).setFill()
+        NSRect(origin: .zero, size: sheet.size).fill()
+
+        var x = gap
+        for size in sizes {
+            let icon = AppIcon.image(size: size)
+            icon.draw(
+                in: NSRect(x: x, y: gap, width: size, height: size),
+                from: .zero, operation: .sourceOver, fraction: 1)
+            x += size + gap
+        }
+        sheet.unlockFocus()
+
+        guard
+            let tiff = sheet.tiffRepresentation,
+            let rep = NSBitmapImageRep(data: tiff),
+            let png = rep.representation(using: .png, properties: [:])
+        else { throw ValidationError("couldn't render the icon") }
+
+        try png.write(to: URL(fileURLWithPath: path))
+        log("wrote \(path) — 512, 128, 64, 32, 16 pt")
+    }
+
+    /// Write every PNG `iconutil` expects, so the bundle script can turn the
+    /// drawn icon into an `.icns` without an asset catalogue in the repo.
+    @MainActor
+    static func writeIconset(to path: String) throws {
+        let directory = URL(fileURLWithPath: path)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        // The exact set `iconutil` requires; a missing size makes it refuse
+        // the whole directory.
+        let variants: [(name: String, points: CGFloat, scale: CGFloat)] = [
+            ("icon_16x16", 16, 1), ("icon_16x16@2x", 16, 2),
+            ("icon_32x32", 32, 1), ("icon_32x32@2x", 32, 2),
+            ("icon_128x128", 128, 1), ("icon_128x128@2x", 128, 2),
+            ("icon_256x256", 256, 1), ("icon_256x256@2x", 256, 2),
+            ("icon_512x512", 512, 1), ("icon_512x512@2x", 512, 2),
+        ]
+
+        for variant in variants {
+            let pixels = Int(variant.points * variant.scale)
+            guard let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: pixels, pixelsHigh: pixels,
+                bitsPerSample: 8, samplesPerPixel: 4,
+                hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0, bitsPerPixel: 0
+            ) else { throw ValidationError("couldn't allocate \(pixels)px bitmap") }
+
+            // Draw at the real pixel size rather than scaling one big render:
+            // the geometry is proportional, so a 16px icon gets strokes sized
+            // for 16px instead of a shrunken 1024px one.
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            AppIcon.draw(in: NSRect(x: 0, y: 0, width: CGFloat(pixels), height: CGFloat(pixels)))
+            NSGraphicsContext.restoreGraphicsState()
+
+            guard let png = rep.representation(using: .png, properties: [:]) else {
+                throw ValidationError("couldn't encode \(variant.name)")
+            }
+            try png.write(to: directory.appending(path: "\(variant.name).png"))
+        }
+        log("wrote \(variants.count) PNGs to \(path)")
     }
 
     private func runPreview() async throws {
@@ -394,10 +500,10 @@ struct Preview: AsyncParsableCommand {
             let config = Config.load()
             let overlay = RecordingOverlay()
             let menuBar = config.menuBar
-                ? MenuBarController(summary: "önizleme")
+                ? MenuBarController(summary: "preview")
                 : nil
 
-            log("gösterge önizlemesi — ekranın altına bak, menü barını kontrol et")
+            log("indicator preview — look at the bottom of the screen and at the menu bar")
 
             let states: [IndicatorState] = [.recording, .transcribing, .refining]
             var elapsed: Double = 0
@@ -431,7 +537,7 @@ struct Preview: AsyncParsableCommand {
                 }
             }
             Timer.scheduledTimer(withTimeInterval: elapsed + 0.8, repeats: false) { _ in
-                log("önizleme bitti")
+                log("preview finished")
                 NSApp.terminate(nil)
             }
 
@@ -448,22 +554,22 @@ struct Preview: AsyncParsableCommand {
 /// of theirs is not being caught.
 struct Vocab: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Sözlük düzeltmesini dene ve puanları göster.",
+        abstract: "Try the vocabulary correction and show the scores.",
         subcommands: [Test.self, Explain.self, Refine.self]
     )
 
     struct Test: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Bir metni düzelt ve neyin değiştiğini göster."
+            abstract: "Correct a piece of text and show what changed."
         )
 
-        @Argument(help: "Düzeltilecek metin.")
+        @Argument(help: "Text to correct.")
         var text: String
 
-        @Option(name: .long, help: "Eşik (varsayılan 0.72).")
+        @Option(name: .long, help: "Threshold (default 0.78).")
         var threshold: Double?
 
-        @Option(name: .long, help: "İskelet eşiği (varsayılan 0.78).")
+        @Option(name: .long, help: "Skeleton threshold (default 0.74).")
         var skeletonThreshold: Double?
 
         func run() async throws {
@@ -474,15 +580,15 @@ struct Vocab: AsyncParsableCommand {
                 skeletonThreshold: skeletonThreshold ?? Vocabulary.defaultSkeletonThreshold)
 
             guard !config.vocabulary.isEmpty else {
-                log("sözlük boş — ~/.config/yaz/config.json içine \"vocabulary\" ekle")
+                log("vocabulary is empty — add \"vocabulary\" to ~/.config/yaz/config.json")
                 throw ExitCode(1)
             }
 
             let result = vocabulary.correct(text)
-            print("önce : \(text)")
-            print("sonra: \(result.text)")
+            print("before: \(text)")
+            print("after : \(result.text)")
             if result.corrections.isEmpty {
-                print("\n(değişiklik yok)")
+                print("\n(no change)")
             } else {
                 print()
                 for correction in result.corrections {
@@ -497,20 +603,20 @@ struct Vocab: AsyncParsableCommand {
     /// Exercise the post-processing layer on text, with no audio involved.
     struct Refine: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Son işlemeyi bir metin üzerinde dene."
+            abstract: "Try post-processing on a piece of text."
         )
 
-        @Argument(help: "Temizlenecek metin.")
+        @Argument(help: "Text to clean up.")
         var text: String
 
-        @Option(name: .long, help: "Mod: off, fillers, llm.")
+        @Option(name: .long, help: "Mode: off, fillers, llm.")
         var mode: RefineMode = .llm
 
         func run() async throws {
             switch Refiner.availability(for: mode) {
             case .available: break
             case .unavailable(let reason):
-                log("\(mode.rawValue) kullanılamıyor: \(reason)")
+                log("\(mode.rawValue) unavailable: \(reason)")
                 throw ExitCode(1)
             }
 
@@ -518,41 +624,41 @@ struct Vocab: AsyncParsableCommand {
             let result = await Refiner(mode: mode).refine(text)
             let elapsed = Date().timeIntervalSince(started)
 
-            print("önce : \(text)")
-            print("sonra: \(result.text)")
-            print(String(format: "\nmod %@ · %.0f ms · %@",
+            print("before: \(text)")
+            print("after : \(result.text)")
+            print(String(format: "\nmode %@ · %.0f ms · %@",
                          mode.rawValue, elapsed * 1000,
-                         result.changed ? "değişti" : "değişmedi"))
+                         result.changed ? "changed" : "unchanged"))
             if let rejection = result.rejection {
-                print("model çıktısı reddedildi: \(rejection)")
+                print("model output rejected: \(rejection)")
             }
         }
     }
 
     struct Explain: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "İki ifadenin fonetik anahtarlarını ve benzerliğini göster."
+            abstract: "Show the phonetic keys of two spellings and how similar they are."
         )
 
-        @Argument(help: "Sözlükteki terim.")
+        @Argument(help: "The term from your vocabulary.")
         var term: String
 
-        @Argument(help: "ASR'ın ürettiği bozuk hali.")
+        @Argument(help: "The mangled form the recogniser produced.")
         var heard: String
 
         func run() async throws {
-            let pairs = [("terim", term), ("duyulan", heard)]
+            let pairs = [("term", term), ("heard", heard)]
             for (label, value) in pairs {
                 print("\(label.padding(toLength: 9, withPad: " ", startingAt: 0)) \"\(value)\"")
-                print("  normalize  \(PhoneticKey.normalize(value))")
-                print("  iskelet    \(PhoneticKey.skeleton(value))")
+                print("  normalised \(PhoneticKey.normalize(value))")
+                print("  skeleton   \(PhoneticKey.skeleton(value))")
             }
             let full = EditDistance.similarity(
                 PhoneticKey.normalize(term), PhoneticKey.normalize(heard))
             let skeletal = EditDistance.similarity(
                 PhoneticKey.skeleton(term), PhoneticKey.skeleton(heard))
-            print(String(format: "\nbenzerlik  tam %.3f  ·  iskelet %.3f", full, skeletal))
-            print(String(format: "eşikler    tam %.2f  ·  iskelet %.2f",
+            print(String(format: "\nsimilarity full %.3f  ·  skeleton %.3f", full, skeletal))
+            print(String(format: "thresholds full %.2f  ·  skeleton %.2f",
                          Vocabulary.defaultThreshold, Vocabulary.defaultSkeletonThreshold))
         }
     }
@@ -566,48 +672,48 @@ struct Vocab: AsyncParsableCommand {
 /// into the microphone that time.
 struct Transcribe: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Bir ses dosyasını yazıya çevir (motor test koşum takımı)."
+        abstract: "Transcribe an audio file (the engine measurement harness)."
     )
 
-    @Argument(help: "Ses dosyaları (wav/caf/m4a).")
+    @Argument(help: "Audio files (wav/caf/m4a).")
     var files: [String] = []
 
-    @Option(name: .long, help: "Motor: whisper (Türkçe) veya parakeet (hızlı, Türkçe YOK).")
+    @Option(name: .long, help: "Engine: whisper (speaks Turkish) or parakeet (faster, NO Turkish).")
     var engineName: EngineChoice = .whisper
 
-    @Option(name: .long, help: "Whisper modeli: large-v3-turbo veya large-v3.")
+    @Option(name: .long, help: "Whisper model: large-v3-turbo or large-v3.")
     var whisperModel: WhisperModel = .largeV3Turbo
 
-    @Option(name: .long, help: "Dil kodu.")
+    @Option(name: .long, help: "Language code.")
     var language: String = "tr"
 
-    @Option(name: .long, help: "Ölçüm için tekrar sayısı.")
+    @Option(name: .long, help: "Repetitions, for measurement.")
     var repeatCount: Int = 3
 
-    @Option(name: .long, help: "Bu süreden uzun dosyaları reddet (saniye).")
+    @Option(name: .long, help: "Reject files longer than this (seconds).")
     var maxSeconds: Double = 3600
 
-    @Flag(name: .long, help: "Kalite kapılarını uygula (varsayılan: ham çıktıyı göster).")
+    @Flag(name: .long, help: "Enforce the quality gates (default: show the raw output).")
     var strict: Bool = false
 
-    @Flag(name: .long, help: "Config'deki sözlükle terim düzeltmesi uygula.")
+    @Flag(name: .long, help: "Apply vocabulary correction from the config.")
     var vocabulary: Bool = false
 
-    @Option(name: .long, help: "Son işleme: off, fillers, llm.")
+    @Option(name: .long, help: "Post-processing: off, fillers, llm.")
     var refine: RefineMode?
 
     func validate() throws {
         guard repeatCount >= 1 else {
-            throw ValidationError("--repeat-count en az 1 olmalı")
+            throw ValidationError("--repeat-count must be at least 1")
         }
         guard maxSeconds > 0 else {
-            throw ValidationError("--max-seconds pozitif olmalı")
+            throw ValidationError("--max-seconds must be positive")
         }
     }
 
     func run() async throws {
         guard !files.isEmpty else {
-            throw ValidationError("en az bir ses dosyası ver — örn: yaz transcribe ornek.wav")
+            throw ValidationError("give at least one audio file — e.g. yaz transcribe sample.wav")
         }
 
         let engine: any Transcriber = switch engineName {
@@ -622,12 +728,12 @@ struct Transcribe: AsyncParsableCommand {
         try engine.validateLanguage(language)
 
         if !engine.isDownloaded {
-            log("model indiriliyor — ilk çalıştırma birkaç dakika sürebilir")
+            log("downloading the model — the first run can take a few minutes")
         }
 
         let loadStart = Date()
         try await engine.prepare()
-        log(String(format: "✓ %@ hazır — %.1f sn", engine.model, Date().timeIntervalSince(loadStart)))
+        log(String(format: "✓ %@ ready — %.1f s", engine.model, Date().timeIntervalSince(loadStart)))
 
         // `yaz transcribe` is a measurement harness: by default it shows what
         // the model produced, with the gates reported but not enforced.
@@ -671,17 +777,17 @@ struct Transcribe: AsyncParsableCommand {
 
         print("\n═══ \(URL(fileURLWithPath: path).lastPathComponent) (\(String(format: "%.2f", seconds)) sn) ═══")
         print(String(
-            format: "  gecikme %.0f ms · RTF %.3f · tepe %.3f · rms %.3f",
+            format: "  latency %.0f ms · RTF %.3f · peak %.3f · rms %.3f",
             best * 1000, best / max(seconds, 0.001), output.level.peak, output.level.rms))
 
         if let signals = output.quality.signals {
             print(String(
-                format: "  noSpeech %.2f · logProb %.2f · sıkıştırma %.2f",
+                format: "  noSpeech %.2f · logProb %.2f · compression %.2f",
                 signals.noSpeechProb, signals.avgLogProb, signals.compressionRatio))
         } else {
             // Say so rather than printing zeros, which would look like a
             // flawless decode instead of a silent engine.
-            print("  (motor güven sinyali vermiyor — karar yalnızca metne dayanıyor)")
+            print("  (engine reports no confidence — the verdict rests on the text alone)")
         }
 
         switch output.quality.verdict {
@@ -690,7 +796,7 @@ struct Transcribe: AsyncParsableCommand {
         case .lowConfidence(let reason):
             print("  ! \(reason)")
         case .rejected(let reason):
-            print("  ✗ reddedildi: \(reason)")
+            print("  ✗ rejected: \(reason)")
         }
 
         var text = output.text
@@ -704,19 +810,19 @@ struct Transcribe: AsyncParsableCommand {
             let elapsed = Date().timeIntervalSince(started)
 
             for correction in processed.corrections {
-                print(String(format: "  sözlük: %@ → %@ (%.3f, %@)",
+                print(String(format: "  vocabulary: %@ → %@ (%.3f, %@)",
                              correction.from, correction.to,
                              correction.score, correction.matchedBy.rawValue))
             }
             if let rejection = processed.refinementRejected {
-                print("  son işleme atlandı: \(rejection)")
+                print("  post-processing skipped: \(rejection)")
             }
             if processed.refined || !processed.corrections.isEmpty {
-                print(String(format: "  son işleme %.0f ms", elapsed * 1000))
+                print(String(format: "  post-processing %.0f ms", elapsed * 1000))
             }
             text = processed.text
         }
-        print("  \(text.isEmpty ? "<boş>" : text)")
+        print("  \(text.isEmpty ? "<empty>" : text)")
     }
 }
 

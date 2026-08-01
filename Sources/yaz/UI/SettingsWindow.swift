@@ -28,7 +28,7 @@ final class SettingsWindowController {
             return
         }
         let window = Self.makeWindow(
-            title: "yaz — Ayarlar",
+            title: "yaz — Settings",
             size: NSSize(width: 520, height: 560),
             content: SettingsView(model: model))
         settingsWindow = window
@@ -42,7 +42,7 @@ final class SettingsWindowController {
             return
         }
         let window = Self.makeWindow(
-            title: "yaz — Geçmiş",
+            title: "yaz — History",
             size: NSSize(width: 620, height: 520),
             content: HistoryView(model: model))
         historyWindow = window
@@ -141,74 +141,74 @@ private struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Kısayol") {
-                Picker("Bas-konuş tuşu", selection: $model.config.hotkey) {
+            Section("Hotkey") {
+                Picker("Push-to-talk key", selection: $model.config.hotkey) {
                     ForEach(Hotkey.allCases, id: \.self) { key in
                         Text(key.displayName).tag(key)
                     }
                 }
                 if model.config.hotkey.conflictsWithSystemFnAction {
                     Label(
-                        "Sistem Ayarları → Klavye → 🌐 tuşuna basınca → Hiçbir şey yapma",
+                        "System Settings → Keyboard → Press 🌐 key to → Do Nothing",
                         systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Section("Tanıma") {
-                Picker("Motor", selection: $model.config.engine) {
+            Section("Recognition") {
+                Picker("Engine", selection: $model.config.engine) {
                     ForEach(EngineChoice.allCases, id: \.self) { engine in
                         Text(engine.rawValue).tag(engine)
                     }
                 }
-                Picker("Whisper modeli", selection: $model.config.whisperModel) {
+                Picker("Whisper model", selection: $model.config.whisperModel) {
                     ForEach(WhisperModel.allCases, id: \.self) { whisper in
                         Text("\(whisper.rawValue) · ~\(whisper.sizeMB) MB").tag(whisper)
                     }
                 }
                 .disabled(model.config.engine != .whisper)
 
-                TextField("Dil kodu", text: $model.config.language)
+                TextField("Language code", text: $model.config.language)
                 if model.config.engine == .parakeet && model.config.language == "tr" {
-                    Label("Parakeet Türkçe desteklemiyor", systemImage: "xmark.octagon")
+                    Label("Parakeet does not support Turkish", systemImage: "xmark.octagon")
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
             }
 
-            Section("Metin") {
-                Picker("Yerleştirme", selection: $model.config.injectMode) {
+            Section("Text") {
+                Picker("Insertion", selection: $model.config.injectMode) {
                     ForEach(TextInjector.Mode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
                     }
                 }
-                Picker("Son işleme", selection: $model.config.refine) {
+                Picker("Post-processing", selection: $model.config.refine) {
                     ForEach(RefineMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
                     }
                 }
                 if model.config.refine == .llm {
-                    Text("Dil modeli her ifadeye 0.3–1.4 sn ekler.")
+                    Text("The language model adds 0.3–1.4 s per utterance.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Section("Sözlük") {
-                Text("Türkçe konuşurken bozulan İngilizce terimler burada onarılır.")
+            Section("Vocabulary") {
+                Text("English terms that get mangled in Turkish speech are repaired here.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 HStack {
-                    TextField("Terim ekle (örn. pull request)", text: $model.newTerm)
+                    TextField("Add a term (e.g. pull request)", text: $model.newTerm)
                         .onSubmit { model.addTerm() }
-                    Button("Ekle") { model.addTerm() }
+                    Button("Add") { model.addTerm() }
                         .disabled(model.newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
 
                 if model.config.vocabulary.isEmpty {
-                    Text("henüz terim yok").font(.caption).foregroundStyle(.secondary)
+                    Text("no terms yet").font(.caption).foregroundStyle(.secondary)
                 } else {
                     List {
                         ForEach(model.config.vocabulary, id: \.canonical) { term in
@@ -227,29 +227,29 @@ private struct SettingsView: View {
                 }
             }
 
-            Section("Gösterge ve geçmiş") {
-                Toggle("Kayıt sırasında pil göster", isOn: $model.config.overlay)
-                Toggle("Menü barında göster", isOn: $model.config.menuBar)
-                Toggle("Geçmiş tut (yalnızca metin)", isOn: $model.config.history)
+            Section("Indicator and history") {
+                Toggle("Show the pill while recording", isOn: $model.config.overlay)
+                Toggle("Show in the menu bar", isOn: $model.config.menuBar)
+                Toggle("Keep history (text only)", isOn: $model.config.history)
                 if model.config.history {
                     Stepper(
-                        "Saklanan kayıt: \(model.config.historyLimit)",
+                        "Entries kept: \(model.config.historyLimit)",
                         value: $model.config.historyLimit, in: 50...20000, step: 50)
                 }
             }
 
             Section {
                 HStack {
-                    Button("Kaydet") { model.save() }
+                    Button("Save") { model.save() }
                         .keyboardShortcut(.defaultAction)
                     if let error = model.saveError {
                         Text(error).font(.caption).foregroundStyle(.red)
                     } else if model.savedAt != nil {
-                        Text("kaydedildi — daemon'ı yeniden başlat")
+                        Text("saved — restart the daemon to apply")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Dosyayı aç") {
+                    Button("Open file") {
                         NSWorkspace.shared.open(Config.path)
                     }
                 }
@@ -268,18 +268,18 @@ private struct HistoryView: View {
     private static let formatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "d MMM HH:mm"
-        formatter.locale = Locale(identifier: "tr_TR")
+        formatter.locale = Locale(identifier: "en_US")
         return formatter
     }()
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                TextField("Ara — metin veya uygulama", text: $model.historySearch)
+                TextField("Search — text or app", text: $model.historySearch)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { Task { await model.loadHistory() } }
-                Button("Ara") { Task { await model.loadHistory() } }
-                Button("Temizle", role: .destructive) {
+                Button("Search") { Task { await model.loadHistory() } }
+                Button("Clear", role: .destructive) {
                     Task { await model.clearHistory() }
                 }
             }
@@ -289,7 +289,7 @@ private struct HistoryView: View {
 
             if model.entries.isEmpty {
                 Spacer()
-                Text(model.config.history ? "geçmiş boş" : "geçmiş kapalı")
+                Text(model.config.history ? "history is empty" : "history is off")
                     .foregroundStyle(.secondary)
                 Spacer()
             } else {
@@ -309,7 +309,7 @@ private struct HistoryView: View {
                                 Image(systemName: "doc.on.doc")
                             }
                             .buttonStyle(.borderless)
-                            .help("Panoya kopyala")
+                            .help("Copy to clipboard")
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -318,7 +318,7 @@ private struct HistoryView: View {
                             .textSelection(.enabled)
 
                         if !entry.corrections.isEmpty {
-                            Text("sözlük: \(entry.corrections.joined(separator: ", "))")
+                            Text("vocabulary: \(entry.corrections.joined(separator: ", "))")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }

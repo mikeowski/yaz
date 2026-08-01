@@ -51,7 +51,7 @@ struct Config: Sendable, Equatable {
             let data = try? Data(contentsOf: url),
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            log("uyarı: \(url.path) geçerli JSON değil — yok sayılıyor")
+            log("warning: \(url.path) is not valid JSON — ignoring it")
             return config
         }
 
@@ -64,8 +64,8 @@ struct Config: Sendable, Equatable {
     /// *key* usually means a newer config against an older binary.
     mutating func apply(_ json: [String: Any], source: String) {
         func warn(_ key: String, _ value: Any, _ valid: [String]) {
-            log("uyarı: \(source) içinde \(key) = \"\(value)\" tanınmadı"
-                + " (geçerli: \(valid.joined(separator: ", ")))")
+            log("warning: \(source): \(key) = \"\(value)\" is not recognised"
+                + " (valid: \(valid.joined(separator: ", ")))")
         }
 
         if let raw = json["engine"] as? String {
@@ -114,7 +114,7 @@ struct Config: Sendable, Equatable {
     /// ```
     static func parseVocabulary(_ raw: Any, source: String) -> [VocabularyTerm] {
         guard let items = raw as? [Any] else {
-            log("uyarı: \(source) içinde vocabulary bir liste değil — yok sayılıyor")
+            log("warning: \(source): vocabulary is not a list — ignoring it")
             return []
         }
         var terms: [VocabularyTerm] = []
@@ -131,7 +131,7 @@ struct Config: Sendable, Equatable {
                     aliases: (object["aliases"] as? [String]) ?? [],
                     minSimilarity: object["min_similarity"] as? Double))
             } else {
-                log("uyarı: \(source) içinde tanınmayan vocabulary girdisi — atlandı")
+                log("warning: \(source): unrecognised vocabulary entry — skipped")
             }
         }
         return terms

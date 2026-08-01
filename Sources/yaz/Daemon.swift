@@ -88,7 +88,7 @@ final class Daemon {
         // would be present and dead, which is indistinguishable from a broken
         // app. Loading as a task means the menu works immediately and says
         // what it is doing.
-        menuBar?.note("model yükleniyor…")
+        menuBar?.note("loading model…")
         startModelLoad()
 
         if awaitingPermission {
@@ -96,7 +96,7 @@ final class Daemon {
         }
 
         installSignalHandlers()
-        log("dinleniyor · \(config.hotkey.displayName) basılı tut · \(config.injectMode.displayName) · ^C ile çık")
+        log("listening · hold \(config.hotkey.displayName) · \(config.injectMode.displayName) · ^C to quit")
         app.run()
     }
 
@@ -112,18 +112,47 @@ final class Daemon {
     /// and hops back here only to touch UI.
     private func startModelLoad() {
         let engine = self.engine
+        let model = config.whisperModel
+        let needsDownload = config.engine == .whisper
+            && !ModelStore.status(for: model.whisperKitID).isComplete
+
         Task.detached(priority: .userInitiated) {
-            log("model yükleniyor…")
+            // Fetch the weights first, with progress. Doing this inside
+            // `prepare()` would work but say nothing: on a fresh machine the
+            // menu would read "loading model…" for several minutes while 1.6 GB
+            // moved silently, which reads as a hung app.
+            if needsDownload {
+                log(ModelDownloader.downloadNotice(for: model))
+                await MainActor.run {
+                    DaemonHolder.live?.menuBar?.note("downloading model…")
+                }
+                do {
+                    try await ModelDownloader.ensure(model) { progress in
+                        Task { @MainActor in
+                            DaemonHolder.live?.menuBar?.note("downloading — \(progress.description)")
+                        }
+                    }
+                    log("✓ model downloaded")
+                } catch {
+                    log("model download failed: \(error)")
+                    await MainActor.run {
+                        DaemonHolder.live?.menuBar?.note("model download failed")
+                    }
+                    return
+                }
+            }
+
+            log("loading model…")
             let started = Date()
             do {
                 try await engine.prepare()
             } catch {
-                log("model yüklenemedi: \(error)")
-                await MainActor.run { DaemonHolder.live?.menuBar?.note("model yüklenemedi") }
+                log("couldn't load the model: \(error)")
+                await MainActor.run { DaemonHolder.live?.menuBar?.note("model failed to load") }
                 return
             }
             let elapsed = Date().timeIntervalSince(started)
-            log(String(format: "✓ %@ hazır — %.1f sn", engine.model, elapsed))
+            log(String(format: "✓ %@ ready — %.1f s", engine.model, elapsed))
             await MainActor.run { DaemonHolder.live?.engineBecameReady() }
         }
     }
@@ -133,7 +162,7 @@ final class Daemon {
         ready = true
         if HotkeyMonitor.hasAccessibilityPermission {
             setIndicator(.idle)
-            menuBar?.note("dinlemeye hazır")
+            menuBar?.note("ready to listen")
         } else {
             menuBar?.setNeedsPermission(true)
         }
@@ -165,13 +194,13 @@ final class Daemon {
                 self.permissionPoll = nil
                 do {
                     try self.startMonitor()
-                    log("✓ erişilebilirlik verildi — dinleniyor")
+                    log("✓ accessibility granted — listening")
                     self.menuBar?.setNeedsPermission(false)
-                    self.menuBar?.note("dinlemeye hazır")
+                    self.menuBar?.note("ready to listen")
                     self.setIndicator(.idle)
                 } catch {
-                    log("kısayol kurulamadı: \(error)")
-                    self.menuBar?.note("kısayol kurulamadı")
+                    log("couldn't install the hotkey: \(error)")
+                    self.menuBar?.note("hotkey unavailable")
                 }
             }
         }
@@ -180,14 +209,14 @@ final class Daemon {
 
     private func presentPermissionAlert() {
         let alert = NSAlert()
-        alert.messageText = "yaz erişilebilirlik izni istiyor"
+        alert.messageText = "yaz needs Accessibility permission"
         alert.informativeText = """
             Kısayol tuşunu dinlemek ve metni imlece yapıştırmak için gerekli.
 
             Sistem Ayarları → Gizlilik ve Güvenlik → Erişilebilirlik listesinde             yaz'ı işaretle. İzni verdiğin anda çalışmaya başlar — uygulamayı             yeniden başlatman gerekmez.
             """
-        alert.addButton(withTitle: "Sistem Ayarları'nı aç")
-        alert.addButton(withTitle: "Sonra")
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Later")
         alert.alertStyle = .informational
 
         NSApp.activate(ignoringOtherApps: true)
@@ -202,20 +231,20 @@ final class Daemon {
         switch event {
         case .pressed:
             guard ready else {
-                log("  (model hâlâ yükleniyor)")
+                log("  (model still loading)")
                 return
             }
             guard !busy else {
-                if verbose { log("  (önceki çeviri sürüyor — kayıt başlatılmadı)") }
+                if verbose { log("  (previous transcription still running — not recording)") }
                 return
             }
             do {
                 try capture.start()
-                log("● kayıt")
+                log("● recording")
                 setIndicator(.recording)
             } catch {
-                log("kayıt başlatılamadı: \(error)")
-                menuBar?.note("mikrofon açılamadı")
+                log("couldn't start recording: \(error)")
+                menuBar?.note("microphone unavailable")
             }
 
         case .released:
@@ -223,7 +252,7 @@ final class Daemon {
             let samples = capture.stop()
             let sawSignal = capture.didSeeSignal
             let hitLimit = capture.didHitLimit
-            if hitLimit { log("uyarı: kayıt üst sınıra ulaştı, kırpıldı") }
+            if hitLimit { log("warning: recording hit the length limit and was truncated") }
             setIndicator(.transcribing)
             busy = true
             Task { await self.finish(samples, sawSignal: sawSignal) }
@@ -243,8 +272,8 @@ final class Daemon {
 
             switch output.quality.verdict {
             case .rejected(let reason):
-                log("○ atlandı: \(reason)")
-                menuBar?.note("atlandı — \(reason)")
+                log("○ skipped: \(reason)")
+                menuBar?.note("skipped — \(reason)")
                 return
             case .lowConfidence(let reason):
                 log("! \(reason)")
@@ -259,14 +288,14 @@ final class Daemon {
             if config.refine == .llm { setIndicator(.refining) }
             let processed = await pipeline.process(output.text)
             for correction in processed.corrections {
-                log("  sözlük: \(correction.from) → \(correction.to)")
+                log("  vocabulary: \(correction.from) → \(correction.to)")
             }
             if let rejection = processed.refinementRejected, verbose {
-                log("  son işleme atlandı: \(rejection)")
+                log("  post-processing skipped: \(rejection)")
             }
 
             let total = Date().timeIntervalSince(started)
-            log(String(format: "→ %.2f sn (çeviri %.2f) · %@", total, elapsed, processed.text))
+            log(String(format: "→ %.2f s (transcribe %.2f) · %@", total, elapsed, processed.text))
 
             // Read the frontmost app *before* pasting: the overlay never takes
             // focus, so at this instant it is still the window the cursor is
@@ -293,7 +322,7 @@ final class Daemon {
             if verbose { log("○ \(error.description)") }
             if !sawSignal && !samples.isEmpty {
                 // Distinguish "you were quiet" from "the mic is dead".
-                log("uyarı: mikrofondan hiç sinyal gelmedi — giriş cihazını kontrol et")
+                log("warning: no signal from the microphone — check the input device")
             }
         } catch {
             log("✗ \(error)")
@@ -311,7 +340,7 @@ final class Daemon {
     }
 
     private func shutdown() {
-        log("kapatılıyor")
+        log("shutting down")
         monitor.stop()
         capture.stop()
         overlay?.hide()
@@ -329,7 +358,7 @@ final class Daemon {
         do {
             try process.run()
         } catch {
-            log("on_transcript çalıştırılamadı: \(error)")
+            log("on_transcript failed to launch: \(error)")
         }
     }
 
