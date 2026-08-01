@@ -38,6 +38,23 @@ yaz doctor
 yaz logs --follow
 ```
 
+### "It says granted, and still nothing happens"
+
+Replacing an app bundle can leave macOS holding a permission record that no
+longer matches the binary. The system then reports the permission as granted,
+the app believes it, and events are **silently never delivered** — measured
+here as `accessibility=true inputMonitoring=granted` with a live tap and zero
+events.
+
+Nothing in macOS reports this. yaz detects it the only way it can: if the
+keyboard listener sees no events at all for 75 seconds it says so in the log
+and in the menu. The fix:
+
+```sh
+yaz reset-permissions     # clears the records
+# quit and reopen yaz — macOS will ask again
+```
+
 ## Models — downloaded, not bundled
 
 `yaz.app` is 14 MB; `whisper large-v3-turbo` is 1.6 GB. Bundling the weights

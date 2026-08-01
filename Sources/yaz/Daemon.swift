@@ -226,6 +226,9 @@ final class Daemon {
     }
 
     private func startMonitor() throws {
+        monitor.onSilentTap = { [weak self] in
+            self?.menuBar?.note("permissions look stale — run: yaz reset-permissions")
+        }
         try monitor.start { [weak self] event in
             // The tap callback already hops to main; assume that rather than
             // scheduling another hop, so press/release ordering is preserved.

@@ -93,8 +93,17 @@ final class HotkeyMonitor: @unchecked Sendable {
     /// tell them apart without looking at what actually arrives. Logging the
     /// first handful answers that on any machine without asking the user to
     /// run anything special.
-    private var eventsLogged = 0
+    fileprivate var eventsLogged = 0
     private static let eventsToLog = 24
+
+    /// Fired when the tap has been installed for a while and has never seen a
+    /// single event — the signature of a stale permission record.
+    var onSilentTap: (() -> Void)?
+    private var watchdog: Timer?
+
+    /// Long enough that ordinary use will have produced a shift or command
+    /// press, short enough that the user has not yet given up.
+    private static let silenceTimeout: TimeInterval = 75
 
     init(hotkey: Hotkey = .fn, debug: Bool = false) {
         self.hotkey = hotkey
@@ -136,15 +145,46 @@ final class HotkeyMonitor: @unchecked Sendable {
         self.tap = tap
         self.source = source
         log("hotkey listener installed for \(hotkey.rawValue) (mask \(String(hotkey.flag.rawValue, radix: 16)))")
+
+        startSilenceWatchdog()
     }
 
     func stop() {
+        watchdog?.invalidate()
+        watchdog = nil
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         tap = nil
         source = nil
         handler = nil
         isDown = false
+    }
+
+    /// Watch for a tap that is alive but deaf.
+    ///
+    /// The worst failure this project hit: `AXIsProcessTrusted()` true,
+    /// `IOHIDCheckAccess` granted, `CGEvent.tapCreate` successful, tap enabled
+    /// — and not one event ever delivered, because the TCC records were stale
+    /// after the app bundle was replaced. Nothing in the system reports that;
+    /// the only observable is silence, so silence has to be the signal.
+    private func startSilenceWatchdog() {
+        watchdog?.invalidate()
+        let timer = Timer.scheduledTimer(
+            withTimeInterval: Self.silenceTimeout, repeats: false
+        ) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self, self.eventsLogged == 0 else { return }
+                let enabled = self.tap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false
+                log("warning: the keyboard listener has seen no events in"
+                    + " \(Int(Self.silenceTimeout))s (tap enabled=\(enabled))")
+                log("  macOS reports the permissions as granted but is not delivering events.")
+                log("  This usually means the permission records went stale after the app")
+                log("  was replaced. Fix: yaz reset-permissions, then grant them again.")
+                self.onSilentTap?()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        watchdog = timer
     }
 
     /// macOS disables a tap that misbehaves or times out. Turning it back on is
@@ -186,6 +226,11 @@ final class HotkeyMonitor: @unchecked Sendable {
                 log("  (further modifier events will not be logged)")
             }
         }
+
+        // First real event: the tap is genuinely delivering, so the watchdog
+        // has nothing to warn about.
+        watchdog?.invalidate()
+        watchdog = nil
 
         guard held != isDown else { return }
         isDown = held

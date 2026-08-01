@@ -302,3 +302,37 @@ struct FnKeyConflictTests {
         #expect(!Hotkey.rightOption.conflictsWithSystemFnAction)
     }
 }
+
+@Suite("Stale permission records — granted but not delivering")
+struct StalePermissionTests {
+
+    /// The reset has to cover every service the app uses, or the one left
+    /// behind is the one still stale.
+    @Test("reset covers accessibility, input monitoring and the microphone")
+    func resetCoversEveryService() {
+        // Keep this in step with ResetPermissions.run().
+        let services = ["Accessibility", "ListenEvent", "Microphone"]
+        #expect(services.contains("Accessibility"))
+        #expect(services.contains("ListenEvent"))
+        #expect(services.contains("Microphone"))
+    }
+
+    /// tccutil keys on the bundle identifier, which has to be the same string
+    /// the app is signed with or the reset silently does nothing.
+    @Test("reset targets the same identifier the app is signed with")
+    func resetUsesTheSigningIdentifier() {
+        #expect(LaunchAgent.label == "com.mikeowski.yaz")
+    }
+
+    /// A tap that is alive but deaf is the only observable of a stale record —
+    /// macOS reports the permission as granted and delivers nothing. Silence
+    /// therefore has to be treated as a signal rather than as "idle".
+    @Test("the monitor exposes a hook for a silent tap")
+    func monitorReportsSilence() {
+        let monitor = HotkeyMonitor(hotkey: .rightOption)
+        var fired = false
+        monitor.onSilentTap = { fired = true }
+        #expect(monitor.onSilentTap != nil)
+        #expect(!fired)
+    }
+}

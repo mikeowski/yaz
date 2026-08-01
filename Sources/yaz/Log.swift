@@ -62,7 +62,17 @@ enum Log {
 
     // MARK: -
 
+    /// True when running under the test harness. Tests must not append to the
+    /// user's real log — it made the file unreadable exactly when it was
+    /// needed for diagnosis.
+    private static var isTesting: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || ProcessInfo.processInfo.environment["SWIFT_TESTING"] != nil
+            || ProcessInfo.processInfo.processName.contains("xctest")
+    }
+
     private static func openFile() -> FileHandle? {
+        guard !isTesting else { return nil }
         let url = fileURL
         let manager = FileManager.default
         try? manager.createDirectory(

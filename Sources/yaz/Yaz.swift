@@ -8,7 +8,7 @@ struct Yaz: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "yaz",
         abstract: "On-device dictation for Turkish. Hold the key, speak, release — the text lands at your cursor.",
-        subcommands: [Run.self, Settings.self, Doctor.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self],
+        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self],
         defaultSubcommand: Run.self
     )
 }
@@ -204,6 +204,64 @@ struct Settings: AsyncParsableCommand {
             }
             app.run()
         }
+    }
+}
+
+/// Clear yaz's permission records so macOS asks again.
+///
+/// Needed more often than it should be. Replacing an app bundle can leave TCC
+/// holding a record that no longer matches the binary: the system reports the
+/// permission as granted, the app believes it, and events are silently never
+/// delivered. Measured here — `accessibility=true inputMonitoring=granted`
+/// with a live tap and zero events, until the records were reset.
+struct ResetPermissions: AsyncParsableCommand {
+    static let configuration = CommandName.reset
+
+    enum CommandName {
+        static let reset = CommandConfiguration(
+            commandName: "reset-permissions",
+            abstract: "Clear yaz's permission records so macOS prompts again.")
+    }
+
+    @Flag(name: .long, help: "Show what would be reset without doing it.")
+    var dryRun = false
+
+    func run() async throws {
+        let services = ["Accessibility", "ListenEvent", "Microphone"]
+        let bundleID = LaunchAgent.label
+
+        print("resetting permissions for \(bundleID)")
+        if dryRun {
+            for service in services { print("  would reset: \(service)") }
+            return
+        }
+
+        for service in services {
+            let result = Self.tccutil(["reset", service, bundleID])
+            print(result.status == 0
+                ? "  ✓ \(service)"
+                : "  ✗ \(service) — \(result.output)")
+        }
+
+        print("")
+        print("now quit and reopen yaz; macOS will ask for both permissions again.")
+        print("  Accessibility     — lets yaz paste at your cursor")
+        print("  Input Monitoring  — lets yaz see the push-to-talk key")
+    }
+
+    private static func tccutil(_ arguments: [String]) -> (status: Int32, output: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        guard (try? process.run()) != nil else { return (-1, "couldn't run tccutil") }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus,
+                String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
     }
 }
 
