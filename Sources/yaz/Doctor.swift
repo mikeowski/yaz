@@ -26,6 +26,7 @@ enum DoctorReport {
             model(config: config),
             injection(config: config),
             refinement(config: config),
+            loginItem(),
         ]
         if config.hotkey.conflictsWithSystemFnAction {
             checks.append(fnKeyMapping())
@@ -56,16 +57,28 @@ enum DoctorReport {
 
     static func accessibility() -> Check {
         guard HotkeyMonitor.hasAccessibilityPermission else {
-            let owner = parentProcessName() ?? "terminalin"
             return Check(
                 name: "erişilebilirlik",
                 status: .fail("verilmemiş"),
-                // macOS attributes the grant to whatever launched the binary,
-                // not to the binary itself, so naming the parent is the
-                // difference between an actionable message and a puzzle.
-                remedy: "Sistem Ayarları → Gizlilik ve Güvenlik → Erişilebilirlik → \(owner) etkinleştir")
+                remedy: "Sistem Ayarları → Gizlilik ve Güvenlik → Erişilebilirlik → "
+                    + "\(accessibilityOwner(parentName: parentProcessName(), parentPID: getppid()))"
+                    + " etkinleştir")
         }
         return Check(name: "erişilebilirlik", status: .ok(nil), remedy: nil)
+    }
+
+    /// Which entry the user has to tick in the Accessibility list.
+    ///
+    /// Launched from a shell, macOS attributes the grant to the *terminal*,
+    /// not to yaz — so naming the parent is the difference between an
+    /// actionable message and a puzzle. Under launchd there is no terminal:
+    /// the parent is `launchd` itself, and telling someone to enable
+    /// "launchd" is worse than useless. There the grant belongs to yaz, which
+    /// the embedded Info.plist gives an identity of its own.
+    static func accessibilityOwner(parentName: String?, parentPID: pid_t) -> String {
+        guard let parentName, !parentName.isEmpty else { return "yaz" }
+        if parentPID <= 1 || parentName == "launchd" { return "yaz" }
+        return parentName
     }
 
     static func model(config: Config) -> Check {
@@ -131,6 +144,28 @@ enum DoctorReport {
         }
     }
 
+    /// A stale login item is the worst kind of broken: launchd keeps trying,
+    /// the user sees nothing, and nothing in the UI says why.
+    static func loginItem() -> Check {
+        let state = LaunchAgent.status()
+        guard state.isInstalled else {
+            return Check(
+                name: "girişte başlatma",
+                status: .ok("kurulu değil"),
+                remedy: "istersen: yaz install --launch-at-login")
+        }
+        if state.isStale {
+            return Check(
+                name: "girişte başlatma",
+                status: .fail("kayıtlı ikili dosya yok: \(state.binaryPath ?? "?")"),
+                remedy: "yaz install --launch-at-login ile tazele veya --uninstall ile kaldır")
+        }
+        return Check(
+            name: "girişte başlatma",
+            status: .ok(state.binaryPath ?? "kurulu"),
+            remedy: nil)
+    }
+
     /// macOS routes the Fn key to emoji, dictation, or input switching unless
     /// told otherwise. The tap still sees the press, but the system action
     /// fires too, so the user gets an emoji picker every time they dictate.
@@ -155,15 +190,30 @@ enum DoctorReport {
 
     // MARK: -
 
-    static func render(_ checks: [Check]) {
+    /// Render the report.
+    ///
+    /// `toStandardError` exists for the launchd path. A LaunchAgent's stdout
+    /// and stderr go to *different files*, so a startup failure that announces
+    /// itself on stderr and then lists the reasons on stdout leaves the user
+    /// staring at "checks failed" with nothing under it — which is exactly
+    /// what the first run under launchd produced.
+    static func render(_ checks: [Check], toStandardError: Bool = false) {
+        var lines: [String] = []
         for check in checks {
             let (mark, label): (String, String) = switch check.status {
             case .ok(let detail): ("✓", detail ?? "tamam")
             case .warn(let message): ("!", message)
             case .fail(let message): ("✗", message)
             }
-            print("\(mark) \(check.name): \(label)")
-            if let remedy = check.remedy { print("    → \(remedy)") }
+            lines.append("\(mark) \(check.name): \(label)")
+            if let remedy = check.remedy { lines.append("    → \(remedy)") }
+        }
+
+        let text = lines.joined(separator: "\n")
+        if toStandardError {
+            FileHandle.standardError.write(Data((text + "\n").utf8))
+        } else {
+            print(text)
         }
     }
 

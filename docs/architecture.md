@@ -696,6 +696,106 @@ Böylece AppKit/SwiftUI yolu "derleniyor" seviyesinden "çalışıyor" seviyesin
 `overlay` ve `menu_bar` ayrı ayrı kapatılabiliyor. Ön planda terminal
 çalıştırması için ikisi de gereksiz olabilir; log zaten her şeyi söylüyor.
 
+
+## M7 — kurulum ve girişte başlatma
+
+### Gömülü Info.plist — parrot'un eksiği
+
+yaz `.app` paketi olmayan tek bir ikili. TCC'nin mikrofon istemini **yaz'a**
+atfetmesinin ve kullanıcı için yazılmış bir açıklama metni göstermesinin tek
+yolu, plist'i ikilinin `__TEXT,__info_plist` bölümüne linker ile gömmek.
+
+quill bunu yapıyor, parrot yapmıyor — ve parrot'un kendi dokümanı kod
+imzalamayı "açık soru" olarak bırakmış durumda. launchd altında bu fark, izin
+isteminin kime ait olduğu demek.
+
+Doğrulandı:
+
+```
+$ launchctl plist __TEXT,__info_plist .build/release/yaz
+{
+    "CFBundleIdentifier" = "com.mikeowski.yaz";
+    "NSMicrophoneUsageDescription" = "yaz, kısayola basılı tuttuğunuz sürece...";
+    "LSBackgroundOnly" = true;
+};
+```
+
+`CFBundleIdentifier` ile LaunchAgent etiketi kasıtlı olarak aynı: launchd işi
+ve TCC kimliği aynı şeye işaret etmeli. Test bunu doğruluyor.
+
+### launchd iş tanımı
+
+`SMAppService` değil — o gerçek bir `.app` paketi istiyor, yaz ise
+`/usr/local/bin` altında tek bir ikili. Düz bir launchd plist'i bunun dürüst
+karşılığı.
+
+Plist üretimi dosya sistemi ve `launchctl` çağrılarından ayrı tutuldu, çünkü
+**girişte başlamayan bir daemon kullanıcıya hata ayıklayacak hiçbir şey
+vermiyor.** İki karar test edilmiş durumda:
+
+- `KeepAlive` yalnızca **başarısız** çıkışta yeniden başlatıyor. Menü barından
+  "Çık" temiz bir çıkış ve kapalı kalmalı; koşulsuz `KeepAlive` o menü öğesini
+  yalancı yapardı.
+- `EnvironmentVariables.PATH` tanımlı. launchd giriş ajanlarına çıplak bir
+  ortam veriyor; PATH olmadan `on_transcript` kancası hiçbir komutu bulamaz.
+
+### Bayat kayıt — sessiz arızanın kaynağı
+
+En kötü senaryo: plist duruyor ama ikili taşınmış. launchd denemeye devam
+eder, kullanıcı hiçbir şey görmez. `LaunchAgent.status()` bunu ayrı bir durum
+olarak raporluyor ve `doctor` sert hata veriyor.
+
+Gerçekten denendi: ikili geçici olarak gizlendi, `doctor` doğru şekilde
+`✗ kayıtlı ikili dosya yok` dedi.
+
+### launchd altında çalıştırınca çıkan iki gerçek hata
+
+Bu ikisi kodu okuyarak değil, LaunchAgent'ı gerçekten kurup log'a bakarak
+bulundu.
+
+**1. Bölünmüş çıktı.** Bir LaunchAgent'ın stdout ve stderr'i *farklı
+dosyalara* gidiyor. Başlangıç hatası stderr'e "kontroller başarısız" yazıp
+sebepleri stdout'a listeleyince, kullanıcı `/tmp/yaz.err.log` dosyasında
+altı boş bir başlıkla kalıyordu. `DoctorReport.render` artık hedef akışı
+parametre alıyor.
+
+**2. "launchd etkinleştir".** Erişilebilirlik mesajı ebeveyn süreci
+adlandırıyor — kabuktan çalışınca doğru davranış, çünkü macOS izni terminale
+atfediyor. launchd altında ebeveyn `launchd` ve kullanıcıya "launchd'ı
+etkinleştir" demek işe yaramaz olmanın ötesinde yanlış: orada izin, gömülü
+Info.plist sayesinde kendi kimliği olan yaz'a ait. `accessibilityOwner`
+ayrıştırıldı ve test edildi.
+
+### Kurulum betiği
+
+`curl | sh` **değil**, bilerek: bu betik sudo istiyor ve TCC izinleri talep
+eden bir daemon kuruyor, okunmadan çalıştırılmamalı.
+
+Ön koşullar sert: macOS, arm64, macOS 26+. Whisper ve Parakeet ANE üzerinde
+çalışıyor; Intel'de model yüklense bile kullanılabilir gecikme alınamaz.
+
+sudo yalnızca gerçekten gerekliyse isteniyor. İlk sürüm `~/bin` gibi bir
+hedefe kurarken de parola soruyordu, çünkü henüz var olmayan bir dizini
+"yazılamaz" sayıyordu — dizin yoksa karar ebeveyninin yazılabilirliğine bağlı.
+Aynı hata kaldırma yolunda da vardı, ikisi de ortak bir `writable` yardımcısına
+bağlandı.
+
+Ad-hoc imza atılıyor (`codesign -s -`). Bu bir dağıtım imzası değil; imzasız
+bir ikilinin her derlemede TCC kimliğini kaybetmesini bir nebze yavaşlatıyor.
+Gerçek çözüm Developer ID ile imzalamak — bu proje için açık bir konu.
+
+### Doğrulama
+
+Kurulum ve kaldırma gerçekten çalıştırıldı, makinede net etki sıfır:
+
+- `yaz install --launch-at-login` → plist yazıldı, `launchctl print` işi
+  `state = running` olarak gösterdi
+- daemon launchd altında doğru şekilde erişilebilirlik hatası verdi
+- ikili gizlendi → `doctor` bayat kaydı yakaladı
+- `yaz install --uninstall` → plist silindi, launchd artık tanımıyor
+- `scripts/install.sh` izole bir `PREFIX` ile derledi, kurdu, imzaladı,
+  `doctor` çalıştırdı; `--uninstall` temiz kaldırdı
+
 ## Durum
 
 - **M1 — tamam.** Motor katmanı, `Transcriber` protokolü, Whisper + Parakeet
@@ -716,7 +816,11 @@ Böylece AppKit/SwiftUI yolu "derleniyor" seviyesinden "çalışıyor" seviyesin
   `TranscriptPipeline`. 156 test.
 - **M6 — tamam.** `LevelMeter`, `IndicatorState`, tıklama geçiren overlay
   pili, `MenuBarController`, `yaz preview`. 176 test.
-- **M7** — LaunchAgent, install betiği.
+- **M7 — tamam.** Gömülü Info.plist, `LaunchAgent`, `yaz install`,
+  `scripts/install.sh`. 197 test.
+
+Planlanan yol tamamlandı. Kalan tek eksik canlı dikte turu: mikrofon ve
+erişilebilirlik izinleri kullanıcı onayı gerektiriyor.
 
 ## Ölçüm disiplini
 

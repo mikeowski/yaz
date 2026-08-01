@@ -16,6 +16,21 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "FluidAudio", package: "FluidAudio"),
                 .product(name: "WhisperKit", package: "WhisperKit"),
+            ],
+            exclude: ["Info.plist"],
+            linkerSettings: [
+                // Embed Info.plist into the binary's __TEXT,__info_plist
+                // section. yaz ships as a single executable with no .app
+                // bundle, so this is the only way TCC can attribute the
+                // microphone prompt to yaz itself — and read a usage string
+                // written for the user — rather than to whatever launched it.
+                // parrot omits this and pays for it under launchd.
+                .unsafeFlags([
+                    "-Xlinker", "-sectcreate",
+                    "-Xlinker", "__TEXT",
+                    "-Xlinker", "__info_plist",
+                    "-Xlinker", "Sources/yaz/Info.plist",
+                ]),
             ]
         ),
         .testTarget(

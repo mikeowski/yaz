@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.mikeowski.yaz</string>
+    <key>CFBundleName</key>
+    <string>yaz</string>
+    <key>CFBundleDisplayName</key>
+    <string>yaz</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>yaz, kısayola basılı tuttuğunuz sürece mikrofonu dinler ve konuşmanızı metne çevirir. Ses bu Mac'ten çıkmaz.</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>MIT</string>
+    <key>LSBackgroundOnly</key>
+    <true/>
+</dict>
+</plist>

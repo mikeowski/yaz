@@ -8,7 +8,7 @@ struct Yaz: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "yaz",
         abstract: "Türkçe konuşan geliştiriciler için on-device dikte. Bas-konuş, bırak, metin imlece gelir.",
-        subcommands: [Run.self, Doctor.self, Transcribe.self, Models.self, Vocab.self, Preview.self],
+        subcommands: [Run.self, Doctor.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self],
         defaultSubcommand: Run.self
     )
 }
@@ -46,9 +46,9 @@ struct Run: AsyncParsableCommand {
         if !skipDoctor {
             let checks = DoctorReport.run(config: config)
             guard DoctorReport.canRun(checks) else {
-                log("başlangıç kontrolleri başarısız:\n")
-                DoctorReport.render(checks)
-                log("\nyukarıdakileri düzelt ya da --skip-doctor kullan")
+                log("başlangıç kontrolleri başarısız:")
+                DoctorReport.render(checks, toStandardError: true)
+                log("yukarıdakileri düzelt ya da --skip-doctor kullan")
                 throw ExitCode(1)
             }
         }
@@ -132,6 +132,68 @@ struct Models: AsyncParsableCommand {
     }
 }
 
+/// Register or remove the login item.
+struct Install: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Girişte otomatik başlatmayı aç veya kapat."
+    )
+
+    @Flag(name: .long, help: "Girişte başlaması için kaydet.")
+    var launchAtLogin = false
+
+    @Flag(name: .long, help: "Kaydı kaldır.")
+    var uninstall = false
+
+    @Flag(name: .long, help: "Yalnızca durumu göster.")
+    var status = false
+
+    func run() async throws {
+        if status || (!launchAtLogin && !uninstall) {
+            report()
+            return
+        }
+        guard launchAtLogin != uninstall else {
+            throw ValidationError("--launch-at-login veya --uninstall, ikisinden birini seç")
+        }
+
+        if uninstall {
+            try LaunchAgent.remove()
+            print("✓ girişte başlatma kaldırıldı")
+            return
+        }
+
+        guard let binary = LaunchAgent.currentBinary() else {
+            throw ValidationError("çalışan ikili dosyanın yolu bulunamadı")
+        }
+        // A LaunchAgent pointing into a build directory breaks the moment the
+        // tree is cleaned, and the failure is silent — say so now.
+        if binary.path.contains("/.build/") {
+            log("uyarı: \(binary.path) bir derleme dizini —")
+            log("       önce /usr/local/bin altına kopyala, sonra oradan çalıştır")
+        }
+
+        try LaunchAgent.install(binary: binary)
+        print("✓ girişte başlatma kuruldu")
+        print("  ikili : \(binary.path)")
+        print("  günlük: \(LaunchAgent.standardErrorPath)")
+    }
+
+    private func report() {
+        let state = LaunchAgent.status()
+        if !state.isInstalled {
+            print("girişte başlatma: kurulu değil")
+            print("  → yaz install --launch-at-login")
+            return
+        }
+        print("girişte başlatma: kurulu")
+        print("  ikili : \(state.binaryPath ?? "?")")
+        print("  plist : \(LaunchAgent.plistURL.path)")
+        if state.isStale {
+            print("  ✗ ikili dosya bulunamıyor — yaz install --launch-at-login ile tazele")
+        }
+    }
+}
+
 /// Show the recording indicator without a microphone or a hotkey.
 ///
 /// The overlay and the menu bar are the only parts of yaz that cannot be
@@ -147,7 +209,7 @@ struct Preview: AsyncParsableCommand {
     var dwell: Double = 1.6
 
     func run() async throws {
-        try await MainActor.run {
+        await MainActor.run {
             let app = NSApplication.shared
             app.setActivationPolicy(.accessory)
 

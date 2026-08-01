@@ -11,14 +11,20 @@ onun bilerek reddettiği üç şeyi hedefliyor: **çok dilli varsayılan**,
 
 ## Durum
 
-**Uçtan uca çalışıyor.** Bas-konuş → çeviri → terim düzeltme → temizlik → imlece yapıştırma. 176 test.
+**Uçtan uca çalışıyor.** Bas-konuş → çeviri → terim düzeltme → temizlik → imlece yapıştırma. 197 test.
 
 ```sh
-swift build -c release
-sudo cp .build/release/yaz /usr/local/bin/yaz
-yaz doctor        # izinleri kontrol et
-yaz               # daemon'ı başlat, fn'e basılı tutup konuş
+./scripts/install.sh              # derle + /usr/local/bin altına kur
+./scripts/install.sh --login      # ayrıca girişte başlat
+./scripts/install.sh --uninstall  # kaldır
+
+yaz doctor --request              # erişilebilirlik iznini iste
+yaz models download               # modeli önden indir (~1.6 GB)
+yaz                               # daemon'ı başlat, fn'e basılı tutup konuş
 ```
+
+Betik `curl | sh` için değil, bilerek: sudo istiyor ve TCC izinleri talep eden
+bir daemon kuruyor. Önce oku.
 
 `yaz doctor` her şeyi tek yerde söyler:
 
@@ -77,6 +83,9 @@ yaz vocab test "<metin>"               # sözlük düzeltmesini dene, puanları 
 yaz vocab refine --mode llm "<metin>"  # son işlemeyi dene
 yaz vocab explain "<terim>" "<duyulan>"  # fonetik anahtarları karşılaştır
 
+yaz install --launch-at-login          # girişte başlat
+yaz install --uninstall
+yaz install --status
 yaz preview                            # kayıt göstergesini dene (mikrofon gerekmez)
 yaz doctor [--request]                 # izinler, model, ayarlar
 yaz models list
@@ -181,7 +190,10 @@ kabuk komutu çalıştırır.
   düşürebiliyor.
 - **Erişilebilirlik izni seni başlatan uygulamaya verilir**, yaz'a değil.
   Terminal değiştirince yeniden vermen gerekir. `yaz doctor` hangi uygulamayı
-  işaretlemen gerektiğini söyler.
+  işaretlemen gerektiğini söyler — launchd altında bu yaz'ın kendisi olur,
+  çünkü ikili kendi Info.plist'ini taşıyor.
+- **İkili imzasız** (kurulum betiği ad-hoc imza atıyor). Her yeniden derlemede
+  TCC izinleri sıfırlanabilir. Kalıcı çözüm Developer ID imzası — açık konu.
 
 ## Yığın
 

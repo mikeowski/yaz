@@ -30,6 +30,10 @@ enum YazError: Error, CustomStringConvertible, Equatable {
     case refinementTimedOut(seconds: Double)
     case refinerUnavailable(detail: String)
 
+    // MARK: Install
+
+    case launchAgentFailed(action: String, detail: String)
+
     // MARK: Input signal
 
     case audioTooShort(seconds: Double, minimum: Double)
@@ -66,6 +70,9 @@ enum YazError: Error, CustomStringConvertible, Equatable {
             return String(format: "son işleme %.0f sn içinde bitmedi — ham metin kullanıldı", seconds)
         case .refinerUnavailable(let detail):
             return "son işleme kullanılamıyor: \(detail)"
+
+        case .launchAgentFailed(let action, let detail):
+            return "launchctl \(action) başarısız: \(detail)"
 
         case .audioTooShort(let seconds, let minimum):
             return String(
