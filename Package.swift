@@ -17,6 +17,10 @@ let package = Package(
                 .product(name: "FluidAudio", package: "FluidAudio"),
                 .product(name: "WhisperKit", package: "WhisperKit"),
             ]
-        )
+        ),
+        .testTarget(
+            name: "yazTests",
+            dependencies: ["yaz"]
+        ),
     ]
 )

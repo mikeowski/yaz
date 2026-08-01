@@ -111,10 +111,120 @@ kendisi olduğu tek yola gecikme ekler.
 `release()` protokolde çünkü yaz gün boyu açık duran bir daemon; boştayken
 yüzlerce megabaytlık CoreML ağırlığını resident tutmamalı.
 
+
+## Sağlamlaştırma katmanı
+
+Motor katmanı "çalışıyor"dan "güvenilir"e taşındı. Dikte, çıktısı doğrudan
+kullanıcının imlecine yazılan bir araç: yanlış metin, hata mesajından daha
+pahalı. Bu yüzden üç savunma hattı var.
+
+### 1. Çıkarımdan önce — `SpeechGate`
+
+Ölçülen iki gerçek: 0.6 sn'lik ifade Whisper'dan **boş** dönüyor, ve sessizlik
+verildiğinde model susmuyor — `[BLANK_AUDIO]`, `(müzik)` ya da düpedüz uydurma
+bir cümle üretiyor.
+
+Kısa/sessiz tamponu burada elemek mikrosaniye sürüyor; çıkarımdan sonra elemek
+~500 ms. Kapılar: en az 0.35 sn süre, en az 0.005 tepe genlik.
+
+Bu reddedişler `isBenignInput` ile işaretli — kısayola yanlışlıkla basmak hata
+değil, daemon bunları sessizce atmalı.
+
+### 2. Çıkarımdan sonra — `TranscriptionQuality`
+
+Whisper asla "bilmiyorum" demez, her zaman metin döndürür. Ama decoder segment
+başına üç sinyal veriyor ve parrot bunları yere düşürüyor:
+
+| Sinyal | Yakaladığı |
+|---|---|
+| `noSpeechProb` > 0.6 | konuşma değil |
+| `compressionRatio` > 2.4 | tekrar döngüsü ("teşekkürler teşekkürler…") |
+| `avgLogprob` < -1.0 | uydurma metin |
+| `avgLogprob` < -0.7 | düşük güven (kullanılabilir ama işaretli) |
+
+Ek olarak doğrudan kelime-tekrarı tespiti var: kısa bir ifadede sıkıştırma
+oranı eşiği geçmeden döngü oluşabiliyor.
+
+Eşikler OpenAI'nin referans decoder'ından. Segment sinyalleri süreye göre
+ağırlıklı ortalanıyor — tek kelimelik bir segment kararı çekmesin diye. Ama
+sıkıştırma oranında **en kötü** segment alınıyor: tek döngüye giren segment
+tüm ifadeyi mahkûm eder, ortalamada erimemeli.
+
+### 3. Sınırlarda — tip güvenli hatalar ve zaman aşımı
+
+`YazError` her başarısızlığı adlandırıyor. Sebebi somut: ilk prototipte
+`AVAudioFile` çağrısı patladı, Foundation onu çıplak
+`_GenericObjCError.nilError`'a çevirdi, CLI `Error: nilError` yazdı. Bu kimseye
+bir şey söylemiyor.
+
+`withTranscriptionTimeout` takılan bir Core ML çağrısının daemon'ı kilitlemesini
+engelliyor. Dürüst sınır: çağıran serbest kalır, ANE hemen durmaz.
+
+### Dil doğrulaması — sessiz yanlıştan iyi hata
+
+Parakeet, Türkçe sese kendinden emin saçmalık üretiyor, reddetmiyor:
+
+```
+$ yaz transcribe --engine-name parakeet --language en fixtures/t1.wav
+Bugun Parot Krojesini in Jeledimweon device transcription mimari sinichosdum.
+```
+
+Bu yüzden `supportedLanguages` motor protokolünde. Desteklenmeyen çift model
+indirilmeden önce reddediliyor:
+
+```
+$ yaz transcribe --engine-name parakeet --language tr fixtures/t1.wav
+Error: parakeet motoru 'tr' dilini desteklemiyor (desteklenen: bg, hr, cs, da, nl, en, et, fi…)
+```
+
+### Ses yükleme — pencereli ve sınırlı
+
+Bir saatlik 48 kHz stereo kayıt tek Float32 tamponda ~690 MB. `AudioLoader`
+kaynak sesi 32768 karelik pencerelerde okuyup dönüştürüyor; bellekte tek pencere
+duruyor. `maxSeconds` ile üst sınır var.
+
+**Bulunan hata:** `AVAudioFile.read(into:)` dosya sonunda 0 kare döndürmüyor,
+**hata fırlatıyor** — ve Foundation bunu yine `nilError`'a çeviriyor. Döngü
+`frameLength == 0` yerine `framePosition < length` ile sürülmeli. Bu hatayı
+test paketi yazıldığı gün yakaladı.
+
+Ayrıca dosya varlığı önden kontrol ediliyor: AVAudioFile eksik dosyayı
+`Code=2003334207` diye bildiriyor, bu da kullanıcının bilmesi gereken tek şeyi
+gömüyor.
+
+### Test paketi
+
+37 test, 5 suite (`swift test`). Kapsam: kapı eşikleri, kalite kararları,
+temizleme regex'leri, ses yükleme, hata mesajlarının okunabilirliği.
+
+Düşmanca fixture'lar `fixtures/` altında: tam sessizlik, 100 ms'lik ifade,
+eşik altı gürültü. Sağlamlaştırmanın kanıtı bunların uçtan uca elenmesi:
+
+```
+$ yaz transcribe --strict fixtures/t1.wav fixtures/silence-3s.wav fixtures/tiny-100ms.wav
+═══ t1.wav (5.57 sn) ═══
+  gecikme 567 ms · RTF 0.102 · tepe 0.702 · rms 0.151
+  noSpeech 0.00 · logProb -0.21 · sıkıştırma 1.07
+  Bugün Pilot Projesini inceledim ve On Device Transcription Mimarisini çözdüm.
+
+═══ silence-3s.wav ═══
+  ✗ kayıtta ses yok (tepe 0.0000, eşik 0.0050)
+
+═══ tiny-100ms.wav ═══
+  ✗ kayıt çok kısa (0.10 sn, en az 0.35 sn gerekli)
+```
+
+`sanitize` de sıkılaştırıldı. parrot her `(...)` içeriğini siliyor — bu, dikte
+edilen gerçek parantezli ifadeleri de götürüyor. yaz yalnızca bilinen not
+sözcüklerini (`sessizlik`, `müzik`, `applause`…) ve 40 karakteri aşmayan
+span'ları siliyor; "toplantı (yarın değil, öbür gün) yapılacak" olduğu gibi kalıyor.
+
 ## Durum
 
 - **M1 — tamam.** Motor katmanı, `Transcriber` protokolü, Whisper + Parakeet
   conformance'ları, `yaz transcribe` ölçüm koşum takımı, sabit Türkçe fixture'lar.
+- **M1.5 — tamam.** Sağlamlaştırma: `SpeechGate`, `TranscriptionQuality`,
+  `YazError`, zaman aşımı, dil doğrulaması, pencereli `AudioLoader`, 37 test.
 - **M2** — mikrofon yakalama + yapılandırılabilir kısayol (parrot'ta `--hotkey`
   belgelenmiş ama kodda yok; burada gerçekten olacak).
 - **M3** — pano yapıştırma ile metin yerleştirme, CGEvent yedeği.

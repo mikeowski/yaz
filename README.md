@@ -11,7 +11,8 @@ onun bilerek reddettiği üç şeyi hedefliyor: **çok dilli varsayılan**,
 
 ## Durum
 
-Erken. Şu an çalışan: motor katmanı ve ölçüm koşum takımı.
+Erken. Şu an çalışan: **sağlamlaştırılmış** motor katmanı ve ölçüm koşum takımı.
+37 test (`swift test`).
 
 ```sh
 swift build -c release
@@ -26,6 +27,23 @@ swift build -c release
   Bugün Pilot Projesini inceledim ve On Device Transcription Mimarisini çözdüm.
 ```
 
+Kalite kapıları devrede (`--strict`): çok kısa, sessiz veya halüsinasyon
+çıktısı imlece gitmeden eleniyor.
+
+```
+$ yaz transcribe --strict fixtures/t1.wav fixtures/silence-3s.wav fixtures/tiny-100ms.wav
+═══ t1.wav (5.57 sn) ═══
+  gecikme 567 ms · RTF 0.102 · tepe 0.702 · rms 0.151
+  noSpeech 0.00 · logProb -0.21 · sıkıştırma 1.07
+  Bugün Pilot Projesini inceledim ve On Device Transcription Mimarisini çözdüm.
+
+═══ silence-3s.wav ═══
+  ✗ kayıtta ses yok (tepe 0.0000, eşik 0.0050)
+
+═══ tiny-100ms.wav ═══
+  ✗ kayıt çok kısa (0.10 sn, en az 0.35 sn gerekli)
+```
+
 Daemon, kısayol ve metin yerleştirme henüz yok — sıradaki adımlar
 [docs/architecture.md](docs/architecture.md) sonundaki durum listesinde.
 
@@ -37,6 +55,15 @@ yaz transcribe <dosya...>              # ses → metin, gecikme ölçümüyle
   --whisper-model large-v3-turbo|large-v3
   --language tr
   --repeat-count 3                     # ölçüm için tekrar
+  --max-seconds 3600                   # bundan uzun dosyaları reddet
+  --strict                             # kalite kapılarını uygula
+```
+
+Desteklenmeyen motor/dil çifti model indirilmeden reddedilir:
+
+```
+$ yaz transcribe --engine-name parakeet --language tr fixtures/t1.wav
+Error: parakeet motoru 'tr' dilini desteklemiyor (desteklenen: bg, hr, cs, da, nl, en, et, fi…)
 ```
 
 ## Bilinmesi gerekenler

@@ -12,10 +12,14 @@ import WhisperKit
 ///
 /// Cost of that constraint: 1.6 GB of weights and ~500-900 ms per utterance,
 /// versus Parakeet's ~600 MB and a much lower RTF. Parakeet stays available
-/// through `--engine parakeet` for English-only dictation.
+/// through `--engine-name parakeet` for English-only dictation.
 actor WhisperTranscriber: Transcriber {
     nonisolated let name = "whisper"
     nonisolated let model: String
+
+    /// Whisper is multilingual and yaz pins the language explicitly, so there
+    /// is no useful subset to advertise — an empty list means "any".
+    nonisolated let supportedLanguages: [String] = []
 
     private let whisperKitID: String
     private let language: String
@@ -36,22 +40,59 @@ actor WhisperTranscriber: Transcriber {
         self.language = language
     }
 
-    func prepare() async throws {
-        guard box.kit == nil else { return }
-        box.kit = try await WhisperKit(WhisperKitConfig(
-            model: whisperKitID, verbose: false, prewarm: true, load: true
-        ))
+    /// WhisperKit downloads into `~/Documents/huggingface`, not a cache
+    /// directory — worth knowing, because an iCloud-synced Documents folder
+    /// will happily push 1.6 GB of weights to the cloud.
+    nonisolated var isDownloaded: Bool {
+        let base = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Documents/huggingface/models/argmaxinc/whisperkit-coreml")
+            .appending(path: whisperKitID)
+        // The decoder is the last large artefact to land, so its presence is a
+        // better "finished downloading" signal than the folder existing.
+        return FileManager.default.fileExists(atPath: base.appending(path: "TextDecoder.mlmodelc").path)
     }
 
-    func transcribe(_ samples: [Float]) async throws -> TranscriptionOutput {
-        guard !samples.isEmpty else { throw TranscriberError.emptyAudio }
-        guard let pipeline = box.kit else { throw TranscriberError.notPrepared }
+    func prepare() async throws {
+        guard box.kit == nil else { return }
+        do {
+            box.kit = try await WhisperKit(WhisperKitConfig(
+                model: whisperKitID, verbose: false, prewarm: true, load: true
+            ))
+        } catch {
+            throw YazError.modelLoadFailed(model: model, underlying: "\(error)")
+        }
+    }
+
+    func transcribe(
+        _ samples: [Float], options: TranscribeOptions
+    ) async throws -> TranscriptionOutput {
+        // Cheap rejections first: a hotkey tap or a muted mic must not cost a
+        // model round trip.
+        let level = try options.gate.check(samples)
+        guard box.kit != nil else { throw YazError.engineNotPrepared(engine: name) }
 
         // Whisper's own decoder handles segmentation; we only pin the language
         // so it never wastes a pass auto-detecting, and pin temperature so
         // repeated runs over the same audio are comparable.
-        let options = DecodingOptions(language: language, temperature: 0)
-        let results = try await pipeline.transcribe(audioArray: samples, decodeOptions: options)
+        let decodeOptions = DecodingOptions(language: language, temperature: 0)
+        let engineName = name
+
+        let results: [TranscriptionResult]
+        do {
+            // Capture the box (@unchecked Sendable), not the WhisperKit
+            // instance, which is not Sendable and cannot cross into the group.
+            let box = self.box
+            results = try await withTranscriptionTimeout(options.timeout, engine: engineName) {
+                guard let kit = box.kit else {
+                    throw YazError.engineNotPrepared(engine: engineName)
+                }
+                return try await kit.transcribe(audioArray: samples, decodeOptions: decodeOptions)
+            }
+        } catch let error as YazError {
+            throw error
+        } catch {
+            throw YazError.transcriptionFailed(engine: engineName, underlying: "\(error)")
+        }
 
         let text = Self.sanitize(
             results.map { (r: TranscriptionResult) in r.text }.joined(separator: " ")
@@ -66,15 +107,50 @@ actor WhisperTranscriber: Transcriber {
             }
         }.filter { !$0.text.isEmpty }
 
+        let signals = Self.signals(from: results)
         return TranscriptionOutput(
             text: text,
             segments: segments,
-            duration: Double(samples.count) / 16_000
+            duration: level.seconds,
+            level: level,
+            quality: .assess(text: text, signals: signals, thresholds: options.thresholds)
         )
     }
 
     func release() async {
         box.kit = nil
+    }
+
+    // MARK: -
+
+    /// Average the decoder's per-segment confidence signals, weighted by
+    /// segment length so a stray one-word segment cannot drag the verdict.
+    static func signals(from results: [TranscriptionResult]) -> TranscriptionQuality.Signals {
+        let segments = results.flatMap { (r: TranscriptionResult) in r.segments }
+        guard !segments.isEmpty else { return .init() }
+
+        var weightTotal: Float = 0
+        var noSpeech: Float = 0
+        var logProb: Float = 0
+        var compression: Float = 0
+
+        for segment in segments {
+            let weight = max(segment.end - segment.start, 0.01)
+            weightTotal += weight
+            noSpeech += segment.noSpeechProb * weight
+            logProb += segment.avgLogprob * weight
+            compression = max(compression, segment.compressionRatio)
+        }
+        guard weightTotal > 0 else { return .init() }
+
+        return .init(
+            noSpeechProb: noSpeech / weightTotal,
+            avgLogProb: logProb / weightTotal,
+            // Repetition is a per-segment failure: one looping segment is
+            // enough to condemn the utterance, so take the worst rather than
+            // diluting it in an average.
+            compressionRatio: compression
+        )
     }
 
     /// Strip Whisper's non-speech bracket tokens. Fed silence, the model emits
@@ -83,17 +159,48 @@ actor WhisperTranscriber: Transcriber {
     /// typed straight into whatever field the user is looking at.
     static func sanitize(_ text: String) -> String {
         let patterns = [
-            #"\[[^\]]*\]"#,     // [BLANK_AUDIO], [MUSIC], [Applause]
-            #"\([^)]*\)"#,       // (silence), (müzik çalıyor)
-            #"<\|[^|]*\|>"#,     // <|nospeech|>, <|endoftext|>
-            #"\*[^*]*\*"#,       // *arka plan gürültüsü*
+            #"<\|[^|]*\|>"#,                       // <|nospeech|>, <|endoftext|>
+            #"\[[^\]]{0,40}\]"#,                    // [BLANK_AUDIO], [MUSIC]
+            #"\*[^*]{0,40}\*"#,                     // *arka plan gürültüsü*
         ]
         var out = text
         for pattern in patterns {
             out = out.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
         }
+        // Parentheses get their own pass with a non-speech word list. Blanket
+        // stripping of "(...)" also deletes legitimate speech — people dictate
+        // asides in brackets — so only annotation-looking spans go.
+        out = stripNonSpeechParentheticals(out)
         out = out.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
         return out.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Whisper's parenthetical annotations are short and drawn from a small
+    /// vocabulary in whichever language it decoded. Anything longer, or made
+    /// of ordinary words, is far more likely to be real dictated speech.
+    static func stripNonSpeechParentheticals(_ text: String) -> String {
+        let markers: Set<String> = [
+            "silence", "music", "applause", "laughter", "inaudible", "noise",
+            "sessizlik", "müzik", "alkış", "gülüşmeler", "anlaşılmıyor", "gürültü",
+            "background noise", "music playing", "müzik çalıyor", "arka plan gürültüsü",
+        ]
+        guard let regex = try? NSRegularExpression(pattern: #"\(([^)]{0,40})\)"#) else { return text }
+
+        var result = text
+        let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        for match in matches.reversed() {
+            guard
+                let full = Range(match.range, in: result),
+                let inner = Range(match.range(at: 1), in: result)
+            else { continue }
+            let body = result[inner]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            if markers.contains(body) {
+                result.replaceSubrange(full, with: " ")
+            }
+        }
+        return result
     }
 }
 
