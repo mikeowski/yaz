@@ -25,6 +25,7 @@ enum DoctorReport {
             accessibility(),
             model(config: config),
             injection(config: config),
+            refinement(config: config),
         ]
         if config.hotkey.conflictsWithSystemFnAction {
             checks.append(fnKeyMapping())
@@ -108,6 +109,26 @@ enum DoctorReport {
             remedy: config.injectMode == .type
                 ? "not: tuş tuş yazma Electron uygulamalarında karakter düşürebilir — 'paste' daha güvenilir"
                 : nil)
+    }
+
+    /// The language-model path needs Apple Intelligence switched on and the
+    /// model downloaded. Neither is something yaz can arrange, so the check
+    /// exists to say which one is missing.
+    static func refinement(config: Config) -> Check {
+        switch Refiner.availability(for: config.refine) {
+        case .available:
+            return Check(
+                name: "son işleme",
+                status: .ok(config.refine.displayName),
+                remedy: config.refine == .llm
+                    ? "not: dil modeli her ifadeye ~0.3–1.4 sn ekler (uzunluğa göre); \"fillers\" ~1 ms"
+                    : nil)
+        case .unavailable(let reason):
+            return Check(
+                name: "son işleme",
+                status: .warn("\(config.refine.rawValue) kullanılamıyor — \(reason)"),
+                remedy: "config'de \"refine\": \"fillers\" ile deterministik temizliğe düş")
+        }
     }
 
     /// macOS routes the Fn key to emoji, dictation, or input switching unless

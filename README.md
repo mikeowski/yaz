@@ -11,7 +11,7 @@ onun bilerek reddettiği üç şeyi hedefliyor: **çok dilli varsayılan**,
 
 ## Durum
 
-**Uçtan uca çalışıyor.** Bas-konuş → çeviri → terim düzeltme → imlece yapıştırma. 126 test.
+**Uçtan uca çalışıyor.** Bas-konuş → çeviri → terim düzeltme → temizlik → imlece yapıştırma. 156 test.
 
 ```sh
 swift build -c release
@@ -74,6 +74,7 @@ yaz                                    # daemon (varsayılan)
   --verbose
 
 yaz vocab test "<metin>"               # sözlük düzeltmesini dene, puanları gör
+yaz vocab refine --mode llm "<metin>"  # son işlemeyi dene
 yaz vocab explain "<terim>" "<duyulan>"  # fonetik anahtarları karşılaştır
 
 yaz doctor [--request]                 # izinler, model, ayarlar
@@ -96,6 +97,28 @@ $ yaz transcribe --engine-name parakeet --language tr fixtures/t1.wav
 Error: parakeet motoru 'tr' dilini desteklemiyor (desteklenen: bg, hr, cs, da, nl, en, et, fi…)
 ```
 
+## Son işleme
+
+İki kademe. Deterministik olan varsayılan ve bedava:
+
+```
+$ yaz vocab refine --mode fillers "ıı yarın ee saat ikide mmm toplantımız var"
+sonra: yarın saat ikide toplantımız var        (1 ms)
+```
+
+Dil modeli (Apple FoundationModels, macOS 26 ile hazır gelir) bağlamsal dolgu
+kelimelerini ve noktalamayı da hallediyor — ama ifade başına 0.3–1.4 sn ekliyor,
+o yüzden opt-in:
+
+```
+$ yaz vocab refine --mode llm "ıı yarın şey saat ikide yani toplantımız var hani o proje için ee hazırlık lazım"
+sonra: Yarın saat ikide toplantımız var. O proje için hazırlık lazım.
+```
+
+Model çıktısı korumadan geçmek zorunda: özetleme, ekleme, soruyu cevaplama ve
+içerik kaybı reddediliyor. Reddedilirse deterministik sonuca dönülüyor —
+temizlik adımı yüzünden dikte kaybolmaz.
+
 ## Config
 
 `~/.config/yaz/config.json` (isteğe bağlı, CLI bayrakları önceliklidir):
@@ -108,6 +131,7 @@ Error: parakeet motoru 'tr' dilini desteklemiyor (desteklenen: bg, hr, cs, da, n
   "hotkey": "fn",
   "inject_mode": "paste",
   "keep_model_loaded": true,
+  "refine": "fillers",
   "on_transcript": "my-hook",
   "vocabulary": [
     "Slack", "pull request", "CI pipeline", "Kubernetes",

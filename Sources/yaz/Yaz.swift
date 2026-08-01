@@ -69,6 +69,7 @@ struct Doctor: AsyncParsableCommand {
         let config = Config.load()
         print("yapılandırma: \(FileManager.default.fileExists(atPath: Config.path.path) ? Config.path.path : "varsayılanlar (config dosyası yok)")")
         print("motor: \(config.engine.rawValue) · dil: \(config.language) · kısayol: \(config.hotkey.displayName)")
+        print("sözlük: \(config.vocabulary.count) terim · son işleme: \(config.refine.displayName)")
         print()
 
         let checks = DoctorReport.run(config: config)
@@ -139,7 +140,7 @@ struct Models: AsyncParsableCommand {
 struct Vocab: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Sözlük düzeltmesini dene ve puanları göster.",
-        subcommands: [Test.self, Explain.self]
+        subcommands: [Test.self, Explain.self, Refine.self]
     )
 
     struct Test: AsyncParsableCommand {
@@ -180,6 +181,41 @@ struct Vocab: AsyncParsableCommand {
                                  correction.from, correction.to,
                                  correction.score, correction.matchedBy.rawValue))
                 }
+            }
+        }
+    }
+
+    /// Exercise the post-processing layer on text, with no audio involved.
+    struct Refine: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Son işlemeyi bir metin üzerinde dene."
+        )
+
+        @Argument(help: "Temizlenecek metin.")
+        var text: String
+
+        @Option(name: .long, help: "Mod: off, fillers, llm.")
+        var mode: RefineMode = .llm
+
+        func run() async throws {
+            switch Refiner.availability(for: mode) {
+            case .available: break
+            case .unavailable(let reason):
+                log("\(mode.rawValue) kullanılamıyor: \(reason)")
+                throw ExitCode(1)
+            }
+
+            let started = Date()
+            let result = await Refiner(mode: mode).refine(text)
+            let elapsed = Date().timeIntervalSince(started)
+
+            print("önce : \(text)")
+            print("sonra: \(result.text)")
+            print(String(format: "\nmod %@ · %.0f ms · %@",
+                         mode.rawValue, elapsed * 1000,
+                         result.changed ? "değişti" : "değişmedi"))
+            if let rejection = result.rejection {
+                print("model çıktısı reddedildi: \(rejection)")
             }
         }
     }
@@ -247,6 +283,9 @@ struct Transcribe: AsyncParsableCommand {
 
     @Flag(name: .long, help: "Config'deki sözlükle terim düzeltmesi uygula.")
     var vocabulary: Bool = false
+
+    @Option(name: .long, help: "Son işleme: off, fillers, llm.")
+    var refine: RefineMode?
 
     func validate() throws {
         guard repeatCount >= 1 else {
@@ -346,14 +385,27 @@ struct Transcribe: AsyncParsableCommand {
         }
 
         var text = output.text
-        if vocabulary {
-            let corrected = Vocabulary(terms: Config.load().vocabulary).correct(text)
-            for correction in corrected.corrections {
+        if vocabulary || refine != nil {
+            var config = Config.load()
+            if !vocabulary { config.vocabulary = [] }
+            if let refine { config.refine = refine }
+
+            let started = Date()
+            let processed = await TranscriptPipeline(config: config).process(text)
+            let elapsed = Date().timeIntervalSince(started)
+
+            for correction in processed.corrections {
                 print(String(format: "  sözlük: %@ → %@ (%.3f, %@)",
                              correction.from, correction.to,
                              correction.score, correction.matchedBy.rawValue))
             }
-            text = corrected.text
+            if let rejection = processed.refinementRejected {
+                print("  son işleme atlandı: \(rejection)")
+            }
+            if processed.refined || !processed.corrections.isEmpty {
+                print(String(format: "  son işleme %.0f ms", elapsed * 1000))
+            }
+            text = processed.text
         }
         print("  \(text.isEmpty ? "<boş>" : text)")
     }
@@ -370,6 +422,7 @@ enum EngineChoice: String, CaseIterable, ExpressibleByArgument {
 extension WhisperModel: ExpressibleByArgument {}
 extension Hotkey: ExpressibleByArgument {}
 extension TextInjector.Mode: ExpressibleByArgument {}
+extension RefineMode: ExpressibleByArgument {}
 
 func log(_ message: String) {
     FileHandle.standardError.write(Data("\(message)\n".utf8))

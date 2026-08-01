@@ -25,6 +25,11 @@ enum YazError: Error, CustomStringConvertible, Equatable {
     case transcriptionTimedOut(engine: String, seconds: Double)
     case languageUnsupported(engine: String, language: String, supported: [String])
 
+    // MARK: Post-processing
+
+    case refinementTimedOut(seconds: Double)
+    case refinerUnavailable(detail: String)
+
     // MARK: Input signal
 
     case audioTooShort(seconds: Double, minimum: Double)
@@ -56,6 +61,11 @@ enum YazError: Error, CustomStringConvertible, Equatable {
         case .languageUnsupported(let engine, let language, let supported):
             return "\(engine) motoru '\(language)' dilini desteklemiyor"
                 + " (desteklenen: \(supported.prefix(8).joined(separator: ", "))…)"
+
+        case .refinementTimedOut(let seconds):
+            return String(format: "son işleme %.0f sn içinde bitmedi — ham metin kullanıldı", seconds)
+        case .refinerUnavailable(let detail):
+            return "son işleme kullanılamıyor: \(detail)"
 
         case .audioTooShort(let seconds, let minimum):
             return String(

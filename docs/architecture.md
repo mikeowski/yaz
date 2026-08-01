@@ -524,6 +524,105 @@ kullanılan kelimeler listesi; listede olmayan nadir bir Türkçe kelime, ona
 fonetik olarak yakın bir terimle çakışırsa yanlış değiştirilebilir. Kullanıcı
 tarafındaki çare `min_similarity` ile terim başına eşiği yükseltmek.
 
+
+## M5 — son işleme katmanı
+
+Dikte çıktısı ham gelir: kekelemeler, tereddüt sesleri, noktalama yok. parrot
+bunu tasarım gereği reddediyor ("No AI post-processing"). yaz iki kademede
+yapıyor, çünkü işin bir kısmı risksiz, bir kısmı değil.
+
+### Kademe 1 — deterministik, ~1 ms
+
+`FillerFilter` yalnızca **hiçbir dilde kelime olmayan** sesleri atıyor: `ııı`,
+`eee`, `mmm`, `hmm`. Kapsam bilerek dar. Türkçede `yani`, `şey`, `hani`,
+`işte`, `falan` bağlama göre gerçek kelimeler; kör bir "dolgu kelime listesi"
+bunları silerse kullanıcının söylediğini değiştirir.
+
+Tek harfli sesliler ayrı bir tuzak: `o` zamir, `a` bağlaç. Bunlar yalnızca
+başka bir tereddüdün yanındayken (`ı ı yarın`) atılıyor.
+
+Bu kademe varsayılan. Bedava, modelsiz, anlamı değiştiremez.
+
+### Kademe 2 — dil modeli, opsiyonel
+
+Bağlama bağlı dolgu kelimeler, noktalama ve cümle sınırları için Apple
+FoundationModels. macOS 26 ile geliyor — indirme yok, ikinci çalışma zamanı
+yok; on-device transkripsiyonu değerli kılan argümanın aynısı.
+
+```
+girdi : ıı yarın şey saat ikide yani toplantımız var hani o proje için ee hazırlık yapmamız lazım
+çıktı : Yarın saat ikide toplantımız var. O proje için hazırlık yapmamız lazım.
+```
+
+**Ölçülen maliyet:** M4 Pro'da 0.3–1.4 sn (uzunluğa göre), motorun zaten
+harcadığı 0.5–0.9 sn'nin üstüne. Bu yüzden opt-in.
+
+### Korumalar — model çıktısı hak ederek girer
+
+Bir dil modeline "temizle" demek, onun özetleyebileceği, çevirebileceği, soruyu
+cevaplayabileceği veya reddedebileceği anlamına gelir. Bunlardan biri
+kullanıcının imlecine giderse, temizlemeye çalıştığımız kekelemeden kötü olur.
+
+`RefinementGuard` reddediyor:
+
+| Kontrol | Yakaladığı |
+|---|---|
+| Uzunluk oranı < 0.55 | özetleme |
+| Uzunluk oranı > 1.25 | model ekleme yapmış / soruyu cevaplamış |
+| İçerik kelimesi tutulumu < 0.75 | cümle parçası düşmüş, çatı değişmiş |
+| Boş çıktı | model reddetmiş |
+
+Ayrıca sohbet modellerinin sevdiği sarmalayıcılar soyuluyor: `"İşte
+düzeltilmiş metin:"` başlığı ve çevreleyen tırnaklar.
+
+**Her başarısızlık yumuşak.** Hata, zaman aşımı veya red durumunda deterministik
+sonuca dönülüyor. Bir temizlik adımı yüzünden dikte kaybolamaz.
+
+### Korumanın kendi hatası
+
+İlk sürüm iyi bir temizliği çöpe attı. Model `yani` ve `hani` kelimelerini
+doğru biçimde atmıştı; tutulum kontrolü bunları 4+ harfli "içerik kelimesi"
+sayıp %30 kayıp raporladı.
+
+Yani koruma, modelden **istediğimiz** davranışı cezalandırıyordu. Bağlamsal
+dolgu kelimeleri tutulum hesabından çıkarıldı. Gerçek içerik kaybı hâlâ
+yakalanıyor — ikisi de test edilmiş durumda.
+
+### Sıralama: sözlük önce, son işleme sonra
+
+`TranscriptPipeline` sırayı bir karar olarak sabitliyor.
+
+Sözlük **önce** çalışıyor ki model doğru yazılmış terimleri görsün: `Sılacık`
+verilen bir dil modeli onu makul görünen başka bir şeyle değiştirebilir ve o
+noktadan sonra deterministik katman onu tanıyamaz. `Slack` verilince
+düzeltecek bir şey bulmaz.
+
+Ters risk de kapalı: son işlemeden sonra, sözlüğün onardığı her terimin hâlâ
+metinde olduğu doğrulanıyor. Biri düştüyse temizlik atılıyor. Deterministik
+katman her iki yönde de kazanıyor.
+
+Ölçülen tam zincir:
+
+```
+$ yaz transcribe --vocabulary --refine llm fixtures/t2.wav
+  gecikme 907 ms · RTF 0.075
+  sözlük: Sılacık → Slack (0.749, skeleton)
+  sözlük: Puhrıkı Esti'de → pull request'de (0.832, skeleton)
+  sözlük: C.I.P. eline → CI pipeline (0.799, skeleton)
+  son işleme 1310 ms
+  Yarın saat 14'te toplantı var. Ahmet'e Slack üzerinden mesaj atmayı unutma.
+  Pull request'de merge etmem lazım. CI pipeline yeşile döndüğünde deploy ederiz.
+```
+
+Model cümle başındaki `pull` kelimesini büyüttü — meşru bir düzeltme, ve terim
+doğrulaması bunu (normalize ederek karşılaştırdığı için) kayıp saymadı.
+
+### Ayar aracı
+
+```
+yaz vocab refine --mode llm "ıı yarın şey toplantı var"
+```
+
 ## Durum
 
 - **M1 — tamam.** Motor katmanı, `Transcriber` protokolü, Whisper + Parakeet
@@ -539,7 +638,9 @@ tarafındaki çare `min_similarity` ile terim başına eşiği yükseltmek.
   `Config`, `doctor`, `models`, `Daemon`. 87 test.
 - **M4 — tamam.** Sözlük katmanı: fonetik iskelet eşleştirme, Türkçe kelime
   vetosu, ek koruması, `vocab test`/`vocab explain`. 126 test.
-- **M5** — FoundationModels ile dolgu temizleme.
+- **M5 — tamam.** Son işleme: `FillerFilter` (deterministik),
+  `Refiner` + FoundationModels (opsiyonel), `RefinementGuard`,
+  `TranscriptPipeline`. 156 test.
 - **M6** — menü barı + kayıt göstergesi.
 - **M7** — LaunchAgent, install betiği.
 
