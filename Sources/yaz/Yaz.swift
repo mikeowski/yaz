@@ -7,7 +7,7 @@ struct Yaz: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "yaz",
         abstract: "Türkçe konuşan geliştiriciler için on-device dikte. Bas-konuş, bırak, metin imlece gelir.",
-        subcommands: [Run.self, Doctor.self, Transcribe.self, Models.self],
+        subcommands: [Run.self, Doctor.self, Transcribe.self, Models.self, Vocab.self],
         defaultSubcommand: Run.self
     )
 }
@@ -130,6 +130,89 @@ struct Models: AsyncParsableCommand {
     }
 }
 
+/// Inspect and exercise the vocabulary layer.
+///
+/// Correction is a rules engine with thresholds, and thresholds need to be
+/// tuned against real garbled output rather than guessed. This command is how
+/// that is done — by the author while building it, and by the user when a term
+/// of theirs is not being caught.
+struct Vocab: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Sözlük düzeltmesini dene ve puanları göster.",
+        subcommands: [Test.self, Explain.self]
+    )
+
+    struct Test: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Bir metni düzelt ve neyin değiştiğini göster."
+        )
+
+        @Argument(help: "Düzeltilecek metin.")
+        var text: String
+
+        @Option(name: .long, help: "Eşik (varsayılan 0.72).")
+        var threshold: Double?
+
+        @Option(name: .long, help: "İskelet eşiği (varsayılan 0.78).")
+        var skeletonThreshold: Double?
+
+        func run() async throws {
+            let config = Config.load()
+            let vocabulary = Vocabulary(
+                terms: config.vocabulary,
+                threshold: threshold ?? Vocabulary.defaultThreshold,
+                skeletonThreshold: skeletonThreshold ?? Vocabulary.defaultSkeletonThreshold)
+
+            guard !config.vocabulary.isEmpty else {
+                log("sözlük boş — ~/.config/yaz/config.json içine \"vocabulary\" ekle")
+                throw ExitCode(1)
+            }
+
+            let result = vocabulary.correct(text)
+            print("önce : \(text)")
+            print("sonra: \(result.text)")
+            if result.corrections.isEmpty {
+                print("\n(değişiklik yok)")
+            } else {
+                print()
+                for correction in result.corrections {
+                    print(String(format: "  %@ → %@   (%.3f, %@)",
+                                 correction.from, correction.to,
+                                 correction.score, correction.matchedBy.rawValue))
+                }
+            }
+        }
+    }
+
+    struct Explain: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "İki ifadenin fonetik anahtarlarını ve benzerliğini göster."
+        )
+
+        @Argument(help: "Sözlükteki terim.")
+        var term: String
+
+        @Argument(help: "ASR'ın ürettiği bozuk hali.")
+        var heard: String
+
+        func run() async throws {
+            let pairs = [("terim", term), ("duyulan", heard)]
+            for (label, value) in pairs {
+                print("\(label.padding(toLength: 9, withPad: " ", startingAt: 0)) \"\(value)\"")
+                print("  normalize  \(PhoneticKey.normalize(value))")
+                print("  iskelet    \(PhoneticKey.skeleton(value))")
+            }
+            let full = EditDistance.similarity(
+                PhoneticKey.normalize(term), PhoneticKey.normalize(heard))
+            let skeletal = EditDistance.similarity(
+                PhoneticKey.skeleton(term), PhoneticKey.skeleton(heard))
+            print(String(format: "\nbenzerlik  tam %.3f  ·  iskelet %.3f", full, skeletal))
+            print(String(format: "eşikler    tam %.2f  ·  iskelet %.2f",
+                         Vocabulary.defaultThreshold, Vocabulary.defaultSkeletonThreshold))
+        }
+    }
+}
+
 /// Transcribe an audio file and print the result.
 ///
 /// This exists before the daemon does on purpose: it is the harness that lets
@@ -161,6 +244,9 @@ struct Transcribe: AsyncParsableCommand {
 
     @Flag(name: .long, help: "Kalite kapılarını uygula (varsayılan: ham çıktıyı göster).")
     var strict: Bool = false
+
+    @Flag(name: .long, help: "Config'deki sözlükle terim düzeltmesi uygula.")
+    var vocabulary: Bool = false
 
     func validate() throws {
         guard repeatCount >= 1 else {
@@ -259,7 +345,17 @@ struct Transcribe: AsyncParsableCommand {
             print("  ✗ reddedildi: \(reason)")
         }
 
-        print("  \(output.text.isEmpty ? "<boş>" : output.text)")
+        var text = output.text
+        if vocabulary {
+            let corrected = Vocabulary(terms: Config.load().vocabulary).correct(text)
+            for correction in corrected.corrections {
+                print(String(format: "  sözlük: %@ → %@ (%.3f, %@)",
+                             correction.from, correction.to,
+                             correction.score, correction.matchedBy.rawValue))
+            }
+            text = corrected.text
+        }
+        print("  \(text.isEmpty ? "<boş>" : text)")
     }
 }
 

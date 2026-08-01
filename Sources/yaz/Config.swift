@@ -22,6 +22,8 @@ struct Config: Sendable, Equatable {
     var keepModelLoaded: Bool = true
     /// Shell command run with the transcript as its only argument.
     var onTranscript: String?
+    /// Technical terms to spell correctly. See `Vocabulary`.
+    var vocabulary: [VocabularyTerm] = []
 
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/yaz/config.json")
@@ -77,6 +79,40 @@ struct Config: Sendable, Equatable {
         if let raw = json["on_transcript"] as? String, !raw.isEmpty {
             onTranscript = raw
         }
+        if let raw = json["vocabulary"] {
+            vocabulary = Self.parseVocabulary(raw, source: source)
+        }
+    }
+
+    /// Accepts either a plain list of strings or objects with aliases and a
+    /// per-term threshold, so the common case stays a one-liner:
+    ///
+    /// ```json
+    /// "vocabulary": ["Slack", "pull request", {"term": "CI", "aliases": ["si ay"]}]
+    /// ```
+    static func parseVocabulary(_ raw: Any, source: String) -> [VocabularyTerm] {
+        guard let items = raw as? [Any] else {
+            log("uyarı: \(source) içinde vocabulary bir liste değil — yok sayılıyor")
+            return []
+        }
+        var terms: [VocabularyTerm] = []
+        for item in items {
+            if let text = item as? String {
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                terms.append(VocabularyTerm(canonical: trimmed))
+            } else if let object = item as? [String: Any],
+                      let canonical = object["term"] as? String,
+                      !canonical.isEmpty {
+                terms.append(VocabularyTerm(
+                    canonical: canonical,
+                    aliases: (object["aliases"] as? [String]) ?? [],
+                    minSimilarity: object["min_similarity"] as? Double))
+            } else {
+                log("uyarı: \(source) içinde tanınmayan vocabulary girdisi — atlandı")
+            }
+        }
+        return terms
     }
 
     /// Build the engine this config selects.

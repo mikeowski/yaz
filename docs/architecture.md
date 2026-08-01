@@ -392,6 +392,138 @@ Model kontrolü artık bütünlük bakıyor: klasörün varlığı yarım indirm
 sayıyordu ve hata dakikalar sonra Core ML yükleme hatası olarak çıkıyordu.
 `ModelStore` her bileşeni ve boyutunu doğruluyor.
 
+
+## M4 — sözlük katmanı
+
+Projenin varlık sebebi olan doğruluk problemi. Ölçüm baştan beri buydu:
+
+```
+girdi : "Ahmet'e Slack üzerinden yaz, pull request'i merge et, CI pipeline yeşile dönsün"
+çıktı : "Ahmet'e Sılacık üzerinden yaz, Puhrıkı Esti'de merge et, C.I.P. eline yeşile dönsün"
+```
+
+Düz Türkçe iyi; çöken şey İngilizce teknik terimler — yani bir yazılımcının
+dikte ettiği her cümlenin yarısı.
+
+### Neden ASR seviyesinde değil
+
+İki standart yol denendi, ikisi de bu yığında çalışmadı:
+
+1. **Whisper initial-prompt biasing** (`DecodingOptions.promptTokens`) —
+   `large-v3-turbo` üzerinde denenen her varyantta **boş çıktı**.
+2. **LLM'e sözlüğü verip düzelttirme** — Apple FoundationModels'a hedef terim
+   listesi verildi, `Sılacık` yine düzelmedi. 1.40 sn harcandı.
+
+Dolayısıyla düzeltme kural tabanlı. Bunun bir yan faydası var: motor yalnızca
+kullanıcının kendi listesine koyduğu kelimeleri üretebilir, uydurma yapamaz.
+
+### Ünsüz iskeleti
+
+Türkçe fonotaktiği ünsüz kümelerini sevmez; konuşmacı da akustik model de
+araya ünlü sokar: `sl` → `sıl`. Yani **ünlüler sinyalin en güvenilmez, ünsüzler
+en güvenilir kısmı.**
+
+```
+Slack        → slk    ·  Sılacık      → slkk
+pull request → plrkst ·  Puhrıkı Esti → phrkst
+CI pipeline  → sppln  ·  C.I.P. eline → spln
+```
+
+Normalizasyon Türkçe I/İ katlaması, aksan katlaması ve İngilizce grafemlerin
+(`ck`, `ph`, `qu`, `x`) Türkçe karşılıklarına çevrilmesini içeriyor.
+
+**İngilizce C kuralı** ayrı bir kazanç: İngilizce `c`, arka ünlü ve ünsüzden
+önce /k/, ön ünlüden önce /s/. `Cursor` → `kursor` → iskelet `krsr`; duyulan
+`Körsır` → `krsr`. **Tam eşleşme (1.000).** Bu kural olmadan c/k farkı iki
+kelimeyi alakasız gösteriyordu.
+
+Sıralama önemli: aksan katlaması C kuralından **sonra** çalışıyor. Önce
+çalışsaydı Türkçe `ç` (kendi başına bir ses) `c`'ye düşüp `k`'ye çevrilir ve
+"saç" kelimesi "Slack"e benzemeye başlardı — bu tam olarak yaşandı ve
+düzeltildi.
+
+### Oran eşiği neden yetmiyor
+
+Ölçüm bunu tartışmasız gösterdi. İskelet olarak karşılaştırıldığında:
+
+```
+Slack  (slk)  vs  Sılacık (slkk)  → 0.75   ← değişmeli
+Docker (dkr)  vs  Doktor  (dktr)  → 0.75   ← ASLA değişmemeli
+Sentry (sntr) vs  sonra   (snr)   → 0.75   ← ASLA değişmemeli
+```
+
+**Aynı puan, zıt beklenti.** Hiçbir eşik bunları ayıramaz. Ayıran şey şu:
+`doktor` ve `sonra` konuşmacının açıkça söylediği sıradan Türkçe kelimeler;
+`Sılacık` ise hiçbir dilde kelime değil — yalnızca akustik modelin İngilizce
+ünsüz kümesini ünlüyle kırmasından doğdu.
+
+Üç savunma birlikte çalışıyor:
+
+1. **Türkçe yaygın kelime vetosu** (`TurkishLexicon`) — pencerede sıradan bir
+   Türkçe kelime varsa yalnızca 0.90+ tam-form kanıtıyla değiştirilebilir,
+   iskelet tahminiyle asla. ~450 kelime, ek soyma ile çekimli hâlleri de
+   yakalıyor.
+2. **Baş ünsüz kısıtı** — ünlü türemesi araya ünlü sokar ama kelimenin neyle
+   başladığını değiştirmez. `Redis (rds)` / `neredeyse (nrds)` 0.75 alıyordu;
+   `r ≠ n` olduğu için reddediliyor.
+3. **Pencere genişletme sınırı** — tek kelimelik kısa terim iki kelimelik
+   pencereye eşleşemez. Bu kural olmadan "ama kargo" → "merge" oluyordu ve
+   "merge et" içindeki "et" yutuluyordu.
+
+### Türkçe ek koruması
+
+Türkçe özel isimlere ekleri kesme işaretiyle bağlar. `Sılacık'ten` düzeltilip
+`'ten` düşürülürse cümle bozulur. `Tokenizer` her kelimeyi baştaki noktalama /
+gövde / kesme-eki / sondaki noktalama olarak ayırıyor ve yalnızca gövdeyi
+değiştiriyor. Tipografik kesme işareti (`’`) de tanınıyor — Whisper bunu
+üretiyor.
+
+Çok kelimeli terimde ek son kelimede kalıyor: `Puhrıkı Esti'de` →
+`pull request'de`.
+
+### Ölçülen sonuç
+
+Gerçek ses dosyası üzerinde uçtan uca:
+
+```
+$ yaz transcribe --vocabulary fixtures/t2.wav
+  sözlük: Sılacık → Slack (0.749, skeleton)
+  sözlük: Puhrıkı Esti'de → pull request'de (0.832, skeleton)
+  sözlük: C.I.P. eline → CI pipeline (0.799, skeleton)
+  Yarın saat 14'te toplantı var. Ahmet'e Slack üzerinden mesaj atmayı unutma.
+  pull request'de merge etmem lazım. CI pipeline yeşile döndüğünde deploy ederiz.
+```
+
+Üç bozulmanın üçü de düzeldi, Türkçe eki korundu, Türkçe metne dokunulmadı.
+
+### Yanlış eşleşme testi
+
+Asıl risk kullanıcının gerçekten söylediği bir kelimeyi değiştirmek: bozuk
+terim görünür kalır, yanlış değiştirme görünmez. 30 cümlelik sıradan Türkçe
+korpus var (teknik terim içermeyen günlük cümleler) ve iki sözlükle
+sınanıyor — biri gerçek geliştirici terimleri, diğeri kasıtlı olarak Türkçeye
+benzeyen terimler (`Docker`, `Redis`, `Vercel`, `Sentry`, `Linear`, `Figma`).
+Sıfır yanlış eşleşme.
+
+Bu korpus eşikleri belirledi: 0.74 iskelet eşiği ilk denemede beş yanlış
+eşleşme üretti, tam-form eşiği 0.72 iken "Saç" → "Slack" oldu.
+
+### Ayar araçları
+
+Eşikler tahminle değil gerçek bozuk çıktıyla ayarlanır, o yüzden bunlar CLI'da:
+
+```
+yaz vocab test "Sılacık'ten yazdım"     # düzelt ve puanları göster
+yaz vocab explain "Cursor" "Körsır"      # fonetik anahtarları karşılaştır
+```
+
+### Bilinen sınır
+
+Vetonun gücü sözlük kapsamına bağlı. `TurkishLexicon` bir sözlük değil, sık
+kullanılan kelimeler listesi; listede olmayan nadir bir Türkçe kelime, ona
+fonetik olarak yakın bir terimle çakışırsa yanlış değiştirilebilir. Kullanıcı
+tarafındaki çare `min_similarity` ile terim başına eşiği yükseltmek.
+
 ## Durum
 
 - **M1 — tamam.** Motor katmanı, `Transcriber` protokolü, Whisper + Parakeet
@@ -405,7 +537,8 @@ sayıyordu ve hata dakikalar sonra Core ML yükleme hatası olarak çıkıyordu.
   onaran event tap.
 - **M3 — tamam.** Pano ile yerleştirme (+ grafem güvenli yazma yedeği),
   `Config`, `doctor`, `models`, `Daemon`. 87 test.
-- **M4** — sözlük katmanı (deterministik terim düzeltme).
+- **M4 — tamam.** Sözlük katmanı: fonetik iskelet eşleştirme, Türkçe kelime
+  vetosu, ek koruması, `vocab test`/`vocab explain`. 126 test.
 - **M5** — FoundationModels ile dolgu temizleme.
 - **M6** — menü barı + kayıt göstergesi.
 - **M7** — LaunchAgent, install betiği.

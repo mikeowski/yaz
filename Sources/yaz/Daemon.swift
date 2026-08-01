@@ -12,6 +12,7 @@ final class Daemon {
     private let engine: any Transcriber
     private let monitor: HotkeyMonitor
     private let capture = AudioCapture()
+    private let vocabulary: Vocabulary
     private let verbose: Bool
 
     /// Set while a transcription is running so a second press cannot start a
@@ -27,6 +28,7 @@ final class Daemon {
         self.config = config
         self.engine = config.makeEngine()
         self.monitor = HotkeyMonitor(hotkey: config.hotkey, debug: verbose)
+        self.vocabulary = Vocabulary(terms: config.vocabulary)
         self.verbose = verbose
     }
 
@@ -114,9 +116,20 @@ final class Daemon {
                 break
             }
 
-            log(String(format: "→ %.2f sn · %@", elapsed, output.text))
-            TextInjector.inject(output.text, mode: config.injectMode)
-            runHook(with: output.text)
+            // Vocabulary correction runs on the finished transcript, because
+            // the two ASR-level alternatives do not work on this stack: Whisper
+            // returns empty output when given promptTokens, and the on-device
+            // LLM cannot do fuzzy Turkish-phonetic matching.
+            let corrected = vocabulary.correct(output.text)
+            if corrected.didChange {
+                for correction in corrected.corrections {
+                    log("  sözlük: \(correction.from) → \(correction.to)")
+                }
+            }
+
+            log(String(format: "→ %.2f sn · %@", elapsed, corrected.text))
+            TextInjector.inject(corrected.text, mode: config.injectMode)
+            runHook(with: corrected.text)
 
         } catch let error as YazError where error.isBenignInput {
             // Tapping the key by accident, or a moment of silence, is not a

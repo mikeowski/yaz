@@ -11,7 +11,7 @@ onun bilerek reddettiği üç şeyi hedefliyor: **çok dilli varsayılan**,
 
 ## Durum
 
-**Uçtan uca çalışıyor.** Bas-konuş → çeviri → imlece yapıştırma. 87 test.
+**Uçtan uca çalışıyor.** Bas-konuş → çeviri → terim düzeltme → imlece yapıştırma. 126 test.
 
 ```sh
 swift build -c release
@@ -34,6 +34,18 @@ motor: whisper · dil: tr · kısayol: fn (🌐)
 
 Kalite kapıları devrede: çok kısa, sessiz veya halüsinasyon çıktısı imlece
 gitmeden eleniyor.
+
+**Terim düzeltme.** Whisper Türkçe konuşmadaki İngilizce terimleri fonetik
+olarak bozuyor; sözlük katmanı bunları geri getiriyor ve Türkçe eki koruyor:
+
+```
+$ yaz transcribe --vocabulary fixtures/t2.wav
+  sözlük: Sılacık → Slack (0.749, skeleton)
+  sözlük: Puhrıkı Esti'de → pull request'de (0.832, skeleton)
+  sözlük: C.I.P. eline → CI pipeline (0.799, skeleton)
+  Yarın saat 14'te toplantı var. Ahmet'e Slack üzerinden mesaj atmayı unutma.
+  pull request'de merge etmem lazım. CI pipeline yeşile döndüğünde deploy ederiz.
+```
 
 ```
 $ yaz transcribe --strict fixtures/t1.wav fixtures/silence-3s.wav fixtures/tiny-100ms.wav
@@ -60,6 +72,9 @@ yaz                                    # daemon (varsayılan)
   --inject-mode paste|type
   --language tr
   --verbose
+
+yaz vocab test "<metin>"               # sözlük düzeltmesini dene, puanları gör
+yaz vocab explain "<terim>" "<duyulan>"  # fonetik anahtarları karşılaştır
 
 yaz doctor [--request]                 # izinler, model, ayarlar
 yaz models list
@@ -93,9 +108,15 @@ Error: parakeet motoru 'tr' dilini desteklemiyor (desteklenen: bg, hr, cs, da, n
   "hotkey": "fn",
   "inject_mode": "paste",
   "keep_model_loaded": true,
-  "on_transcript": "my-hook"
+  "on_transcript": "my-hook",
+  "vocabulary": [
+    "Slack", "pull request", "CI pipeline", "Kubernetes",
+    { "term": "PostgreSQL", "aliases": ["postgres"], "min_similarity": 0.85 }
+  ]
 }
 ```
+
+`vocabulary` düz metin listesi ya da takma ad / eşik taşıyan nesneler alabilir.
 
 `on_transcript` her transkriptten sonra metni tek argüman olarak alan bir
 kabuk komutu çalıştırır.
