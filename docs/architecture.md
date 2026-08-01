@@ -299,6 +299,99 @@ rca-001'in tuzağı tam olarak doğru süreli ama dijital sessiz dosyaydı. Ster
 57 test, 10 suite. Yeni kapsam: tek-uçuş yükleme, seri kuyruk, sinyal
 yokluğu, vDSP doğruluğu, dört giriş formatı, pencere sınırında kare kaybı.
 
+
+## M2 + M3 — dikte döngüsü kapandı
+
+Motor katmanı iki tur sağlamlaştırmadan sonra üstüne inşa edilecek kadar
+sağlam. Bu tur döngüyü kapatıyor: kısayol → mikrofon → çeviri → imleç.
+
+### Yapılandırılabilir kısayol
+
+parrot README'sinde `--hotkey right-option` yazıyor ama böyle bir bayrak yok
+ve monitor Fn'e sabit. yaz'da `Hotkey` gerçek bir tip: fn, sağ option, sağ
+command, sağ control, sağ shift.
+
+Sağ/sol ayrımı maske ile yapılamıyor — `.maskAlternate` iki option tuşunda da
+yanıyor. Bu yüzden `Hotkey.keyCode` var ve olay keycode'u ile doğrulanıyor.
+Fn'in ayrı keycode'u yok, orada maske yeterli.
+
+**Kendi kendini onaran tap.** macOS uzun süren veya bloke eden tap'leri
+kapatıyor. parrot'un cevabı bir yorum satırı: *"we'll need to re-enable. For
+now just no-op and let the user restart parrot."* Gün boyu açık duran bir
+daemon için bu sessiz ölüm demek. yaz `tapDisabledByTimeout` /
+`tapDisabledByUserInput` olaylarında tap'i yeniden açıyor.
+
+### Pano ile yerleştirme — parrot'un asıl zayıf noktası
+
+parrot `CGEventKeyboardSetUnicodeString` ile yazıyor; API olay başına ~20
+UTF-16 birimi kabul ettiği için bir cümle onlarca sentetik tuş olayına
+bölünüyor. İki sonuç, ikisi de dikte aracının en çok kullanıldığı yerde:
+Electran uygulamaları (Slack, Notion, Cursor) böyle patlamalardan karakter
+düşürüyor, ve süre söylediğin şeyin uzunluğuyla büyüyor.
+
+yaz panoya yazıp ⌘V gönderiyor: tek olay, uzunluk sınırı yok, hedef uygulama
+sıradan bir yapıştırma görüyor. Panonun eski içeriği **tüm tipleriyle**
+(`NSPasteboardItem` bazında) kaydedilip 0.25 sn sonra geri konuyor — sadece
+metin değil, görsel ve dosya da. Dikte sonrası panosunu kaybetmek, diktenin
+başarısız olmasından kötü.
+
+⌘V olayları `privateState` kaynağıyla ve açıkça `.maskCommand` ile
+gönderiliyor: kullanıcı hâlâ push-to-talk tuşunu basılı tutuyor olabilir, o
+modifier yapıştırmayı başka bir kısayola çevirmemeli.
+
+Tuş tuş yazma `--inject-mode type` ile duruyor. Orada da bir düzeltme var:
+parrot UTF-16 dizisini körlemesine kesiyor, bu birleşik karakterlerin
+ortasından bölebiliyor. yaz grafem kümesi sınırlarında bölüyor — Türkçe metin
+ve emoji bunlarla dolu.
+
+### Mikrofon — voice processing bilerek kapalı
+
+`AudioCapture`, `AVAudioEngine` tap'i kuruyor ve cihazın kendi formatında
+dinleyip callback içinde 16 kHz mono'ya çeviriyor. Donanımın üretmediği bir
+formatı tap'ten istemek, boş dosyaya giden yol.
+
+Voice processing **açılmıyor**. rca-001'in bedeli belli: duplex I/O unit'i
+yanlış kurmak doğru süreli ama dijital sessiz kayıt üretiyor, hiçbir yerde
+hata yok. Tek faydası echo cancellation ve bas-konuş diktesinde iptal edilecek
+bir echo yok.
+
+Liveness kontrolü yine de kaldı, çünkü asıl arıza voice processing'e özgü
+değil: bir cihaz sıfır dolu callback'ler gönderebiliyor. `didSeeSignal`
+"sessiz kaldın" ile "mikrofon ölü" arasını ayırıyor.
+
+**Üst sınır.** Takılı kalan bir modifier tuşu tamponu makine takas edene kadar
+büyütür — 16 kHz mono Float32 dakikada 3.7 MB. On dakikada kesiliyor.
+
+### Sıralama — ucuz hatalar önce
+
+İlk yazımda `run` önce 1.6 GB modeli yüklüyor, sonra kısayolu kuruyordu.
+Erişilebilirlik izni yoksa kullanıcı 7 saniye bekleyip izin hatası alıyordu.
+Artık tap önce kuruluyor: **0.54 sn**'de başarısız oluyor.
+
+Tap yükleme bitmeden var olduğu için `ready` bayrağı eklendi; henüz model
+yokken gelen basış sessizce yutulmuyor, durum söyleniyor.
+
+### Config dosyası
+
+parrot'un mimari dokümanı `~/.config/parrot/config.toml` anlatıyor; kaynakta
+`Config` diye bir tip **yok**, dosya hiç okunmuyor. LaunchAgent ile başlatılan
+bir daemon yalnızca plist düzenlenerek yeniden yapılandırılabiliyor.
+
+yaz `~/.config/yaz/config.json` okuyor. Tanınmayan bir *değer* stderr'e
+yazılıyor — sessizce varsayılana düşmek kullanıcıyı "kısayolum neden
+değişmedi" sorusuyla baş başa bırakır.
+
+### doctor
+
+İzin, model bütünlüğü, yerleştirme modu ve Fn tuşu ayarı tek yerde. Her
+başarısız kontrol ne yapılacağını söylüyor. Erişilebilirlik satırı **ebeveyn
+süreci adlandırıyor** — macOS izni binary'ye değil onu başlatana verir, bu da
+eyleme geçirilebilir mesaj ile bilmece arasındaki fark.
+
+Model kontrolü artık bütünlük bakıyor: klasörün varlığı yarım indirmeyi tam
+sayıyordu ve hata dakikalar sonra Core ML yükleme hatası olarak çıkıyordu.
+`ModelStore` her bileşeni ve boyutunu doğruluyor.
+
 ## Durum
 
 - **M1 — tamam.** Motor katmanı, `Transcriber` protokolü, Whisper + Parakeet
@@ -308,13 +401,14 @@ yokluğu, vDSP doğruluğu, dört giriş formatı, pencere sınırında kare kay
 - **M1.6 — tamam.** Sağlamlaştırma turu 2: actor reentrancy düzeltmesi
   (`SingleFlight`), çıkarım serileştirme (`SerialGate`), veri yarışı kapatma,
   `Signals?` ayrımı, vDSP ölçüm, çok formatlı ses testleri. 57 test.
-- **M2** — mikrofon yakalama + yapılandırılabilir kısayol (parrot'ta `--hotkey`
-  belgelenmiş ama kodda yok; burada gerçekten olacak).
-- **M3** — pano yapıştırma ile metin yerleştirme, CGEvent yedeği.
-- **M4** — sözlük katmanı.
+- **M2 — tamam.** `AudioCapture`, yapılandırılabilir `Hotkey`, kendi kendini
+  onaran event tap.
+- **M3 — tamam.** Pano ile yerleştirme (+ grafem güvenli yazma yedeği),
+  `Config`, `doctor`, `models`, `Daemon`. 87 test.
+- **M4** — sözlük katmanı (deterministik terim düzeltme).
 - **M5** — FoundationModels ile dolgu temizleme.
-- **M6** — `~/.config/yaz/config.json` (parrot config dosyasını hiç göndermedi).
-- **M7** — menü barı + kayıt göstergesi, LaunchAgent.
+- **M6** — menü barı + kayıt göstergesi.
+- **M7** — LaunchAgent, install betiği.
 
 ## Ölçüm disiplini
 

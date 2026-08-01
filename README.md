@@ -11,24 +11,29 @@ onun bilerek reddettiği üç şeyi hedefliyor: **çok dilli varsayılan**,
 
 ## Durum
 
-Erken. Şu an çalışan: **sağlamlaştırılmış** motor katmanı ve ölçüm koşum takımı.
-57 test (`swift test`).
+**Uçtan uca çalışıyor.** Bas-konuş → çeviri → imlece yapıştırma. 87 test.
 
 ```sh
 swift build -c release
-./.build/release/yaz transcribe fixtures/t1.wav fixtures/t2.wav
+sudo cp .build/release/yaz /usr/local/bin/yaz
+yaz doctor        # izinleri kontrol et
+yaz               # daemon'ı başlat, fn'e basılı tutup konuş
 ```
 
-```
-✓ large-v3-turbo hazır — 6.8 sn
+`yaz doctor` her şeyi tek yerde söyler:
 
-═══ t1.wav (5.57 sn) ═══
-  gecikme 506 ms · RTF 0.091
-  Bugün Pilot Projesini inceledim ve On Device Transcription Mimarisini çözdüm.
+```
+motor: whisper · dil: tr · kısayol: fn (🌐)
+
+! mikrofon: henüz istenmedi — ilk kayıtta sorulacak
+✗ erişilebilirlik: verilmemiş
+    → Sistem Ayarları → Gizlilik ve Güvenlik → Erişilebilirlik → zsh etkinleştir
+✓ model: large-v3-turbo · 1,64 GB
+✓ metin yerleştirme: pano (⌘V)
 ```
 
-Kalite kapıları devrede (`--strict`): çok kısa, sessiz veya halüsinasyon
-çıktısı imlece gitmeden eleniyor.
+Kalite kapıları devrede: çok kısa, sessiz veya halüsinasyon çıktısı imlece
+gitmeden eleniyor.
 
 ```
 $ yaz transcribe --strict fixtures/t1.wav fixtures/silence-3s.wav fixtures/tiny-100ms.wav
@@ -50,6 +55,16 @@ Daemon, kısayol ve metin yerleştirme henüz yok — sıradaki adımlar
 ## CLI
 
 ```sh
+yaz                                    # daemon (varsayılan)
+  --hotkey fn|right-option|right-command|right-control|right-shift
+  --inject-mode paste|type
+  --language tr
+  --verbose
+
+yaz doctor [--request]                 # izinler, model, ayarlar
+yaz models list
+yaz models download [--force]
+
 yaz transcribe <dosya...>              # ses → metin, gecikme ölçümüyle
   --engine-name whisper|parakeet       # varsayılan whisper (Türkçe destekleyen tek motor)
   --whisper-model large-v3-turbo|large-v3
@@ -66,6 +81,25 @@ $ yaz transcribe --engine-name parakeet --language tr fixtures/t1.wav
 Error: parakeet motoru 'tr' dilini desteklemiyor (desteklenen: bg, hr, cs, da, nl, en, et, fi…)
 ```
 
+## Config
+
+`~/.config/yaz/config.json` (isteğe bağlı, CLI bayrakları önceliklidir):
+
+```json
+{
+  "engine": "whisper",
+  "whisper_model": "large-v3-turbo",
+  "language": "tr",
+  "hotkey": "fn",
+  "inject_mode": "paste",
+  "keep_model_loaded": true,
+  "on_transcript": "my-hook"
+}
+```
+
+`on_transcript` her transkriptten sonra metni tek argüman olarak alan bir
+kabuk komutu çalıştırır.
+
 ## Bilinmesi gerekenler
 
 - **Parakeet Türkçe bilmiyor.** TDT v3'ün 25 dili arasında `tr` yok — NVIDIA
@@ -78,6 +112,13 @@ Error: parakeet motoru 'tr' dilini desteklemiyor (desteklenen: bg, hr, cs, da, n
   iCloud Documents senkronun açıksa 1.6 GB buluta gidebilir.
 - **İlk çalıştırma yavaş** — CoreML derlemesi 2–3.5 dakika. Sonraki açılışlar
   ~7 sn.
+- **Metin pano ile yerleştirilir** (⌘V). Panonun eski içeriği — metin, görsel,
+  dosya — kaydedilip 0.25 sn sonra geri konur. parrot'un tuş tuş yazma yöntemi
+  `--inject-mode type` ile duruyor, ama Electron uygulamalarında karakter
+  düşürebiliyor.
+- **Erişilebilirlik izni seni başlatan uygulamaya verilir**, yaz'a değil.
+  Terminal değiştirince yeniden vermen gerekir. `yaz doctor` hangi uygulamayı
+  işaretlemen gerektiğini söyler.
 
 ## Yığın
 

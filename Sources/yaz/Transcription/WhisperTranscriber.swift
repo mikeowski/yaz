@@ -56,16 +56,15 @@ actor WhisperTranscriber: Transcriber {
         self.language = language
     }
 
-    /// WhisperKit downloads into `~/Documents/huggingface`, not a cache
-    /// directory — worth knowing, because an iCloud-synced Documents folder
-    /// will happily push 1.6 GB of weights to the cloud.
+    /// True only when every component is on disk at a plausible size. A
+    /// half-finished download must not read as ready — see `ModelStore`.
     nonisolated var isDownloaded: Bool {
-        let base = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Documents/huggingface/models/argmaxinc/whisperkit-coreml")
-            .appending(path: whisperKitID)
-        // The decoder is the last large artefact to land, so its presence is a
-        // better "finished downloading" signal than the folder existing.
-        return FileManager.default.fileExists(atPath: base.appending(path: "TextDecoder.mlmodelc").path)
+        ModelStore.status(for: whisperKitID).isComplete
+    }
+
+    /// Full on-disk report, for `yaz doctor`.
+    nonisolated var storeStatus: ModelStore.Status {
+        ModelStore.status(for: whisperKitID)
     }
 
     func prepare() async throws {

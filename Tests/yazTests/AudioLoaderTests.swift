@@ -140,3 +140,37 @@ struct AudioLoaderErrorTests {
         }
     }
 }
+
+@Suite("ModelStore — yarım indirme tam sayılmamalı")
+struct ModelStoreTests {
+
+    @Test("hiç indirilmemiş model eksik raporlanır")
+    func missingModelIsIncomplete() {
+        let status = ModelStore.status(for: "kesinlikle-olmayan-model-12345")
+        #expect(!status.isComplete)
+        #expect(status.sizeBytes == 0)
+        #expect(!status.missing.isEmpty)
+    }
+
+    @Test("yol ~/Documents/huggingface altında — iCloud senkronu uyarısı için gerekli")
+    func pathIsUnderDocuments() {
+        let status = ModelStore.status(for: "herhangi")
+        #expect(status.path.contains("Documents/huggingface"))
+    }
+
+    /// Bu makinede large-v3-turbo indirili; indirili değilse test atlanır.
+    @Test("indirili model tam raporlanır ve boyutu okunur")
+    func downloadedModelIsComplete() throws {
+        let status = ModelStore.status(for: WhisperModel.largeV3Turbo.whisperKitID)
+        try #require(status.sizeBytes > 0, "model indirili değil — test atlandı")
+        #expect(status.isComplete)
+        #expect(status.missing.isEmpty)
+        #expect(status.sizeBytes > 1_000_000_000)   // ~1.6 GB
+    }
+
+    @Test("boyut biçimlendirmesi insan okunabilir")
+    func sizeIsHumanReadable() {
+        let status = ModelStore.status(for: WhisperModel.largeV3Turbo.whisperKitID)
+        #expect(!status.sizeDescription.isEmpty)
+    }
+}

@@ -7,9 +7,127 @@ struct Yaz: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "yaz",
         abstract: "Türkçe konuşan geliştiriciler için on-device dikte. Bas-konuş, bırak, metin imlece gelir.",
-        subcommands: [Transcribe.self],
-        defaultSubcommand: Transcribe.self
+        subcommands: [Run.self, Doctor.self, Transcribe.self, Models.self],
+        defaultSubcommand: Run.self
     )
+}
+
+/// Run the dictation daemon.
+struct Run: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "run",
+        abstract: "Dikte daemon'ını çalıştır (varsayılan)."
+    )
+
+    @Option(name: .long, help: "Kısayol tuşu: fn, right-option, right-command, right-control, right-shift.")
+    var hotkey: Hotkey?
+
+    @Option(name: .long, help: "Metin yerleştirme: paste veya type.")
+    var injectMode: TextInjector.Mode?
+
+    @Option(name: .long, help: "Dil kodu.")
+    var language: String?
+
+    @Flag(name: .long, help: "Başlangıç kontrollerini atla.")
+    var skipDoctor = false
+
+    @Flag(name: .long, help: "Ayrıntılı günlük.")
+    var verbose = false
+
+    func run() async throws {
+        var config = Config.load()
+        // CLI flags win over the config file — the usual precedence, and it
+        // lets a LaunchAgent-managed daemon be overridden for one run.
+        if let hotkey { config.hotkey = hotkey }
+        if let injectMode { config.injectMode = injectMode }
+        if let language { config.language = language }
+
+        if !skipDoctor {
+            let checks = DoctorReport.run(config: config)
+            guard DoctorReport.canRun(checks) else {
+                log("başlangıç kontrolleri başarısız:\n")
+                DoctorReport.render(checks)
+                log("\nyukarıdakileri düzelt ya da --skip-doctor kullan")
+                throw ExitCode(1)
+            }
+        }
+
+        try await Daemon(config: config, verbose: verbose).run()
+    }
+}
+
+/// Report on permissions, models, and settings.
+struct Doctor: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "İzinleri, modeli ve ayarları kontrol et."
+    )
+
+    @Flag(name: .long, help: "Eksik izinler için sistem penceresini aç.")
+    var request = false
+
+    func run() async throws {
+        let config = Config.load()
+        print("yapılandırma: \(FileManager.default.fileExists(atPath: Config.path.path) ? Config.path.path : "varsayılanlar (config dosyası yok)")")
+        print("motor: \(config.engine.rawValue) · dil: \(config.language) · kısayol: \(config.hotkey.displayName)")
+        print()
+
+        let checks = DoctorReport.run(config: config)
+        DoctorReport.render(checks)
+
+        if request && !HotkeyMonitor.hasAccessibilityPermission {
+            print("\nerişilebilirlik izni isteniyor…")
+            HotkeyMonitor.requestAccessibilityPermission()
+        }
+        if !DoctorReport.canRun(checks) { throw ExitCode(1) }
+    }
+}
+
+/// Download and inspect models.
+struct Models: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Modelleri listele ve indir.",
+        subcommands: [List.self, Download.self]
+    )
+
+    struct List: AsyncParsableCommand {
+        func run() async throws {
+            for model in WhisperModel.allCases {
+                let status = ModelStore.status(for: model.whisperKitID)
+                let mark = status.isComplete ? "✓" : (status.sizeBytes > 0 ? "!" : " ")
+                let detail = status.isComplete
+                    ? status.sizeDescription
+                    : (status.sizeBytes > 0 ? "yarım (\(status.sizeDescription))" : "indirilmemiş")
+                print("\(mark) whisper/\(model.rawValue.padding(toLength: 16, withPad: " ", startingAt: 0)) ~\(model.sizeMB) MB  \(detail)")
+            }
+            let parakeet = ParakeetTranscriber(version: .v3)
+            print("\(parakeet.isDownloaded ? "✓" : " ") parakeet/tdt-0.6b-v3    ~600 MB  (Türkçe YOK)")
+        }
+    }
+
+    struct Download: AsyncParsableCommand {
+        @Option(name: .long, help: "Whisper modeli.")
+        var whisperModel: WhisperModel = .largeV3Turbo
+
+        @Flag(name: .long, help: "Yarım/bozuk indirmeyi silip yeniden indir.")
+        var force = false
+
+        func run() async throws {
+            if force {
+                let directory = ModelStore.directory(for: whisperModel.whisperKitID)
+                if FileManager.default.fileExists(atPath: directory.path) {
+                    log("siliniyor: \(directory.path)")
+                    try FileManager.default.removeItem(at: directory)
+                }
+            }
+            let engine = WhisperTranscriber(model: whisperModel)
+            log("indiriliyor: \(whisperModel.rawValue) (~\(whisperModel.sizeMB) MB)…")
+            let started = Date()
+            try await engine.prepare()
+            await engine.release()
+            let status = ModelStore.status(for: whisperModel.whisperKitID)
+            log(String(format: "✓ hazır — %.0f sn · %@", Date().timeIntervalSince(started), status.sizeDescription))
+        }
+    }
 }
 
 /// Transcribe an audio file and print the result.
@@ -154,6 +272,8 @@ enum EngineChoice: String, CaseIterable, ExpressibleByArgument {
 
 // The engine layer stays free of ArgumentParser; the CLI adopts its types here.
 extension WhisperModel: ExpressibleByArgument {}
+extension Hotkey: ExpressibleByArgument {}
+extension TextInjector.Mode: ExpressibleByArgument {}
 
 func log(_ message: String) {
     FileHandle.standardError.write(Data("\(message)\n".utf8))
