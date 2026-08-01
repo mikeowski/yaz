@@ -796,6 +796,92 @@ Kurulum ve kaldırma gerçekten çalıştırıldı, makinede net etki sıfır:
 - `scripts/install.sh` izole bir `PREFIX` ile derledi, kurdu, imzaladı,
   `doctor` çalıştırdı; `--uninstall` temiz kaldırdı
 
+
+## M8–M11 — uygulama paketi, geçmiş, ayarlar arayüzü, DMG
+
+### İzin sorununun asıl sebebi
+
+Kullanıcı `yaz doctor` çalıştırdığında izin penceresi **"cmux.app"** dedi ve
+izni verdikten sonra da çalışmadı. Sebep tahmin değil, ölçüldü:
+
+```
+cmux.app → login → fish → claude → zsh → yaz
+```
+
+macOS erişilebilirlik iznini **sorumlu sürece** atfediyor; terminalden
+çalıştırılan bir CLI'da bu en üstteki uygulamadır. Pencerenin cmux.app demesi
+doğruydu. Verilen izin de işe yaramadı, çünkü zaten çalışan kabuklar eski
+reddi taşıyordu.
+
+Bu, CLI'nın içinden düzeltilebilecek bir şey değil. **Çözüm bir `.app`
+paketi:** yaz'ın kendi TCC kimliği olur, pencere "yaz" der, izin hangi
+terminalin açık olduğundan bağımsız kalır. Yani kullanıcının yaşadığı sorun ve
+istediği özellik aynı şeydi.
+
+### Paket
+
+`Resources/AppInfo.plist` + `scripts/bundle.sh` → `dist/yaz.app`.
+`LSUIElement` ile dock ikonu yok, yalnızca menü barı. Bundle kimliği ikilinin
+gömülü `__TEXT,__info_plist` bölümüyle aynı (`com.mikeowski.yaz`), böylece
+CLI ve uygulama tek bir kimliğe işaret ediyor.
+
+`scripts/bundle.sh --dmg` sürükle-bırak kurulumlu bir DMG üretiyor (4.8 MB;
+modeller ilk çalıştırmada iniyor).
+
+### Paket olarak izin akışı
+
+Çift tıklanan bir uygulamada eksik izin **ölümcül olmamalı** — sessizce
+çıkmak, uygulama bozukmuş gibi görünür. Paket olarak çalışırken:
+
+1. Menü barı öğesi hemen görünür.
+2. `AXIsProcessTrustedWithOptions` istemi *yaz adına* çıkar.
+3. Saniyede bir yoklayan bir zamanlayıcı izni bekler — kullanıcı kutuyu
+   işaretlediği anda dinlemeye başlar, **uygulamayı yeniden başlatmak
+   gerekmez.**
+
+Açıklayıcı uyarı penceresi `app.run()` sonrasına ertelendi. Başlangıçta modal
+çalıştırılınca model yüklemesini de bloke ediyordu: uygulama kendi diyaloğunun
+arkasında hiçbir şey yapmadan bekliyordu. Bu, paketi çalıştırıp gözlemleyince
+çıktı.
+
+### Geçmiş — metin, ses değil
+
+`~/Library/Application Support/yaz/history.jsonl`. Her dikte için: zaman,
+metin, **hangi uygulamaya** yazıldığı, süre, motor/model ve sözlüğün onardığı
+terimler.
+
+**Ses saklanmıyor.** Kayıtları tutmak yaz'ı kazara bir gözetim aracına
+çevirirdi: sahibinin söylediği her şeyin süresiz duran bir klasörü. Sonradan
+işe yarayan şey metin, ve sızması çok daha küçük bir şey. Bir test bunu
+biçimsel olarak da zorluyor — kayıtta `audio`, `wav`, `pcm` gibi alanların
+geçmediği doğrulanıyor.
+
+JSONL, veritabanı değil: satır başına bir dikte, `tail` ile okunabilir, ve
+çökme sırasında yarım kalan son satır dosyanın tamamına değil tek bir kayda
+mal oluyor — bu da test edilmiş durumda.
+
+Hangi uygulamaya yazıldığı, **yapıştırmadan önce** okunuyor. Overlay
+odak almayan bir panel olduğu için o an hâlâ imlecin bulunduğu pencere
+öndedir; cevabın doğru olduğu tek an orası.
+
+`yaz history [--limit] [--search] [--json] [--clear]`.
+
+### Ayarlar arayüzü
+
+SwiftUI, menü barından açılıyor: kısayol seçici, motor/model, dil, yerleştirme
+modu, son işleme modu, sözlük düzenleyici, gösterge ve geçmiş anahtarları.
+
+**Config dosyası kaynak olmaya devam ediyor.** Pencere aynı
+`~/.config/yaz/config.json` dosyasını okuyup yazıyor. Kendi deposu olan bir
+arayüz, uygulamayı yapılandırmanın sessizce birbiriyle çelişen iki yolu
+demekti. `Config.save()` `apply()`'ın okuduğu anahtar adlarını üretiyor ve
+gidiş-dönüş testleri her alanı doğruluyor — sade terimler düz metin olarak
+yazılıyor ki dosya elle düzenlenebilir kalsın.
+
+`yaz settings` ve `yaz settings --history` pencereleri doğrudan açıyor. Bu
+yalnızca kolaylık değil: menüden tıklamayı otomatikleştiremediğim için
+SwiftUI yollarının derlenmekle kalmayıp **çalıştığını** doğrulamanın tek yolu.
+
 ## Durum
 
 - **M1 — tamam.** Motor katmanı, `Transcriber` protokolü, Whisper + Parakeet
@@ -819,8 +905,12 @@ Kurulum ve kaldırma gerçekten çalıştırıldı, makinede net etki sıfır:
 - **M7 — tamam.** Gömülü Info.plist, `LaunchAgent`, `yaz install`,
   `scripts/install.sh`. 197 test.
 
-Planlanan yol tamamlandı. Kalan tek eksik canlı dikte turu: mikrofon ve
-erişilebilirlik izinleri kullanıcı onayı gerektiriyor.
+- **M8 — tamam.** `yaz.app` paketi, `LSUIElement`, paket içi izin akışı.
+- **M9 — tamam.** `TranscriptHistory`, `yaz history`.
+- **M10 — tamam.** Ayarlar ve geçmiş pencereleri, `Config.save()`, `yaz settings`.
+- **M11 — tamam.** `scripts/bundle.sh --dmg`. 221 test.
+
+Kalan tek eksik canlı dikte turu: mikrofon izni kullanıcı onayı gerektiriyor.
 
 ## Ölçüm disiplini
 

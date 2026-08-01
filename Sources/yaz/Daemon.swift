@@ -13,8 +13,10 @@ final class Daemon {
     private let monitor: HotkeyMonitor
     private let capture = AudioCapture()
     private let pipeline: TranscriptPipeline
+    private let history: TranscriptHistory
     private let overlay: RecordingOverlay?
     private let menuBar: MenuBarController?
+    private let settings = SettingsWindowController()
     private let verbose: Bool
 
     /// Set while a transcription is running so a second press cannot start a
@@ -26,11 +28,15 @@ final class Daemon {
     /// where a key press has nothing to transcribe into.
     private var ready = false
 
+    /// Poll that watches for the Accessibility grant arriving.
+    private var permissionPoll: Timer?
+
     init(config: Config, verbose: Bool) {
         self.config = config
         self.engine = config.makeEngine()
         self.monitor = HotkeyMonitor(hotkey: config.hotkey, debug: verbose)
         self.pipeline = TranscriptPipeline(config: config)
+        self.history = TranscriptHistory(limit: config.historyLimit, enabled: config.history)
         self.overlay = config.overlay ? RecordingOverlay() : nil
         self.menuBar = config.menuBar
             ? MenuBarController(summary: Self.summary(of: config))
@@ -48,13 +54,22 @@ final class Daemon {
         app.setActivationPolicy(.accessory)
 
         menuBar?.onQuit = { [weak self] in self?.shutdown() }
-        menuBar?.onOpenConfig = { Self.openConfig() }
+        menuBar?.onOpenSettings = { [settings] in settings.showSettings() }
+        menuBar?.onOpenHistory = { [settings] in settings.showHistory() }
         capture.onLevel = { [overlay] level in overlay?.pushLevel(level) }
 
-        try monitor.start { [weak self] event in
-            // The tap callback already hops to main; assume that rather than
-            // scheduling another hop, so press/release ordering is preserved.
-            MainActor.assumeIsolated { self?.handle(event) }
+        // Launched as an app, a missing Accessibility grant must not be fatal.
+        // The user double-clicked an icon; exiting silently would look like the
+        // app is broken. Instead prompt as *yaz* — which is the whole point of
+        // shipping a bundle — and wait for the grant to arrive.
+        var awaitingPermission = false
+        if !HotkeyMonitor.hasAccessibilityPermission && AppEnvironment.isBundledApp {
+            awaitingPermission = true
+            menuBar?.note("erişilebilirlik izni bekleniyor")
+            HotkeyMonitor.requestAccessibilityPermission()
+            waitForAccessibility()
+        } else {
+            try startMonitor()
         }
 
         log("model yükleniyor…")
@@ -73,12 +88,78 @@ final class Daemon {
         ready = true
         setIndicator(.idle)
 
+        // The explanatory alert is deferred to the first turn of the run loop.
+        // Run modally before `app.run()` it would block startup — including the
+        // model load — until the user clicked something, so the app would sit
+        // there doing nothing behind its own dialog.
+        if awaitingPermission {
+            DispatchQueue.main.async { [weak self] in self?.presentPermissionAlert() }
+        }
+
         installSignalHandlers()
         log("dinleniyor · \(config.hotkey.displayName) basılı tut · \(config.injectMode.displayName) · ^C ile çık")
         app.run()
     }
 
     // MARK: -
+
+    private func startMonitor() throws {
+        try monitor.start { [weak self] event in
+            // The tap callback already hops to main; assume that rather than
+            // scheduling another hop, so press/release ordering is preserved.
+            MainActor.assumeIsolated { self?.handle(event) }
+        }
+    }
+
+    /// Poll until the grant lands, then start listening.
+    ///
+    /// `AXIsProcessTrusted` flips for the running process as soon as the user
+    /// ticks the box, so polling means the app starts working without being
+    /// quit and reopened — which is what every other dictation tool asks for
+    /// and nobody enjoys.
+    private func waitForAccessibility() {
+        // The timer is held on the actor rather than captured in its own
+        // closure: Swift 6 will not let a task-isolated `Timer` cross into a
+        // main-actor closure, and holding it here also keeps it alive.
+        permissionPoll?.invalidate()
+        permissionPoll = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                guard HotkeyMonitor.hasAccessibilityPermission else { return }
+                self.permissionPoll?.invalidate()
+                self.permissionPoll = nil
+                do {
+                    try self.startMonitor()
+                    log("✓ erişilebilirlik verildi — dinleniyor")
+                    self.menuBar?.note("dinlemeye hazır")
+                    self.setIndicator(.idle)
+                } catch {
+                    log("kısayol kurulamadı: \(error)")
+                    self.menuBar?.note("kısayol kurulamadı")
+                }
+            }
+        }
+        if let permissionPoll { RunLoop.main.add(permissionPoll, forMode: .common) }
+    }
+
+    private func presentPermissionAlert() {
+        let alert = NSAlert()
+        alert.messageText = "yaz erişilebilirlik izni istiyor"
+        alert.informativeText = """
+            Kısayol tuşunu dinlemek ve metni imlece yapıştırmak için gerekli.
+
+            Sistem Ayarları → Gizlilik ve Güvenlik → Erişilebilirlik listesinde             yaz'ı işaretle. İzni verdiğin anda çalışmaya başlar — uygulamayı             yeniden başlatman gerekmez.
+            """
+        alert.addButton(withTitle: "Sistem Ayarları'nı aç")
+        alert.addButton(withTitle: "Sonra")
+        alert.alertStyle = .informational
+
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            let url = URL(
+                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+            NSWorkspace.shared.open(url)
+        }
+    }
 
     private func handle(_ event: HotkeyMonitor.Event) {
         switch event {
@@ -149,8 +230,25 @@ final class Daemon {
 
             let total = Date().timeIntervalSince(started)
             log(String(format: "→ %.2f sn (çeviri %.2f) · %@", total, elapsed, processed.text))
+
+            // Read the frontmost app *before* pasting: the overlay never takes
+            // focus, so at this instant it is still the window the cursor is
+            // in — which is the only moment that answer is correct.
+            let target = AppEnvironment.frontmostApp()
+
             TextInjector.inject(processed.text, mode: config.injectMode)
             runHook(with: processed.text)
+
+            let entry = HistoryEntry(
+                date: Date(),
+                text: processed.text,
+                appName: target?.name,
+                appBundleID: target?.bundleID,
+                seconds: output.duration,
+                engine: engine.name,
+                model: engine.model,
+                corrections: processed.corrections.map { "\($0.from) → \($0.to)" })
+            Task { [history] in await history.record(entry) }
 
         } catch let error as YazError where error.isBenignInput {
             // Tapping the key by accident, or a moment of silence, is not a
@@ -173,16 +271,6 @@ final class Daemon {
 
     private static func summary(of config: Config) -> String {
         "\(config.whisperModel.rawValue) · \(config.language) · \(config.hotkey.displayName)"
-    }
-
-    private static func openConfig() {
-        let path = Config.path
-        if !FileManager.default.fileExists(atPath: path.path) {
-            try? FileManager.default.createDirectory(
-                at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? Data(Config.example.utf8).write(to: path)
-        }
-        NSWorkspace.shared.open(path)
     }
 
     private func shutdown() {

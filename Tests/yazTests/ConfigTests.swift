@@ -114,3 +114,96 @@ struct ConfigTests {
         }
     }
 }
+
+@Suite("Config — diske yazma ve geri okuma")
+struct ConfigRoundTripTests {
+
+    static func url() -> URL {
+        FileManager.default.temporaryDirectory
+            .appending(path: "yaz-rt-\(UUID().uuidString)")
+            .appending(path: "config.json")
+    }
+
+    /// Ayarlar penceresinin yazdığı dosya, elle düzenlenebilir kalmalı: aynı
+    /// anahtar adları, aynı okuyucu.
+    @Test("varsayılanlar yazılıp aynen geri okunur")
+    func defaultsRoundTrip() throws {
+        let url = Self.url()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        try Config().save(to: url)
+        #expect(Config.load(from: url) == Config())
+    }
+
+    @Test("değiştirilmiş her alan korunur")
+    func everyFieldRoundTrips() throws {
+        let url = Self.url()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        var config = Config()
+        config.engine = .parakeet
+        config.whisperModel = .largeV3
+        config.language = "en"
+        config.hotkey = .rightCommand
+        config.injectMode = .type
+        config.keepModelLoaded = false
+        config.refine = .llm
+        config.overlay = false
+        config.menuBar = false
+        config.history = false
+        config.historyLimit = 42
+        config.onTranscript = "pbcopy"
+
+        try config.save(to: url)
+        #expect(Config.load(from: url) == config)
+    }
+
+    @Test("sözlük terimleri korunur")
+    func vocabularyRoundTrips() throws {
+        let url = Self.url()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        var config = Config()
+        config.vocabulary = [
+            VocabularyTerm(canonical: "Slack"),
+            VocabularyTerm(canonical: "PostgreSQL", aliases: ["postgres"], minSimilarity: 0.85),
+        ]
+        try config.save(to: url)
+
+        let loaded = Config.load(from: url)
+        #expect(loaded.vocabulary.count == 2)
+        #expect(loaded.vocabulary[0].canonical == "Slack")
+        #expect(loaded.vocabulary[0].aliases.isEmpty)
+        #expect(loaded.vocabulary[1].aliases == ["postgres"])
+        #expect(loaded.vocabulary[1].minSimilarity == 0.85)
+    }
+
+    /// Sade terim sade kalmalı; her şeyi nesneye çevirmek dosyayı elle
+    /// düzenlemeyi zorlaştırır.
+    @Test("takma adı olmayan terim düz metin olarak yazılır")
+    func plainTermsStayPlain() throws {
+        var config = Config()
+        config.vocabulary = [VocabularyTerm(canonical: "Slack")]
+        let list = config.asJSON()["vocabulary"] as? [Any]
+        #expect(list?.first is String)
+    }
+
+    @Test("yazılan dosya geçerli JSON")
+    func writesValidJSON() throws {
+        let url = Self.url()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        try Config().save(to: url)
+        let data = try Data(contentsOf: url)
+        #expect((try? JSONSerialization.jsonObject(with: data)) != nil)
+    }
+
+    @Test("olmayan dizin oluşturulur")
+    func createsDirectory() throws {
+        let url = Self.url()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        #expect(!FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path))
+        try Config().save(to: url)
+        #expect(FileManager.default.fileExists(atPath: url.path))
+    }
+}

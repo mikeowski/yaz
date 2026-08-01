@@ -11,7 +11,23 @@ onun bilerek reddettiği üç şeyi hedefliyor: **çok dilli varsayılan**,
 
 ## Durum
 
-**Uçtan uca çalışıyor.** Bas-konuş → çeviri → terim düzeltme → temizlik → imlece yapıştırma. 197 test.
+**Uçtan uca çalışıyor.** Bas-konuş → çeviri → terim düzeltme → temizlik → imlece yapıştırma. 221 test.
+
+**Uygulama olarak (önerilen):**
+
+```sh
+./scripts/bundle.sh --dmg         # dist/yaz-0.1.0.dmg üretir
+```
+
+DMG'yi aç, `yaz.app`'i Applications'a sürükle, çalıştır. Menü barında yaşar.
+
+Uygulama olarak kurmak izin sorununu da çözüyor: macOS erişilebilirlik iznini
+*sorumlu sürece* atfeder ve terminalden çalıştırılan bir CLI'da bu terminaldir
+— izin penceresi "cmux.app" ya da "Terminal" diye sorar, verdiğin izin de
+zaten açık olan kabuklara işlemez. `.app` olarak yaz'ın kendi kimliği olur:
+pencere "yaz" der ve izin kalıcıdır.
+
+**CLI olarak:**
 
 ```sh
 ./scripts/install.sh              # derle + /usr/local/bin altına kur
@@ -83,6 +99,9 @@ yaz vocab test "<metin>"               # sözlük düzeltmesini dene, puanları 
 yaz vocab refine --mode llm "<metin>"  # son işlemeyi dene
 yaz vocab explain "<terim>" "<duyulan>"  # fonetik anahtarları karşılaştır
 
+yaz settings                           # ayarlar penceresi
+yaz settings --history                 # geçmiş penceresi
+yaz history [--search <söz>] [--json]  # geçmişi terminalden oku
 yaz install --launch-at-login          # girişte başlat
 yaz install --uninstall
 yaz install --status
@@ -106,6 +125,31 @@ Desteklenmeyen motor/dil çifti model indirilmeden reddedilir:
 $ yaz transcribe --engine-name parakeet --language tr fixtures/t1.wav
 Error: parakeet motoru 'tr' dilini desteklemiyor (desteklenen: bg, hr, cs, da, nl, en, et, fi…)
 ```
+
+## Geçmiş
+
+Ne dikte ettiğin, **hangi uygulamaya** yazıldığı, ne zaman ve ne kadar
+sürdüğü kaydediliyor — `~/Library/Application Support/yaz/history.jsonl`.
+
+**Ses saklanmıyor**, yalnızca metin. Kayıtları tutmak yaz'ı kazara bir
+gözetim aracına çevirirdi.
+
+```sh
+yaz history                    # son 20 kayıt
+yaz history --search slack     # metinde veya uygulama adında ara
+yaz history --clear
+```
+
+Menü barı → Geçmiş… ile pencereden de görülebiliyor (arama + panoya kopyala).
+Kapatmak için config'de `"history": false`.
+
+## Ayarlar
+
+Menü barı → Ayarlar… ya da `yaz settings`. Kısayol, model, dil, yerleştirme
+ve son işleme modu, sözlük düzenleyici hep orada.
+
+Pencere aynı `~/.config/yaz/config.json` dosyasını yazıyor — dosya kaynak
+olmaya devam ediyor, arayüz onu düzenlemenin bir yolu.
 
 ## Gösterge
 

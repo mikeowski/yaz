@@ -11,7 +11,8 @@ import AppKit
 final class MenuBarController {
 
     var onQuit: (() -> Void)?
-    var onOpenConfig: (() -> Void)?
+    var onOpenSettings: (() -> Void)?
+    var onOpenHistory: (() -> Void)?
 
     private let item: NSStatusItem
     private let statusLine = NSMenuItem(title: "hazırlanıyor…", action: nil, keyEquivalent: "")
@@ -71,10 +72,17 @@ final class MenuBarController {
 
         menu.addItem(.separator())
 
-        let config = NSMenuItem(
-            title: "Ayarları aç", action: #selector(openConfig), keyEquivalent: ",")
-        config.target = self
-        menu.addItem(config)
+        let settings = NSMenuItem(
+            title: "Ayarlar…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
+
+        let history = NSMenuItem(
+            title: "Geçmiş…", action: #selector(openHistory), keyEquivalent: "h")
+        history.target = self
+        menu.addItem(history)
+
+        menu.addItem(.separator())
 
         let quit = NSMenuItem(title: "Çık", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -84,7 +92,8 @@ final class MenuBarController {
         update(.idle)
     }
 
-    @objc private func openConfig() { onOpenConfig?() }
+    @objc private func openSettings() { onOpenSettings?() }
+    @objc private func openHistory() { onOpenHistory?() }
     @objc private func quit() { onQuit?() }
 
     /// SF Symbols, with a drawn fallback.

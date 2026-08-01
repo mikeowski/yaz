@@ -33,6 +33,11 @@ struct Config: Sendable, Equatable {
     /// The menu bar item. Off makes sense for a foreground terminal run, where
     /// the log already says what is happening.
     var menuBar: Bool = true
+    /// Keep a text-only log of what was dictated, and into which app. No audio
+    /// is ever stored.
+    var history: Bool = true
+    /// How many entries to keep before the oldest are dropped.
+    var historyLimit: Int = TranscriptHistory.defaultLimit
 
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/yaz/config.json")
@@ -92,6 +97,8 @@ struct Config: Sendable, Equatable {
             if let value = RefineMode(rawValue: raw) { refine = value }
             else { warn("refine", raw, RefineMode.allCases.map(\.rawValue)) }
         }
+        if let value = json["history"] as? Bool { history = value }
+        if let value = json["history_limit"] as? Int, value > 0 { historyLimit = value }
         if let value = json["overlay"] as? Bool { overlay = value }
         if let value = json["menu_bar"] as? Bool { menuBar = value }
         if let raw = json["vocabulary"] {
@@ -138,6 +145,53 @@ struct Config: Sendable, Equatable {
         }
     }
 
+    /// Serialise back to the on-disk shape.
+    ///
+    /// Round-trips through the same key names `apply` reads, so a file written
+    /// by the settings window is one a person can still edit by hand — the
+    /// config file is the source of truth, and the UI is one way to edit it.
+    func asJSON() -> [String: Any] {
+        var json: [String: Any] = [
+            "engine": engine.rawValue,
+            "whisper_model": whisperModel.rawValue,
+            "language": language,
+            "hotkey": hotkey.rawValue,
+            "inject_mode": injectMode.rawValue,
+            "keep_model_loaded": keepModelLoaded,
+            "refine": refine.rawValue,
+            "overlay": overlay,
+            "menu_bar": menuBar,
+            "history": history,
+            "history_limit": historyLimit,
+        ]
+        if let onTranscript { json["on_transcript"] = onTranscript }
+        if !vocabulary.isEmpty {
+            json["vocabulary"] = vocabulary.map { term -> Any in
+                // Keep the simple case simple: a plain string unless the term
+                // actually carries aliases or an override.
+                if term.aliases.isEmpty && term.minSimilarity == nil {
+                    return term.canonical
+                }
+                var object: [String: Any] = ["term": term.canonical]
+                if !term.aliases.isEmpty { object["aliases"] = term.aliases }
+                if let minSimilarity = term.minSimilarity {
+                    object["min_similarity"] = minSimilarity
+                }
+                return object
+            }
+        }
+        return json
+    }
+
+    /// Write to disk, creating the directory if needed.
+    func save(to url: URL = Config.path) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let data = try JSONSerialization.data(
+            withJSONObject: asJSON(), options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: url, options: .atomic)
+    }
+
     /// A commented example, written by `yaz config --init`.
     static let example = """
         {
@@ -149,7 +203,9 @@ struct Config: Sendable, Equatable {
           "keep_model_loaded": true,
           "refine": "fillers",
           "overlay": true,
-          "menu_bar": true
+          "menu_bar": true,
+          "history": true,
+          "history_limit": 2000
         }
 
         """

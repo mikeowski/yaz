@@ -8,7 +8,7 @@ struct Yaz: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "yaz",
         abstract: "Türkçe konuşan geliştiriciler için on-device dikte. Bas-konuş, bırak, metin imlece gelir.",
-        subcommands: [Run.self, Doctor.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self],
+        subcommands: [Run.self, Settings.self, Doctor.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self],
         defaultSubcommand: Run.self
     )
 }
@@ -43,7 +43,9 @@ struct Run: AsyncParsableCommand {
         if let injectMode { config.injectMode = injectMode }
         if let language { config.language = language }
 
-        if !skipDoctor {
+        // A bundled app handles its own permission flow: it prompts as yaz and
+        // waits. Exiting here would mean double-clicking the icon does nothing.
+        if !skipDoctor && !AppEnvironment.isBundledApp {
             let checks = DoctorReport.run(config: config)
             guard DoctorReport.canRun(checks) else {
                 log("başlangıç kontrolleri başarısız:")
@@ -129,6 +131,109 @@ struct Models: AsyncParsableCommand {
             let status = ModelStore.status(for: whisperModel.whisperKitID)
             log(String(format: "✓ hazır — %.0f sn · %@", Date().timeIntervalSince(started), status.sizeDescription))
         }
+    }
+}
+
+/// Open the settings or history window without going through the menu bar.
+///
+/// The windows are otherwise reachable only by clicking a menu item, which
+/// means they cannot be exercised except by hand. This command opens them
+/// directly — useful when the daemon is not running, and the only way to
+/// verify the SwiftUI paths actually run rather than merely compile.
+struct Settings: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Ayarlar penceresini aç."
+    )
+
+    @Flag(name: .long, help: "Ayarlar yerine geçmiş penceresini aç.")
+    var history = false
+
+    @Option(name: .long, help: "Bu kadar saniye sonra kendiliğinden kapan (test için).")
+    var autoQuit: Double?
+
+    func run() async throws {
+        await MainActor.run {
+            let app = NSApplication.shared
+            app.setActivationPolicy(.accessory)
+
+            let controller = SettingsWindowController()
+            if history { controller.showHistory() } else { controller.showSettings() }
+
+            if let autoQuit {
+                Timer.scheduledTimer(withTimeInterval: autoQuit, repeats: false) { _ in
+                    log("otomatik kapanış")
+                    NSApp.terminate(nil)
+                }
+            }
+            app.run()
+        }
+    }
+}
+
+/// Read back what was dictated.
+struct History: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Dikte geçmişini göster (yalnızca metin, ses saklanmaz)."
+    )
+
+    @Option(name: .long, help: "Kaç kayıt gösterilsin.")
+    var limit: Int = 20
+
+    @Option(name: .long, help: "Metinde veya uygulama adında ara.")
+    var search: String?
+
+    @Flag(name: .long, help: "Tam kayıtları JSON olarak dök.")
+    var json = false
+
+    @Flag(name: .long, help: "Tüm geçmişi sil.")
+    var clear = false
+
+    func run() async throws {
+        let config = Config.load()
+        let store = TranscriptHistory(limit: config.historyLimit, enabled: config.history)
+
+        if clear {
+            let total = await store.count()
+            await store.clear()
+            print("✓ \(total) kayıt silindi")
+            return
+        }
+
+        let entries = await store.entries(limit: limit, matching: search)
+        guard !entries.isEmpty else {
+            let total = await store.count()
+            if total == 0 {
+                print("geçmiş boş")
+                if !config.history { print("  (config'de \"history\": false)") }
+            } else {
+                print("eşleşme yok (\(total) kayıt arasında)")
+            }
+            return
+        }
+
+        if json {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+            let data = try encoder.encode(entries)
+            print(String(decoding: data, as: UTF8.self))
+            return
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd.MM HH:mm"
+        for entry in entries {
+            let stamp = formatter.string(from: entry.date)
+            let target = entry.appName.map { " · \($0)" } ?? ""
+            print("\(stamp)\(target)  (\(String(format: "%.1f", entry.seconds)) sn)")
+            print("  \(entry.text)")
+            if !entry.corrections.isEmpty {
+                print("  sözlük: \(entry.corrections.joined(separator: ", "))")
+            }
+            print()
+        }
+        let total = await store.count()
+        print("— \(entries.count) / \(total) kayıt")
     }
 }
 
