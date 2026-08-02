@@ -72,9 +72,9 @@ enum IndicatorState: Sendable, Equatable {
     var label: String {
         switch self {
         case .idle: ""
-        case .recording: "dinliyor"
-        case .transcribing: "çeviriyor"
-        case .refining: "düzeltiyor"
+        case .recording: "listening"
+        case .transcribing: "transcribing"
+        case .refining: "refining"
         }
     }
 

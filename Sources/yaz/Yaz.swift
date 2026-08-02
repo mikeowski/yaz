@@ -7,7 +7,8 @@ import Foundation
 struct Yaz: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "yaz",
-        abstract: "On-device dictation for Turkish. Hold the key, speak, release — the text lands at your cursor.",
+        abstract: "On-device dictation for macOS. Hold the key, speak, release — the text lands at your cursor.",
+        version: AppEnvironment.version,
         subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self],
         defaultSubcommand: Run.self
     )

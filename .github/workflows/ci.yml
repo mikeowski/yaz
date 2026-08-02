@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Apple Silicon: the engines run on the Neural Engine, and the package
+    # targets macOS 26.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build
+        run: swift build -c release
+
+      # The suite is offline and needs no microphone by design, so it runs
+      # unchanged on a headless runner. Tests that need the model on disk
+      # skip themselves rather than fail.
+      - name: Test
+        run: swift test
+
+      - name: Bundle
+        run: ./scripts/bundle.sh
+        env:
+          # Do not try to create a signing certificate on CI — it needs a
+          # keychain password. Ad-hoc signing is enough to prove the bundle
+          # builds and opens.
+          YAZ_NO_CERT: "1"
+
+      - name: Verify the app launches
+        run: |
+          ./dist/yaz.app/Contents/MacOS/yaz --help > /dev/null
+          ./dist/yaz.app/Contents/MacOS/yaz models list
+
+  lint:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell scripts parse
+        run: for f in scripts/*.sh; do sh -n "$f"; done
+      - name: No Turkish in user-facing strings
+        # The UI and CLI are English. Turkish survives only as linguistic data
+        # (the lexicon, phonetic tables, hesitation sounds), so this guards the
+        # files that are not data.
+        run: |
+          if grep -rlP '"[^"]*[çğıöşüÇĞİÖŞÜ][^"]*"' \
+               Sources/yaz/Yaz.swift Sources/yaz/Doctor.swift \
+               Sources/yaz/UI/ 2>/dev/null; then
+            echo "Turkish string found in a user-facing file"; exit 1
+          fi
