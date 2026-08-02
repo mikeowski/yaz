@@ -4,7 +4,7 @@ import FluidAudio
 import Foundation
 
 @main
-struct Yaz: AsyncParsableCommand {
+struct Yaz: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "yaz",
         abstract: "On-device dictation for Turkish. Hold the key, speak, release — the text lands at your cursor.",
@@ -14,7 +14,19 @@ struct Yaz: AsyncParsableCommand {
 }
 
 /// Run the dictation daemon.
-struct Run: AsyncParsableCommand {
+///
+/// Deliberately **synchronous**, unlike every other subcommand.
+///
+/// `NSApplication.run()` never returns. Called from inside an
+/// `AsyncParsableCommand`, it blocks the main thread while that thread is the
+/// MainActor's executor — so every `MainActor.run` and `DispatchQueue.main`
+/// block enqueued afterwards waits forever. Measured: CFRunLoop timers fired
+/// normally while the GCD main queue was never drained once, which is why the
+/// model-ready callback never ran and `ready` stayed false.
+///
+/// A plain `ParsableCommand` hands the main thread to AppKit without a Swift
+/// concurrency task owning it, and both mechanisms work again.
+struct Run: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run",
         abstract: "Run the dictation daemon (default)."
@@ -35,7 +47,7 @@ struct Run: AsyncParsableCommand {
     @Flag(name: .long, help: "Verbose logging.")
     var verbose = false
 
-    func run() async throws {
+    func run() throws {
         var config = Config.load()
         // CLI flags win over the config file — the usual precedence, and it
         // lets a LaunchAgent-managed daemon be overridden for one run.
@@ -63,12 +75,12 @@ struct Run: AsyncParsableCommand {
         // moment the run loop began — `deinit` pulled the status item back out
         // of the menu bar and the `[weak self]` model-loading task found nil.
         // The app ran, showed nothing, and did nothing.
-        let daemon = await MainActor.run {
+        // ArgumentParser calls a synchronous run() on the main thread.
+        try MainActor.assumeIsolated {
             let daemon = Daemon(config: config, verbose: verbose)
             DaemonHolder.live = daemon
-            return daemon
+            try daemon.run()
         }
-        try await daemon.run()
     }
 }
 
@@ -83,7 +95,7 @@ enum DaemonHolder {
 }
 
 /// Report on permissions, models, and settings.
-struct Doctor: AsyncParsableCommand {
+struct Doctor: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Check permissions, model and settings."
     )
@@ -91,82 +103,88 @@ struct Doctor: AsyncParsableCommand {
     @Flag(name: .long, help: "Open the system prompt for any missing permission.")
     var request = false
 
-    func run() async throws {
-        let config = Config.load()
-        print("config: \(FileManager.default.fileExists(atPath: Config.path.path) ? Config.path.path : "defaults (no config file)")")
-        print("engine: \(config.engine.rawValue) · language: \(config.language) · hotkey: \(config.hotkey.displayName)")
-        print("vocabulary: \(config.vocabulary.count) terms · post-processing: \(config.refine.displayName)")
-        print()
+    func run() throws {
+        try runBlocking {
+            let config = Config.load()
+            print("config: \(FileManager.default.fileExists(atPath: Config.path.path) ? Config.path.path : "defaults (no config file)")")
+            print("engine: \(config.engine.rawValue) · language: \(config.language) · hotkey: \(config.hotkey.displayName)")
+            print("vocabulary: \(config.vocabulary.count) terms · post-processing: \(config.refine.displayName)")
+            print()
 
-        let checks = DoctorReport.run(config: config)
-        DoctorReport.render(checks)
+            let checks = DoctorReport.run(config: config)
+            DoctorReport.render(checks)
 
-        if request && !HotkeyMonitor.hasAccessibilityPermission {
-            print("\nrequesting accessibility permission…")
-            HotkeyMonitor.requestAccessibilityPermission()
+            if request && !HotkeyMonitor.hasAccessibilityPermission {
+                print("\nrequesting accessibility permission…")
+                HotkeyMonitor.requestAccessibilityPermission()
+            }
+            if !DoctorReport.canRun(checks) { throw ExitCode(1) }
         }
-        if !DoctorReport.canRun(checks) { throw ExitCode(1) }
     }
 }
 
 /// Download and inspect models.
-struct Models: AsyncParsableCommand {
+struct Models: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "List and download models.",
         subcommands: [List.self, Download.self]
     )
 
-    struct List: AsyncParsableCommand {
-        func run() async throws {
-            for model in WhisperModel.allCases {
-                let status = ModelStore.status(for: model.whisperKitID)
-                let mark = status.isComplete ? "✓" : (status.sizeBytes > 0 ? "!" : " ")
-                let detail = status.isComplete
-                    ? status.sizeDescription
-                    : (status.sizeBytes > 0 ? "partial (\(status.sizeDescription))" : "not downloaded")
-                print("\(mark) whisper/\(model.rawValue.padding(toLength: 16, withPad: " ", startingAt: 0)) ~\(model.sizeMB) MB  \(detail)")
+    struct List: ParsableCommand {
+        func run() throws {
+            try runBlocking {
+                for model in WhisperModel.allCases {
+                    let status = ModelStore.status(for: model.whisperKitID)
+                    let mark = status.isComplete ? "✓" : (status.sizeBytes > 0 ? "!" : " ")
+                    let detail = status.isComplete
+                        ? status.sizeDescription
+                        : (status.sizeBytes > 0 ? "partial (\(status.sizeDescription))" : "not downloaded")
+                    print("\(mark) whisper/\(model.rawValue.padding(toLength: 16, withPad: " ", startingAt: 0)) ~\(model.sizeMB) MB  \(detail)")
+                }
+                let parakeet = ParakeetTranscriber(version: .v3)
+                print("\(parakeet.isDownloaded ? "✓" : " ") parakeet/tdt-0.6b-v3    ~600 MB  (NO Turkish)")
             }
-            let parakeet = ParakeetTranscriber(version: .v3)
-            print("\(parakeet.isDownloaded ? "✓" : " ") parakeet/tdt-0.6b-v3    ~600 MB  (NO Turkish)")
         }
     }
 
-    struct Download: AsyncParsableCommand {
+    struct Download: ParsableCommand {
         @Option(name: .long, help: "Whisper model.")
         var whisperModel: WhisperModel = .largeV3Turbo
 
         @Flag(name: .long, help: "Delete a partial download and fetch it again.")
         var force = false
 
-        func run() async throws {
-            if force {
-                let directory = ModelStore.directory(for: whisperModel.whisperKitID)
-                if FileManager.default.fileExists(atPath: directory.path) {
-                    log("removing: \(directory.path)")
-                    try FileManager.default.removeItem(at: directory)
+        func run() throws {
+            try runBlocking {
+                if force {
+                    let directory = ModelStore.directory(for: whisperModel.whisperKitID)
+                    if FileManager.default.fileExists(atPath: directory.path) {
+                        log("removing: \(directory.path)")
+                        try FileManager.default.removeItem(at: directory)
+                    }
                 }
+                let started = Date()
+                log(ModelDownloader.downloadNotice(for: whisperModel))
+
+                let downloaded = try await ModelDownloader.ensure(whisperModel) { progress in
+                    // Overwrite one line rather than scrolling: a 1.6 GB download
+                    // emits thousands of callbacks.
+                    FileHandle.standardError.write(
+                        Data("\r  \(progress.description)          ".utf8))
+                }
+                if downloaded { FileHandle.standardError.write(Data("\n".utf8)) }
+                else { log("already downloaded") }
+
+                // Load once so Core ML compiles now rather than on the first
+                // utterance, which is where the minutes actually go.
+                log("compiling for the Neural Engine…")
+                let engine = WhisperTranscriber(model: whisperModel)
+                try await engine.prepare()
+                await engine.release()
+
+                let status = ModelStore.status(for: whisperModel.whisperKitID)
+                log(String(format: "✓ ready — %.0f s · %@", Date().timeIntervalSince(started), status.sizeDescription))
             }
-            let started = Date()
-            log(ModelDownloader.downloadNotice(for: whisperModel))
-
-            let downloaded = try await ModelDownloader.ensure(whisperModel) { progress in
-                // Overwrite one line rather than scrolling: a 1.6 GB download
-                // emits thousands of callbacks.
-                FileHandle.standardError.write(
-                    Data("\r  \(progress.description)          ".utf8))
-            }
-            if downloaded { FileHandle.standardError.write(Data("\n".utf8)) }
-            else { log("already downloaded") }
-
-            // Load once so Core ML compiles now rather than on the first
-            // utterance, which is where the minutes actually go.
-            log("compiling for the Neural Engine…")
-            let engine = WhisperTranscriber(model: whisperModel)
-            try await engine.prepare()
-            await engine.release()
-
-            let status = ModelStore.status(for: whisperModel.whisperKitID)
-            log(String(format: "✓ ready — %.0f s · %@", Date().timeIntervalSince(started), status.sizeDescription))
         }
     }
 }
@@ -177,7 +195,7 @@ struct Models: AsyncParsableCommand {
 /// means they cannot be exercised except by hand. This command opens them
 /// directly — useful when the daemon is not running, and the only way to
 /// verify the SwiftUI paths actually run rather than merely compile.
-struct Settings: AsyncParsableCommand {
+struct Settings: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Open the settings window."
     )
@@ -188,8 +206,8 @@ struct Settings: AsyncParsableCommand {
     @Option(name: .long, help: "Quit automatically after this many seconds (for testing).")
     var autoQuit: Double?
 
-    func run() async throws {
-        await MainActor.run {
+    func run() throws {
+        MainActor.assumeIsolated {
             let app = NSApplication.shared
             app.setActivationPolicy(.accessory)
 
@@ -214,7 +232,7 @@ struct Settings: AsyncParsableCommand {
 /// permission as granted, the app believes it, and events are silently never
 /// delivered. Measured here — `accessibility=true inputMonitoring=granted`
 /// with a live tap and zero events, until the records were reset.
-struct ResetPermissions: AsyncParsableCommand {
+struct ResetPermissions: ParsableCommand {
     static let configuration = CommandName.reset
 
     enum CommandName {
@@ -226,27 +244,29 @@ struct ResetPermissions: AsyncParsableCommand {
     @Flag(name: .long, help: "Show what would be reset without doing it.")
     var dryRun = false
 
-    func run() async throws {
-        let services = ["Accessibility", "ListenEvent", "Microphone"]
-        let bundleID = LaunchAgent.label
+    func run() throws {
+        try runBlocking {
+            let services = ["Accessibility", "ListenEvent", "Microphone"]
+            let bundleID = LaunchAgent.label
 
-        print("resetting permissions for \(bundleID)")
-        if dryRun {
-            for service in services { print("  would reset: \(service)") }
-            return
+            print("resetting permissions for \(bundleID)")
+            if dryRun {
+                for service in services { print("  would reset: \(service)") }
+                return
+            }
+
+            for service in services {
+                let result = Self.tccutil(["reset", service, bundleID])
+                print(result.status == 0
+                    ? "  ✓ \(service)"
+                    : "  ✗ \(service) — \(result.output)")
+            }
+
+            print("")
+            print("now quit and reopen yaz; macOS will ask for both permissions again.")
+            print("  Accessibility     — lets yaz paste at your cursor")
+            print("  Input Monitoring  — lets yaz see the push-to-talk key")
         }
-
-        for service in services {
-            let result = Self.tccutil(["reset", service, bundleID])
-            print(result.status == 0
-                ? "  ✓ \(service)"
-                : "  ✗ \(service) — \(result.output)")
-        }
-
-        print("")
-        print("now quit and reopen yaz; macOS will ask for both permissions again.")
-        print("  Accessibility     — lets yaz paste at your cursor")
-        print("  Input Monitoring  — lets yaz see the push-to-talk key")
     }
 
     private static func tccutil(_ arguments: [String]) -> (status: Int32, output: String) {
@@ -270,7 +290,7 @@ struct ResetPermissions: AsyncParsableCommand {
 /// Exists because a `.app` launched from Finder has no terminal: its stderr
 /// goes nowhere, so when the hotkey did nothing there was no evidence at all
 /// to work from.
-struct Logs: AsyncParsableCommand {
+struct Logs: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Show the app log (~/Library/Logs/yaz.log)."
     )
@@ -281,30 +301,32 @@ struct Logs: AsyncParsableCommand {
     @Flag(name: .long, help: "Follow the log as it grows.")
     var follow = false
 
-    func run() async throws {
-        let recent = Log.tail(lines: lines)
-        if recent.isEmpty {
-            print("log is empty — \(Log.fileURL.path)")
-            print("  (the app writes here as soon as it runs)")
-            return
-        }
-        for line in recent { print(line) }
+    func run() throws {
+        try runBlocking {
+            let recent = Log.tail(lines: lines)
+            if recent.isEmpty {
+                print("log is empty — \(Log.fileURL.path)")
+                print("  (the app writes here as soon as it runs)")
+                return
+            }
+            for line in recent { print(line) }
 
-        guard follow else { return }
-        var seen = recent.count
-        while true {
-            try await Task.sleep(for: .milliseconds(400))
-            let all = Log.tail(lines: 10_000)
-            if all.count > seen {
-                for line in all[seen...] { print(line) }
-                seen = all.count
+            guard follow else { return }
+            var seen = recent.count
+            while true {
+                try await Task.sleep(for: .milliseconds(400))
+                let all = Log.tail(lines: 10_000)
+                if all.count > seen {
+                    for line in all[seen...] { print(line) }
+                    seen = all.count
+                }
             }
         }
     }
 }
 
 /// Read back what was dictated.
-struct History: AsyncParsableCommand {
+struct History: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Show the dictation history (text only — no audio is stored)."
     )
@@ -321,57 +343,59 @@ struct History: AsyncParsableCommand {
     @Flag(name: .long, help: "Delete the entire history.")
     var clear = false
 
-    func run() async throws {
-        let config = Config.load()
-        let store = TranscriptHistory(limit: config.historyLimit, enabled: config.history)
+    func run() throws {
+        try runBlocking {
+            let config = Config.load()
+            let store = TranscriptHistory(limit: config.historyLimit, enabled: config.history)
 
-        if clear {
-            let total = await store.count()
-            await store.clear()
-            print("✓ deleted \(total) entries")
-            return
-        }
-
-        let entries = await store.entries(limit: limit, matching: search)
-        guard !entries.isEmpty else {
-            let total = await store.count()
-            if total == 0 {
-                print("history is empty")
-                if !config.history { print("  (\"history\": false in the config)") }
-            } else {
-                print("no matches (across \(total) entries)")
+            if clear {
+                let total = await store.count()
+                await store.clear()
+                print("✓ deleted \(total) entries")
+                return
             }
-            return
-        }
 
-        if json {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            let data = try encoder.encode(entries)
-            print(String(decoding: data, as: UTF8.self))
-            return
-        }
-
-        let formatter = DateFormatter()
-        formatter.dateFormat = "dd.MM HH:mm"
-        for entry in entries {
-            let stamp = formatter.string(from: entry.date)
-            let target = entry.appName.map { " · \($0)" } ?? ""
-            print("\(stamp)\(target)  (\(String(format: "%.1f", entry.seconds)) sn)")
-            print("  \(entry.text)")
-            if !entry.corrections.isEmpty {
-                print("  vocabulary: \(entry.corrections.joined(separator: ", "))")
+            let entries = await store.entries(limit: limit, matching: search)
+            guard !entries.isEmpty else {
+                let total = await store.count()
+                if total == 0 {
+                    print("history is empty")
+                    if !config.history { print("  (\"history\": false in the config)") }
+                } else {
+                    print("no matches (across \(total) entries)")
+                }
+                return
             }
-            print()
+
+            if json {
+                let encoder = JSONEncoder()
+                encoder.dateEncodingStrategy = .iso8601
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+                let data = try encoder.encode(entries)
+                print(String(decoding: data, as: UTF8.self))
+                return
+            }
+
+            let formatter = DateFormatter()
+            formatter.dateFormat = "dd.MM HH:mm"
+            for entry in entries {
+                let stamp = formatter.string(from: entry.date)
+                let target = entry.appName.map { " · \($0)" } ?? ""
+                print("\(stamp)\(target)  (\(String(format: "%.1f", entry.seconds)) sn)")
+                print("  \(entry.text)")
+                if !entry.corrections.isEmpty {
+                    print("  vocabulary: \(entry.corrections.joined(separator: ", "))")
+                }
+                print()
+            }
+            let total = await store.count()
+            print("— \(entries.count) of \(total) entries")
         }
-        let total = await store.count()
-        print("— \(entries.count) of \(total) entries")
     }
 }
 
 /// Register or remove the login item.
-struct Install: AsyncParsableCommand {
+struct Install: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Enable or disable launching at login."
     )
@@ -385,35 +409,37 @@ struct Install: AsyncParsableCommand {
     @Flag(name: .long, help: "Only report the status.")
     var status = false
 
-    func run() async throws {
-        if status || (!launchAtLogin && !uninstall) {
-            report()
-            return
-        }
-        guard launchAtLogin != uninstall else {
-            throw ValidationError("pass exactly one of --launch-at-login or --uninstall")
-        }
+    func run() throws {
+        try runBlocking {
+            if status || (!launchAtLogin && !uninstall) {
+                report()
+                return
+            }
+            guard launchAtLogin != uninstall else {
+                throw ValidationError("pass exactly one of --launch-at-login or --uninstall")
+            }
 
-        if uninstall {
-            try LaunchAgent.remove()
-            print("✓ launch at login removed")
-            return
-        }
+            if uninstall {
+                try LaunchAgent.remove()
+                print("✓ launch at login removed")
+                return
+            }
 
-        guard let binary = LaunchAgent.currentBinary() else {
-            throw ValidationError("couldn't resolve the path of the running binary")
-        }
-        // A LaunchAgent pointing into a build directory breaks the moment the
-        // tree is cleaned, and the failure is silent — say so now.
-        if binary.path.contains("/.build/") {
-            log("warning: \(binary.path) is a build directory —")
-            log("         copy it to /usr/local/bin first and run it from there")
-        }
+            guard let binary = LaunchAgent.currentBinary() else {
+                throw ValidationError("couldn't resolve the path of the running binary")
+            }
+            // A LaunchAgent pointing into a build directory breaks the moment the
+            // tree is cleaned, and the failure is silent — say so now.
+            if binary.path.contains("/.build/") {
+                log("warning: \(binary.path) is a build directory —")
+                log("         copy it to /usr/local/bin first and run it from there")
+            }
 
-        try LaunchAgent.install(binary: binary)
-        print("✓ launch at login installed")
-        print("  binary: \(binary.path)")
-        print("  log   : \(LaunchAgent.standardErrorPath)")
+            try LaunchAgent.install(binary: binary)
+            print("✓ launch at login installed")
+            print("  binary: \(binary.path)")
+            print("  log   : \(LaunchAgent.standardErrorPath)")
+        }
     }
 
     private func report() {
@@ -438,7 +464,7 @@ struct Install: AsyncParsableCommand {
 /// reached from a test: they need a run loop, a screen, and — via the daemon —
 /// an Accessibility grant. This command drives them directly, so the AppKit
 /// and SwiftUI paths get exercised rather than merely compiled.
-struct Preview: AsyncParsableCommand {
+struct Preview: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Show the recording indicator on screen (no microphone needed)."
     )
@@ -455,20 +481,17 @@ struct Preview: AsyncParsableCommand {
     @Option(name: .long, help: "Write a complete .iconset directory (used by the bundle script).")
     var writeIconset: String?
 
-    func run() async throws {
-        if let renderIcon {
-            try await MainActor.run { try Self.writeIconSheet(to: renderIcon) }
-            return
+    func run() throws {
+        // Already on the main thread: a sync ParsableCommand runs there, and
+        // these paths need AppKit plus a run loop. Bridging through
+        // `runBlocking` would deadlock — the main thread would sit on the
+        // semaphore while the work waited for the MainActor it was blocking.
+        try MainActor.assumeIsolated {
+            if let renderIcon { return try Self.writeIconSheet(to: renderIcon) }
+            if let renderAppIcon { return try Self.writeAppIcon(to: renderAppIcon) }
+            if let writeIconset { return try Self.writeIconset(to: writeIconset) }
+            try runPreview()
         }
-        if let renderAppIcon {
-            try await MainActor.run { try Self.writeAppIcon(to: renderAppIcon) }
-            return
-        }
-        if let writeIconset {
-            try await MainActor.run { try Self.writeIconset(to: writeIconset) }
-            return
-        }
-        try await runPreview()
     }
 
     /// Render every icon state onto one sheet, scaled up, so the drawing can be
@@ -588,8 +611,8 @@ struct Preview: AsyncParsableCommand {
         log("wrote \(variants.count) PNGs to \(path)")
     }
 
-    private func runPreview() async throws {
-        await MainActor.run {
+    @MainActor private func runPreview() throws {
+        MainActor.assumeIsolated {
             let app = NSApplication.shared
             app.setActivationPolicy(.accessory)
 
@@ -648,13 +671,13 @@ struct Preview: AsyncParsableCommand {
 /// tuned against real garbled output rather than guessed. This command is how
 /// that is done — by the author while building it, and by the user when a term
 /// of theirs is not being caught.
-struct Vocab: AsyncParsableCommand {
+struct Vocab: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Try the vocabulary correction and show the scores.",
         subcommands: [Test.self, Explain.self, Refine.self]
     )
 
-    struct Test: AsyncParsableCommand {
+    struct Test: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Correct a piece of text and show what changed."
         )
@@ -668,36 +691,38 @@ struct Vocab: AsyncParsableCommand {
         @Option(name: .long, help: "Skeleton threshold (default 0.74).")
         var skeletonThreshold: Double?
 
-        func run() async throws {
-            let config = Config.load()
-            let vocabulary = Vocabulary(
-                terms: config.vocabulary,
-                threshold: threshold ?? Vocabulary.defaultThreshold,
-                skeletonThreshold: skeletonThreshold ?? Vocabulary.defaultSkeletonThreshold)
+        func run() throws {
+            try runBlocking {
+                let config = Config.load()
+                let vocabulary = Vocabulary(
+                    terms: config.vocabulary,
+                    threshold: threshold ?? Vocabulary.defaultThreshold,
+                    skeletonThreshold: skeletonThreshold ?? Vocabulary.defaultSkeletonThreshold)
 
-            guard !config.vocabulary.isEmpty else {
-                log("vocabulary is empty — add \"vocabulary\" to ~/.config/yaz/config.json")
-                throw ExitCode(1)
-            }
+                guard !config.vocabulary.isEmpty else {
+                    log("vocabulary is empty — add \"vocabulary\" to ~/.config/yaz/config.json")
+                    throw ExitCode(1)
+                }
 
-            let result = vocabulary.correct(text)
-            print("before: \(text)")
-            print("after : \(result.text)")
-            if result.corrections.isEmpty {
-                print("\n(no change)")
-            } else {
-                print()
-                for correction in result.corrections {
-                    print(String(format: "  %@ → %@   (%.3f, %@)",
-                                 correction.from, correction.to,
-                                 correction.score, correction.matchedBy.rawValue))
+                let result = vocabulary.correct(text)
+                print("before: \(text)")
+                print("after : \(result.text)")
+                if result.corrections.isEmpty {
+                    print("\n(no change)")
+                } else {
+                    print()
+                    for correction in result.corrections {
+                        print(String(format: "  %@ → %@   (%.3f, %@)",
+                                     correction.from, correction.to,
+                                     correction.score, correction.matchedBy.rawValue))
+                    }
                 }
             }
         }
     }
 
     /// Exercise the post-processing layer on text, with no audio involved.
-    struct Refine: AsyncParsableCommand {
+    struct Refine: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Try post-processing on a piece of text."
         )
@@ -708,30 +733,32 @@ struct Vocab: AsyncParsableCommand {
         @Option(name: .long, help: "Mode: off, fillers, llm.")
         var mode: RefineMode = .llm
 
-        func run() async throws {
-            switch Refiner.availability(for: mode) {
-            case .available: break
-            case .unavailable(let reason):
-                log("\(mode.rawValue) unavailable: \(reason)")
-                throw ExitCode(1)
-            }
+        func run() throws {
+            try runBlocking {
+                switch Refiner.availability(for: mode) {
+                case .available: break
+                case .unavailable(let reason):
+                    log("\(mode.rawValue) unavailable: \(reason)")
+                    throw ExitCode(1)
+                }
 
-            let started = Date()
-            let result = await Refiner(mode: mode).refine(text)
-            let elapsed = Date().timeIntervalSince(started)
+                let started = Date()
+                let result = await Refiner(mode: mode).refine(text)
+                let elapsed = Date().timeIntervalSince(started)
 
-            print("before: \(text)")
-            print("after : \(result.text)")
-            print(String(format: "\nmode %@ · %.0f ms · %@",
-                         mode.rawValue, elapsed * 1000,
-                         result.changed ? "changed" : "unchanged"))
-            if let rejection = result.rejection {
-                print("model output rejected: \(rejection)")
+                print("before: \(text)")
+                print("after : \(result.text)")
+                print(String(format: "\nmode %@ · %.0f ms · %@",
+                             mode.rawValue, elapsed * 1000,
+                             result.changed ? "changed" : "unchanged"))
+                if let rejection = result.rejection {
+                    print("model output rejected: \(rejection)")
+                }
             }
         }
     }
 
-    struct Explain: AsyncParsableCommand {
+    struct Explain: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Show the phonetic keys of two spellings and how similar they are."
         )
@@ -742,20 +769,22 @@ struct Vocab: AsyncParsableCommand {
         @Argument(help: "The mangled form the recogniser produced.")
         var heard: String
 
-        func run() async throws {
-            let pairs = [("term", term), ("heard", heard)]
-            for (label, value) in pairs {
-                print("\(label.padding(toLength: 9, withPad: " ", startingAt: 0)) \"\(value)\"")
-                print("  normalised \(PhoneticKey.normalize(value))")
-                print("  skeleton   \(PhoneticKey.skeleton(value))")
+        func run() throws {
+            try runBlocking {
+                let pairs = [("term", term), ("heard", heard)]
+                for (label, value) in pairs {
+                    print("\(label.padding(toLength: 9, withPad: " ", startingAt: 0)) \"\(value)\"")
+                    print("  normalised \(PhoneticKey.normalize(value))")
+                    print("  skeleton   \(PhoneticKey.skeleton(value))")
+                }
+                let full = EditDistance.similarity(
+                    PhoneticKey.normalize(term), PhoneticKey.normalize(heard))
+                let skeletal = EditDistance.similarity(
+                    PhoneticKey.skeleton(term), PhoneticKey.skeleton(heard))
+                print(String(format: "\nsimilarity full %.3f  ·  skeleton %.3f", full, skeletal))
+                print(String(format: "thresholds full %.2f  ·  skeleton %.2f",
+                             Vocabulary.defaultThreshold, Vocabulary.defaultSkeletonThreshold))
             }
-            let full = EditDistance.similarity(
-                PhoneticKey.normalize(term), PhoneticKey.normalize(heard))
-            let skeletal = EditDistance.similarity(
-                PhoneticKey.skeleton(term), PhoneticKey.skeleton(heard))
-            print(String(format: "\nsimilarity full %.3f  ·  skeleton %.3f", full, skeletal))
-            print(String(format: "thresholds full %.2f  ·  skeleton %.2f",
-                         Vocabulary.defaultThreshold, Vocabulary.defaultSkeletonThreshold))
         }
     }
 }
@@ -766,7 +795,7 @@ struct Vocab: AsyncParsableCommand {
 /// every later change (engine version, custom vocabulary, post-processing) be
 /// measured on the same fixed audio instead of on whatever happened to be said
 /// into the microphone that time.
-struct Transcribe: AsyncParsableCommand {
+struct Transcribe: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Transcribe an audio file (the engine measurement harness)."
     )
@@ -807,48 +836,50 @@ struct Transcribe: AsyncParsableCommand {
         }
     }
 
-    func run() async throws {
-        guard !files.isEmpty else {
-            throw ValidationError("give at least one audio file — e.g. yaz transcribe sample.wav")
-        }
-
-        let engine: any Transcriber = switch engineName {
-        case .whisper: WhisperTranscriber(model: whisperModel, language: language)
-        case .parakeet: ParakeetTranscriber(version: .v3)
-        }
-
-        // Refuse an engine/language pair that cannot work before spending a
-        // model download on it. Parakeet returns confident nonsense for
-        // Turkish rather than failing, so this check is the only thing standing
-        // between the user and a wrong answer.
-        try engine.validateLanguage(language)
-
-        if !engine.isDownloaded {
-            log("downloading the model — the first run can take a few minutes")
-        }
-
-        let loadStart = Date()
-        try await engine.prepare()
-        log(String(format: "✓ %@ ready — %.1f s", engine.model, Date().timeIntervalSince(loadStart)))
-
-        // `yaz transcribe` is a measurement harness: by default it shows what
-        // the model produced, with the gates reported but not enforced.
-        var options = strict ? TranscribeOptions() : .raw
-        options.timeout = .seconds(Int(max(maxSeconds, 120)))
-
-        var failures = 0
-        for path in files {
-            do {
-                try await transcribeOne(path, engine: engine, options: options)
-            } catch let error as YazError {
-                failures += 1
-                print("\n═══ \(URL(fileURLWithPath: path).lastPathComponent) ═══")
-                print("  ✗ \(error.description)")
+    func run() throws {
+        try runBlocking {
+            guard !files.isEmpty else {
+                throw ValidationError("give at least one audio file — e.g. yaz transcribe sample.wav")
             }
-        }
 
-        await engine.release()
-        if failures > 0 { throw ExitCode(1) }
+            let engine: any Transcriber = switch engineName {
+            case .whisper: WhisperTranscriber(model: whisperModel, language: language)
+            case .parakeet: ParakeetTranscriber(version: .v3)
+            }
+
+            // Refuse an engine/language pair that cannot work before spending a
+            // model download on it. Parakeet returns confident nonsense for
+            // Turkish rather than failing, so this check is the only thing standing
+            // between the user and a wrong answer.
+            try engine.validateLanguage(language)
+
+            if !engine.isDownloaded {
+                log("downloading the model — the first run can take a few minutes")
+            }
+
+            let loadStart = Date()
+            try await engine.prepare()
+            log(String(format: "✓ %@ ready — %.1f s", engine.model, Date().timeIntervalSince(loadStart)))
+
+            // `yaz transcribe` is a measurement harness: by default it shows what
+            // the model produced, with the gates reported but not enforced.
+            var options = strict ? TranscribeOptions() : .raw
+            options.timeout = .seconds(Int(max(maxSeconds, 120)))
+
+            var failures = 0
+            for path in files {
+                do {
+                    try await transcribeOne(path, engine: engine, options: options)
+                } catch let error as YazError {
+                    failures += 1
+                    print("\n═══ \(URL(fileURLWithPath: path).lastPathComponent) ═══")
+                    print("  ✗ \(error.description)")
+                }
+            }
+
+            await engine.release()
+            if failures > 0 { throw ExitCode(1) }
+        }
     }
 
     private func transcribeOne(

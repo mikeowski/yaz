@@ -94,7 +94,7 @@ final class HotkeyMonitor: @unchecked Sendable {
     /// first handful answers that on any machine without asking the user to
     /// run anything special.
     fileprivate var eventsLogged = 0
-    private static let eventsToLog = 24
+    private static let eventsToLog = 8
 
     /// Fired when the tap has been installed for a while and has never seen a
     /// single event — the signature of a stale permission record.

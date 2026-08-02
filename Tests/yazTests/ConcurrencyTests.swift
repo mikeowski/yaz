@@ -158,3 +158,56 @@ struct SerialGateTests {
         #expect(seen == Set(0..<12))
     }
 }
+
+@Suite("runBlocking — the bridge from sync commands to async work")
+struct RunBlockingTests {
+
+    @Test("returns the value the work produced")
+    func returnsValue() throws {
+        #expect(try runBlocking { 42 } == 42)
+    }
+
+    @Test("rethrows what the work threw")
+    func rethrowsWorkError() {
+        struct Boom: Error {}
+        #expect(throws: Boom.self) {
+            try runBlocking { throw Boom() }
+        }
+    }
+
+    @Test("waits for work that actually suspends")
+    func waitsForSuspension() throws {
+        let value = try runBlocking {
+            try await Task.sleep(for: .milliseconds(60))
+            return "done"
+        }
+        #expect(value == "done")
+    }
+
+    /// The bridge runs its work detached on purpose. Inheriting the caller's
+    /// context would put it back on the actor the caller is blocking, which is
+    /// a deadlock rather than a slowdown — `preview --write-iconset` hung
+    /// exactly that way until the MainActor paths stopped using this bridge.
+    ///
+    /// Work that suspends several times is the case that would hang: each
+    /// resumption needs an executor the blocked caller is not holding.
+    @Test("work that suspends repeatedly still completes")
+    func repeatedSuspensionDoesNotDeadlock() throws {
+        let total = try runBlocking {
+            var sum = 0
+            for step in 1...5 {
+                try await Task.sleep(for: .milliseconds(10))
+                sum += step
+            }
+            return sum
+        }
+        #expect(total == 15)
+    }
+
+    @Test("sequential calls each get their own result")
+    func sequentialCallsAreIndependent() throws {
+        #expect(try runBlocking { 1 } == 1)
+        #expect(try runBlocking { 2 } == 2)
+        #expect(try runBlocking { "three" } == "three")
+    }
+}

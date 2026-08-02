@@ -975,6 +975,83 @@ hizalanıp gerçek boşluk verildi.
 tek geometriyi paylaşıyor, ve CLI ikilisinin kaynak paketi olmadığı için bir
 asset catalog `.app` içinde çalışıp dışında sessizce başarısız olurdu.
 
+
+## Neden hiçbir şey olmuyordu — dört ayrı sebep
+
+Tek bir semptom ("uygulama açık, izinler verili, tuşa basınca hiçbir şey
+olmuyor") dört ayrı hatanın üstünü örtüyordu. Hiçbiri hata mesajı üretmedi.
+
+### 0. Kanıt yoktu
+
+Finder'dan açılan bir `.app`'in stderr'i hiçbir yere gitmiyor. İlk iş bunu
+düzeltmek oldu: `Log` her satırı hem stderr'e hem `~/Library/Logs/yaz.log`'a
+yazıyor, `yaz logs --follow` okuyor. Aşağıdakilerin hepsi o dosyayı okuyarak
+bulundu.
+
+### 1. Input Monitoring
+
+Erişilebilirlik izni klavye **dinlemek** için yetmiyor. Klavye olaylarını
+dinleyen bir `CGEventTap` ayrıca `kTCCServiceListenEvent` istiyor — ayrı
+listede, ayrı anahtar. Yokken tap kuruluyor, run loop kaynağı bağlanıyor,
+`tapEnable` başarılı dönüyor ve **tek olay teslim edilmiyor.**
+
+parrot yalnızca Erişilebilirliği kontrol ediyor; aynı duvara toslar.
+
+### 2. macOS fn tuşunu sahipleniyor
+
+Globe tuşu, ikinci bir klavye düzeni tanımlıysa giriş kaynağı değiştirmeye,
+Dikte açıksa dikteye bağlanıyor. Bu makinede ikisi de vardı (Türkçe-QWERTY +
+U.S., `AppleDictationAutoEnable=1`). Sistem tuşu session tap'in **altında**
+yutuyor.
+
+`AppleFnUsageType`'ın **ayarlanmamış** olması güvenli değil, tehlikeli durumun
+ta kendisi — "okunamadı"yı uyarı saymak tam da bu yapılandırmayı geçiriyordu.
+Artık sert hata, ve menü barı tek tıkla sağ option'a geçiriyor.
+
+### 3. Bayat TCC kayıtları
+
+Paket defalarca değiştirildiğinde macOS artık ikiliye uymayan bir izin kaydı
+tutabiliyor. Sistem izni "verilmiş" bildiriyor, uygulama inanıyor, olaylar
+sessizce teslim edilmiyor. Ölçüldü: `accessibility=true
+inputMonitoring=granted`, tap canlı, sıfır olay — `tccutil reset` sonrası aynı
+uygulama `accessibility=false inputMonitoring=notDetermined` dedi.
+
+Bunu bildiren hiçbir API yok, dolayısıyla **sessizlik sinyal**: dinleyici 75
+saniye boyunca hiç olay görmezse kendini ihbar ediyor ve menü `yaz
+reset-permissions`'ı gösteriyor. İlk gerçek olay gözcüyü iptal ediyor.
+
+### 4. MainActor kilidi — asıl hata
+
+`NSApplication.run()` hiç dönmüyor. Bir `AsyncParsableCommand` içinden
+çağrıldığında, MainActor'ı sahiplenen bir Swift task'ini kalıcı olarak bloke
+ediyor — ve cooperative executor o task bitene kadar **başka hiçbir MainActor
+işini çalıştırmıyor.**
+
+Ayırt eden ölçüm şuydu: CFRunLoop timer'ları düzgün ateşliyordu, ama GCD ana
+kuyruğu bir kez bile boşalmadı. İki farklı mekanizmanın biri çalışıp diğerinin
+çalışmaması teşhisi verdi.
+
+Sonuçları: `engineBecameReady()` hiç çalışmadı, yani `ready` kalıcı olarak
+`false` kaldı — tap düzelseydi bile tuşa basmak hiçbir şey yapmayacaktı.
+
+Çözüm: tüm komut ağacı senkron `ParsableCommand`. Ana thread'i AppKit'e, onu
+sahiplenen bir task olmadan devrediyor. Async alt komutlar `runBlocking` ile
+köprüleniyor.
+
+**Köprünün kendi tuzağı:** `runBlocking`'i MainActor gerektiren bir komutta
+kullanmak kilitlenme demek — ana thread semaforda beklerken iş, beklediği
+aktöre atlamaya çalışıyor. `preview --write-iconset` tam böyle asıldı.
+`preview` ve `settings` artık `MainActor.assumeIsolated` kullanıyor, çünkü
+senkron komut zaten ana thread'de çalışıyor.
+
+### Sonuç
+
+```
+17:06:49  modifier event: flags=80140 keycode=61 wanted=80000 match=true
+17:06:49  hotkey down · ● recording
+17:06:52  → 0.45 s · Bugün Slack'tan seni arayacağım.
+```
+
 ## Durum
 
 - **M1 — tamam.** Motor katmanı, `Transcriber` protokolü, Whisper + Parakeet

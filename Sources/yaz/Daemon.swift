@@ -49,7 +49,7 @@ final class Daemon {
         self.verbose = verbose
     }
 
-    func run() async throws {
+    func run() throws {
         // Order matters: everything that can fail cheaply fails before the
         // 1.6 GB model load. Loading first means a missing Accessibility grant
         // costs the user seven seconds before they are told about it.
