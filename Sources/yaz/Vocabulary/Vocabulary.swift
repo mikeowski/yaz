@@ -38,7 +38,23 @@ struct VocabularyTerm: Sendable, Equatable {
 ///
 /// So correction runs on rules, not on a guess: it can only ever produce words
 /// the user themselves put in the list.
+///
+/// **This layer is Turkish-only, and not merely tuned for it.** The guard that
+/// stops a false replacement is `TurkishLexicon` — a list of ordinary Turkish
+/// words that may not be overwritten on skeleton evidence. Point it at another
+/// language and that guard protects nothing: measured on English, `into main`
+/// became `Notion` and `merged` became `merge`. Running it outside Turkish is
+/// worse than not running it, so `isSupported(language:)` exists and callers
+/// must honour it.
 struct Vocabulary: Sendable {
+
+    /// The language whose lexicon backs the safety veto.
+    static let lexiconLanguage = "tr"
+
+    /// Whether correction can run safely for `language`.
+    static func isSupported(language: String) -> Bool {
+        language.lowercased().hasPrefix(lexiconLanguage)
+    }
 
     /// Default match threshold. Deliberately conservative — replacing a word
     /// the user actually said is worse than leaving a mangled one, because the

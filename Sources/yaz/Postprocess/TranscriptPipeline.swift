@@ -16,6 +16,9 @@ struct TranscriptPipeline: Sendable {
 
     let vocabulary: Vocabulary
     let refiner: Refiner
+    /// The dictation language. Decides whether the Turkish-specific layers may
+    /// run at all.
+    let language: String
 
     struct Output: Sendable {
         let text: String
@@ -28,15 +31,23 @@ struct TranscriptPipeline: Sendable {
     init(config: Config) {
         self.vocabulary = Vocabulary(terms: config.vocabulary)
         self.refiner = Refiner(mode: config.refine)
+        self.language = config.language
     }
 
-    init(vocabulary: Vocabulary, refiner: Refiner) {
+    init(vocabulary: Vocabulary, refiner: Refiner, language: String = Vocabulary.lexiconLanguage) {
         self.vocabulary = vocabulary
         self.refiner = refiner
+        self.language = language
     }
 
     func process(_ text: String) async -> Output {
-        let corrected = vocabulary.correct(text)
+        // Vocabulary correction is Turkish-only, and unsafe rather than merely
+        // useless elsewhere: its guard against replacing a real word is a
+        // Turkish word list, so on English it turned "into main" into "Notion".
+        // Skipping is the correct behaviour, not a limitation to work around.
+        let corrected = Vocabulary.isSupported(language: language)
+            ? vocabulary.correct(text)
+            : Vocabulary.Result(text: text, corrections: [])
         let result = await refiner.refine(corrected.text)
 
         // A refinement that loses a repaired term is not an improvement.

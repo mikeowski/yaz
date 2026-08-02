@@ -27,6 +27,7 @@ enum DoctorReport {
             model(config: config),
             injection(config: config),
             refinement(config: config),
+            postProcessingLanguage(config: config),
             loginItem(),
         ]
         if config.hotkey.conflictsWithSystemFnAction {
@@ -166,6 +167,31 @@ enum DoctorReport {
                 status: .warn("\(config.refine.rawValue) unavailable — \(reason)"),
                 remedy: "set \"refine\": \"fillers\" in the config to fall back to the deterministic filter")
         }
+    }
+
+    /// Whether the Turkish-specific layers apply to the configured language.
+    ///
+    /// Not a failure — dictation still works, and the transcription itself is
+    /// fully multilingual. What stops is the vocabulary repair, which is the
+    /// reason this project exists. Saying so beats letting someone wonder why
+    /// their terms are never fixed.
+    static func postProcessingLanguage(config: Config) -> Check {
+        guard !config.vocabulary.isEmpty else {
+            return Check(name: "vocabulary", status: .ok("no terms configured"), remedy: nil)
+        }
+        guard Vocabulary.isSupported(language: config.language) else {
+            return Check(
+                name: "vocabulary",
+                status: .warn("\(config.vocabulary.count) terms configured, but term repair"
+                    + " only supports \(Vocabulary.lexiconLanguage) — skipped for"
+                    + " \(config.language)"),
+                remedy: "the safety check that prevents wrong replacements is a Turkish"
+                    + " word list; running it on another language corrupts text")
+        }
+        return Check(
+            name: "vocabulary",
+            status: .ok("\(config.vocabulary.count) terms · \(config.language)"),
+            remedy: nil)
     }
 
     /// A stale login item is the worst kind of broken: launchd keeps trying,

@@ -11,6 +11,45 @@ onun bilerek reddettiği üç şeyi hedefliyor: **çok dilli varsayılan**,
 
 
 
+
+## Which languages does this actually work for?
+
+Two different answers, and the difference matters.
+
+**Transcription is fully multilingual.** The engine is Whisper; set
+`"language"` to anything it supports and dictation works. Measured, English,
+untouched by any Turkish logic:
+
+```
+$ yaz transcribe --language en sample.wav
+  latency 520 ms · RTF 0.107
+  Today I reviewed the pull request and merged it into main after the CI pipeline turned green.
+```
+
+**Term repair is Turkish-only** — and that is a safety boundary, not a
+limitation waiting to be lifted. The guard that stops the layer replacing a
+word you actually said is `TurkishLexicon`, a list of ordinary Turkish words.
+Point it at another language and nothing is protected. Measured on English
+before the boundary was enforced:
+
+```
+"into main"       → "Notion"
+"merged"          → "merge"
+"the CI pipeline" → "CI pipeline"
+```
+
+So the pipeline skips it outside Turkish and says so:
+
+```
+vocabulary skipped — the correction layer only supports tr, not en
+```
+
+The same applies to hesitation removal: the sounds and the "these are real
+words" exclusions are both Turkish, so on English it is inert.
+
+Supporting another language properly means writing its common-word list and
+its phonetic normalisation — not flipping a flag.
+
 ## Permissions — there are two, and a third thing that isn't one
 
 **Accessibility** lets yaz paste text at your cursor.

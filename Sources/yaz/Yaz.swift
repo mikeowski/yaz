@@ -931,6 +931,12 @@ struct Transcribe: ParsableCommand {
             var config = Config.load()
             if !vocabulary { config.vocabulary = [] }
             if let refine { config.refine = refine }
+            config.language = language
+
+            if vocabulary, !Vocabulary.isSupported(language: language) {
+                print("  vocabulary skipped — the correction layer only supports"
+                    + " \(Vocabulary.lexiconLanguage), not \(language)")
+            }
 
             let started = Date()
             let processed = await TranscriptPipeline(config: config).process(text)

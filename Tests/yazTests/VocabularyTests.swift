@@ -412,3 +412,65 @@ struct VocabularyFalsePositiveCorpusTests {
         #expect(offenders.isEmpty, "\(offenders.joined(separator: " | "))")
     }
 }
+
+/// The correction layer is Turkish-only, and unsafe rather than merely useless
+/// elsewhere: its guard against overwriting a real word is a Turkish word
+/// list. Measured on English before this was enforced — `into main` became
+/// `Notion` and `merged` became `merge`.
+@Suite("Vocabulary — language support is a safety boundary")
+struct VocabularyLanguageTests {
+
+    @Test("Turkish is supported", arguments: ["tr", "TR", "tr-TR"])
+    func turkishIsSupported(_ language: String) {
+        #expect(Vocabulary.isSupported(language: language))
+    }
+
+    @Test(
+        "other languages are not",
+        arguments: ["en", "de", "fr", "es", "ru", "ja", "en-US"]
+    )
+    func othersAreNot(_ language: String) {
+        #expect(!Vocabulary.isSupported(language: language))
+    }
+
+    /// The exact damage that motivated the boundary.
+    @Test("English text is left alone by the pipeline")
+    func englishIsUntouched() async {
+        let terms = [
+            VocabularyTerm(canonical: "Notion"),
+            VocabularyTerm(canonical: "merge"),
+            VocabularyTerm(canonical: "CI pipeline"),
+        ]
+        let english = "Today I reviewed the pull request and merged it into main"
+
+        // Directly: the layer would damage it.
+        let raw = Vocabulary(terms: terms).correct(english)
+        #expect(raw.didChange, "the damage this boundary exists to prevent should be reproducible")
+
+        // Through the pipeline with language: en — untouched.
+        let pipeline = TranscriptPipeline(
+            vocabulary: Vocabulary(terms: terms),
+            refiner: Refiner(mode: .off),
+            language: "en")
+        let result = await pipeline.process(english)
+        #expect(result.text == english)
+        #expect(result.corrections.isEmpty)
+    }
+
+    @Test("Turkish still gets corrected through the pipeline")
+    func turkishStillWorks() async {
+        let pipeline = TranscriptPipeline(
+            vocabulary: Vocabulary(terms: [VocabularyTerm(canonical: "Slack")]),
+            refiner: Refiner(mode: .off),
+            language: "tr")
+        let result = await pipeline.process("Sılacık üzerinden yaz")
+        #expect(result.text.contains("Slack"))
+        #expect(!result.corrections.isEmpty)
+    }
+
+    @Test("the filler filter declares the same boundary")
+    func fillerFilterDeclaresItsLanguage() {
+        #expect(FillerFilter.isSupported(language: "tr"))
+        #expect(!FillerFilter.isSupported(language: "en"))
+    }
+}

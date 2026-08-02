@@ -14,6 +14,14 @@ import Foundation
 /// that might be unavailable, slow, or switched off.
 enum FillerFilter {
 
+    /// The hesitation list and the "these are real words" exclusions are both
+    /// Turkish. On English it removes nothing — `um` and `uh` are not in the
+    /// list — so running it elsewhere is inert rather than harmful, but it is
+    /// still not doing the job the caller thinks it is.
+    static func isSupported(language: String) -> Bool {
+        language.lowercased().hasPrefix("tr")
+    }
+
     /// Pure hesitation sounds. Every entry is a vowel or nasal run that
     /// carries no lexical meaning in Turkish.
     ///
