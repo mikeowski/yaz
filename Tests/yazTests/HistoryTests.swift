@@ -298,11 +298,11 @@ struct ModelDownloaderTests {
     }
 
     /// Calling it when the weights are present must be free — it runs on every
-    /// launch.
-    @Test("an already-downloaded model is a no-op")
+    /// launch. Skipped rather than failed without them; see `ModelAvailability`.
+    @Test(
+        "an already-downloaded model is a no-op",
+        .enabled(if: ModelAvailability.largeV3TurboIsDownloaded))
     func alreadyDownloadedIsNoOp() async throws {
-        let status = ModelStore.status(for: WhisperModel.largeV3Turbo.whisperKitID)
-        try #require(status.isComplete, "model not present — test skipped")
         let didDownload = try await ModelDownloader.ensure(.largeV3Turbo)
         #expect(!didDownload)
     }

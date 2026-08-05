@@ -159,11 +159,14 @@ struct ModelStoreTests {
         #expect(status.path.contains("Documents/huggingface"))
     }
 
-    /// large-v3-turbo is downloaded on this machine; the test skips if not.
-    @Test("a downloaded model is reported complete and its size is read")
+    /// Skipped rather than failed when the weights are absent — see
+    /// `ModelAvailability`.
+    @Test(
+        "a downloaded model is reported complete and its size is read",
+        .enabled(if: ModelAvailability.largeV3TurboIsDownloaded))
     func downloadedModelIsComplete() throws {
         let status = ModelStore.status(for: WhisperModel.largeV3Turbo.whisperKitID)
-        try #require(status.sizeBytes > 0, "the model is not downloaded — test skipped")
+        #expect(status.sizeBytes > 0)
         #expect(status.isComplete)
         #expect(status.missing.isEmpty)
         #expect(status.sizeBytes > 1_000_000_000)   // ~1.6 GB
