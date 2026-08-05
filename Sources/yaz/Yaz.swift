@@ -515,8 +515,8 @@ struct Preview: ParsableCommand {
             icon.draw(
                 in: NSRect(x: x, y: 44, width: cell, height: cell),
                 from: .zero, operation: .sourceOver, fraction: 1)
-            // Gerçek boyut, 1× ve 2×: mark 18 pt'te okunmuyorsa büyükte güzel
-            // olması hiçbir şey ifade etmiyor.
+            // Actual size, 1× and 2×: if the mark is illegible at 18 pt, it
+            // looking good when enlarged means nothing.
             icon.draw(in: NSRect(x: x + 24, y: 16, width: 18, height: 18),
                       from: .zero, operation: .sourceOver, fraction: 1)
             icon.draw(in: NSRect(x: x + 56, y: 10, width: 36, height: 36),

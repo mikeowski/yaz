@@ -7,22 +7,22 @@ import Testing
 /// interfaces 44.1 kHz, headsets sometimes 8 kHz, and quill's rca-001 found a
 /// route reporting **nine** channels. Every one of those has to arrive at the
 /// engine as 16 kHz mono, or the transcript is silence.
-@Suite("AudioLoader — örnekleme hızı ve kanal dönüşümü")
+@Suite("AudioLoader — sample rate and channel conversion")
 struct ResamplingTests {
 
     static func path(_ name: String) -> String { AudioLoaderTests.path(name) }
 
-    /// Kaynak dosyaların hepsi aynı 5.57 sn'lik konuşmadan üretildi.
+    /// Every source file was produced from the same 5.57 s of speech.
     static let expectedSeconds = 5.57
     static let tolerance = 0.15
 
     @Test(
-        "her giriş formatı 16 kHz mono'ya doğru sürede iner",
+        "every input format lands at 16 kHz mono with the right duration",
         arguments: [
-            "t1.wav",              // 16 kHz mono — dönüşüm yok
-            "t1-mono-48k.wav",     // aşağı örnekleme, tam katsayı
-            "t1-stereo-44k.wav",   // aşağı örnekleme + stereo→mono, kesirli oran
-            "t1-mono-8k.wav",      // yukarı örnekleme
+            "t1.wav",              // 16 kHz mono — no conversion
+            "t1-mono-48k.wav",     // downsample, integer ratio
+            "t1-stereo-44k.wav",   // downsample + stereo→mono, fractional ratio
+            "t1-mono-8k.wav",      // upsample
         ]
     )
     func convertsToCanonicalFormat(_ name: String) throws {
@@ -34,31 +34,31 @@ struct ResamplingTests {
     }
 
     @Test(
-        "dönüşüm sonrası sinyal hayatta kalır — sessiz dosya üretmiyoruz",
+        "the signal survives conversion — we are not producing silent files",
         arguments: ["t1-mono-48k.wav", "t1-stereo-44k.wav", "t1-mono-8k.wav"]
     )
     func signalSurvivesConversion(_ name: String) throws {
         let samples = try AudioLoader.load(Self.path(name))
         let level = SpeechGate.level(samples)
-        // rca-001'in tuzağı tam buydu: doğru süreli ama dijital olarak sessiz
-        // dosya. Süre kontrolü tek başına yeterli değil.
+        // Exactly the trap in rca-001: a file of the right duration that is
+        // digitally silent. Checking duration alone is not enough.
         #expect(level.peak > 0.05, "\(name) tepe \(level.peak)")
         #expect(level.rms > 0.01, "\(name) rms \(level.rms)")
         #expect(try SpeechGate().check(samples).peak > 0)
     }
 
-    @Test("stereo kaynak tek kanala iner, iki katına çıkmaz")
+    @Test("a stereo source collapses to one channel rather than doubling")
     func stereoDownmixesRatherThanConcatenates() throws {
         let mono = try AudioLoader.load(Self.path("t1.wav"))
         let stereo = try AudioLoader.load(Self.path("t1-stereo-44k.wav"))
         let ratio = Double(stereo.count) / Double(mono.count)
-        // Kanallar birleştirilseydi oran ~2 olurdu.
+        // Summing the channels instead would have made the ratio ~2.
         #expect(ratio > 0.9 && ratio < 1.1, "oran \(ratio)")
     }
 
-    @Test("pencere sınırında kare kaybı yok — 32768'lik pencereler bütünü kapsamalı")
+    @Test("no frames lost at a window boundary — 32768-frame windows must cover the whole file")
     func windowBoundariesLoseNoFrames() throws {
-        // t2 12 sn: 16 kHz'de ~193k örnek, yani 6 pencereden fazla.
+        // t2 is 12 s: ~193k samples at 16 kHz, so more than six windows.
         let samples = try AudioLoader.load(Self.path("t2.wav"))
         let seconds = Double(samples.count) / AudioLoader.sampleRate
         #expect(abs(seconds - 12.08) < 0.15, "\(seconds) sn")

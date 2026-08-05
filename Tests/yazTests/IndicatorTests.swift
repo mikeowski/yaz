@@ -3,17 +3,17 @@ import Testing
 
 @testable import yaz
 
-@Suite("LevelMeter — dalga formu aritmetiği")
+@Suite("LevelMeter — the waveform arithmetic")
 struct LevelMeterTests {
 
-    @Test("başlangıçta tüm çubuklar taban yüksekliğinde")
+    @Test("every bar starts at the floor height")
     func startsAtFloor() {
         let meter = LevelMeter()
         #expect(meter.bars.count == LevelMeter.barCount)
         #expect(meter.bars.allSatisfy { $0 == LevelMeter.floor })
     }
 
-    @Test("push çubuk sayısını değiştirmez — halka tampon")
+    @Test("push does not change the bar count — it is a ring buffer")
     func pushKeepsCount() {
         var meter = LevelMeter()
         for _ in 0..<100 { meter.push(0.3) }
@@ -28,7 +28,7 @@ struct LevelMeterTests {
         #expect(meter.bars.first == LevelMeter.floor)
     }
 
-    @Test("reset her şeyi tabana döndürür")
+    @Test("reset returns everything to the floor")
     func resetClears() {
         var meter = LevelMeter()
         for _ in 0..<5 { meter.push(0.8) }
@@ -36,7 +36,7 @@ struct LevelMeterTests {
         #expect(meter.bars.allSatisfy { $0 == LevelMeter.floor })
     }
 
-    @Test("çubuk yüksekliği her zaman taban ile 1 arasında")
+    @Test("bar height always lands between the floor and 1")
     func heightsStayInRange() {
         for raw in stride(from: Float(-1), through: 5, by: 0.13) {
             let height = LevelMeter.shape(raw)
@@ -44,49 +44,50 @@ struct LevelMeterTests {
         }
     }
 
-    @Test("sessizlik tabanda kalır")
+    @Test("silence rests at the floor")
     func silenceStaysAtFloor() {
         #expect(LevelMeter.shape(0) == LevelMeter.floor)
         #expect(LevelMeter.shape(-0.5) == LevelMeter.floor)
     }
 
-    @Test("yüksek seviye tavana yapışır ama taşmaz")
+    @Test("a loud level pins to the ceiling without overflowing")
     func loudClampsToCeiling() {
         #expect(LevelMeter.shape(1) == 1)
         #expect(LevelMeter.shape(50) == 1)
     }
 
-    @Test("daha yüksek girdi daha yüksek çubuk verir")
+    @Test("a louder input gives a taller bar")
     func monotonic() {
         var previous = LevelMeter.shape(0.001)
         for raw in stride(from: Float(0.01), through: 0.08, by: 0.01) {
             let height = LevelMeter.shape(raw)
-            #expect(height >= previous, "\(raw) monotonik değil")
+            #expect(height >= previous, "\(raw) is not monotonic")
             previous = height
         }
     }
 
-    /// Konuşma tepe değerleri dahili mikrofonda kabaca 0.05–0.7 arasında.
-    /// Doğrusal çizilse ölü bir çizgi olurdu; şekillendirme bu aralığı
-    /// görünür kılmalı.
-    @Test("normal konuşma aralığı görünür yükseklik üretir")
+    /// Speech peaks land roughly in 0.05–0.7 on a built-in microphone. Drawn
+    /// linearly that is a dead flat line; shaping has to make that range
+    /// visible.
+    @Test("the ordinary speech range produces visible height")
     func speechRangeIsVisible() {
         let quiet = LevelMeter.shape(0.05)
         let normal = LevelMeter.shape(0.2)
-        #expect(quiet > LevelMeter.floor * 2, "sessiz konuşma görünmüyor: \(quiet)")
-        #expect(normal > 0.5, "normal konuşma yeterince yüksek değil: \(normal)")
+        #expect(quiet > LevelMeter.floor * 2, "quiet speech is invisible: \(quiet)")
+        #expect(normal > 0.5, "ordinary speech is not tall enough: \(normal)")
     }
 
-    /// Sonlu olmayan değer "çok yüksek" değil "okuma bozuk" demek; tavana
-    /// yapışmış bir metre, düz olandan daha kendinden emin bir yalan olur.
-    @Test("sonlu olmayan değerler tabanda kalır")
+    /// A non-finite value means "the reading is broken", not "the room is
+    /// loud" — a meter slammed against the ceiling is a more confident lie
+    /// than a flat one.
+    @Test("non-finite values rest at the floor")
     func handlesNonFinite() {
         #expect(LevelMeter.shape(.nan) == LevelMeter.floor)
         #expect(LevelMeter.shape(.infinity) == LevelMeter.floor)
         #expect(LevelMeter.shape(-.infinity) == LevelMeter.floor)
     }
 
-    @Test("bozuk değer halka tamponu bozmaz")
+    @Test("a broken value does not corrupt the ring buffer")
     func nonFiniteDoesNotCorruptBuffer() {
         var meter = LevelMeter()
         meter.push(.nan)
@@ -95,7 +96,7 @@ struct LevelMeterTests {
         #expect(meter.bars.allSatisfy { $0.isFinite })
     }
 
-    @Test("özel çubuk sayısı desteklenir")
+    @Test("a custom bar count is supported")
     func customBarCount() {
         var meter = LevelMeter(barCount: 8)
         #expect(meter.bars.count == 8)
@@ -103,16 +104,16 @@ struct LevelMeterTests {
         #expect(meter.bars.count == 8)
     }
 
-    @Test("sıfır çubuk istenirse yine de bir çubuk olur")
+    @Test("asking for zero bars still yields one")
     func degenerateBarCount() {
         #expect(LevelMeter(barCount: 0).bars.count == 1)
     }
 }
 
-@Suite("IndicatorState — gösterge durum makinesi")
+@Suite("IndicatorState — the indicator state machine")
 struct IndicatorStateTests {
 
-    @Test("yalnızca idle görünmez")
+    @Test("only idle is invisible")
     func visibility() {
         #expect(!IndicatorState.idle.isVisible)
         for state in [IndicatorState.recording, .transcribing, .refining] {
@@ -120,9 +121,9 @@ struct IndicatorStateTests {
         }
     }
 
-    /// Kayıt bittikten sonra dalga formu oynamaya devam ederse yalan söyler:
-    /// o noktada ses çoktan yakalanmış olur.
-    @Test("dalga formu yalnızca kayıt sırasında oynar")
+    /// A waveform still moving after recording ends is lying: the audio has
+    /// already been captured by then.
+    @Test("the waveform animates only while recording")
     func waveformOnlyWhileRecording() {
         #expect(IndicatorState.recording.showsWaveform)
         #expect(!IndicatorState.transcribing.showsWaveform)
@@ -130,7 +131,7 @@ struct IndicatorStateTests {
         #expect(!IndicatorState.idle.showsWaveform)
     }
 
-    @Test("görünür durumların etiketi var, idle'ın yok")
+    @Test("visible states have a label; idle does not")
     func labels() {
         #expect(IndicatorState.idle.label.isEmpty)
         for state in [IndicatorState.recording, .transcribing, .refining] {
@@ -138,23 +139,23 @@ struct IndicatorStateTests {
         }
     }
 
-    @Test("etiketler birbirinden ayırt edilebilir")
+    @Test("labels are distinguishable from one another")
     func labelsAreDistinct() {
         let labels = [IndicatorState.recording, .transcribing, .refining].map(\.label)
         #expect(Set(labels).count == labels.count)
     }
 }
 
-@Suite("Config — gösterge anahtarları")
+@Suite("Config — the indicator switches")
 struct IndicatorConfigTests {
 
-    @Test("varsayılan olarak ikisi de açık")
+    @Test("both are on by default")
     func defaultsOn() {
         #expect(Config().overlay)
         #expect(Config().menuBar)
     }
 
-    @Test("config'den kapatılabilir")
+    @Test("both can be turned off from config")
     func canBeDisabled() throws {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "yaz-ui-\(UUID().uuidString).json")
@@ -167,7 +168,7 @@ struct IndicatorConfigTests {
         #expect(!config.menuBar)
     }
 
-    @Test("örnek config gösterge anahtarlarını içeriyor")
+    @Test("the sample config includes the indicator switches")
     func exampleMentionsThem() {
         #expect(Config.example.contains("overlay"))
         #expect(Config.example.contains("menu_bar"))

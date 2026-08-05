@@ -2,16 +2,16 @@ import Testing
 
 @testable import yaz
 
-@Suite("SpeechGate — çıkarımdan önceki ucuz kapılar")
+@Suite("SpeechGate — the cheap gates before inference")
 struct SpeechGateTests {
 
-    /// 16 kHz mono örnek üretici.
+    /// Builds 16 kHz mono samples.
     static func tone(seconds: Double, amplitude: Float) -> [Float] {
         let count = Int(seconds * AudioLoader.sampleRate)
         return (0..<count).map { amplitude * Float(sin(Double($0) * 0.1)) }
     }
 
-    @Test("normal konuşma seviyesi geçer")
+    @Test("an ordinary speech level passes")
     func passesSpeech() throws {
         let level = try SpeechGate().check(Self.tone(seconds: 2, amplitude: 0.2))
         #expect(level.seconds == 2)
@@ -19,7 +19,7 @@ struct SpeechGateTests {
         #expect(level.rms > 0)
     }
 
-    @Test("çok kısa kayıt reddedilir — ölçüldü: 0.6 sn'lik ifade Whisper'dan boş dönüyor")
+    @Test("a very short recording is rejected — measured: a 0.6 s utterance returns nothing from Whisper")
     func rejectsShort() {
         #expect(throws: YazError.self) {
             try SpeechGate().check(Self.tone(seconds: 0.2, amplitude: 0.3))
@@ -33,14 +33,14 @@ struct SpeechGateTests {
         }
     }
 
-    @Test("eşik altı gürültü sessizlik sayılır")
+    @Test("noise below the threshold counts as silence")
     func rejectsNoiseFloor() {
         #expect(throws: YazError.self) {
             try SpeechGate().check(Self.tone(seconds: 2, amplitude: 0.0008))
         }
     }
 
-    @Test("boş tampon reddedilir, çökmez")
+    @Test("an empty buffer is rejected rather than crashing")
     func handlesEmpty() {
         let level = SpeechGate.level([])
         #expect(level.peak == 0)
@@ -49,7 +49,7 @@ struct SpeechGateTests {
         #expect(throws: YazError.self) { try SpeechGate().check([]) }
     }
 
-    @Test("reddedilen girdiler iyi huylu olarak işaretlenir — daemon sessizce atmalı")
+    @Test("rejections are marked benign — the daemon should drop them quietly")
     func rejectionsAreBenign() {
         let short = YazError.audioTooShort(seconds: 0.1, minimum: 0.35)
         let silent = YazError.audioSilent(peak: 0.0001, threshold: 0.005)
@@ -59,7 +59,7 @@ struct SpeechGateTests {
         #expect(!broken.isBenignInput)
     }
 
-    @Test("gevşek kapı her şeyi geçirir — ölçüm koşum takımı ham çıktıyı görmeli")
+    @Test("the lenient gate passes everything — the measurement harness needs the raw output")
     func rawOptionsPassEverything() throws {
         let gate = TranscribeOptions.raw.gate
         _ = try gate.check(Self.tone(seconds: 0.05, amplitude: 0))
@@ -68,10 +68,10 @@ struct SpeechGateTests {
 
 import func Foundation.sin
 
-@Suite("SpeechGate — vDSP ölçümü skaler referansla aynı sonucu vermeli")
+@Suite("SpeechGate — the vDSP measurement must match the scalar reference")
 struct LevelAccuracyTests {
 
-    /// vDSP'ye geçerken sonuç değişmemeli; referans skaler hesap burada.
+    /// Moving to vDSP must not change the result; the scalar reference lives here.
     static func reference(_ samples: [Float]) -> (peak: Float, rms: Float) {
         var peak: Float = 0
         var sum: Double = 0
@@ -82,7 +82,7 @@ struct LevelAccuracyTests {
         return (peak, samples.isEmpty ? 0 : Float((sum / Double(samples.count)).squareRoot()))
     }
 
-    @Test("sinüs dalgasında vDSP ve skaler eşleşir")
+    @Test("vDSP and scalar agree on a sine wave")
     func matchesOnTone() {
         let samples = (0..<50_000).map { 0.3 * Float(sin(Double($0) * 0.01)) }
         let fast = SpeechGate.level(samples)
@@ -91,20 +91,20 @@ struct LevelAccuracyTests {
         #expect(abs(fast.rms - slow.rms) < 1e-4)
     }
 
-    @Test("negatif tepe genliği mutlak değer olarak alınır")
+    @Test("a negative peak is taken as its absolute value")
     func peakUsesMagnitude() {
         let level = SpeechGate.level([-0.9, 0.1, 0.2])
         #expect(abs(level.peak - 0.9) < 1e-6)
     }
 
-    @Test("tek örneklik tampon çökmez")
+    @Test("a single-sample buffer does not crash")
     func singleSample() {
         let level = SpeechGate.level([0.5])
         #expect(abs(level.peak - 0.5) < 1e-6)
         #expect(abs(level.rms - 0.5) < 1e-6)
     }
 
-    @Test("süre örnek sayısından doğru hesaplanır")
+    @Test("duration is computed correctly from the sample count")
     func durationIsCorrect() {
         let level = SpeechGate.level([Float](repeating: 0.1, count: 16_000))
         #expect(abs(level.seconds - 1.0) < 1e-9)

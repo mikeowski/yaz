@@ -3,11 +3,11 @@ import Testing
 
 @testable import yaz
 
-@Suite("AudioLoader — dayanıklı ses okuma")
+@Suite("AudioLoader — reading audio without falling over")
 struct AudioLoaderTests {
 
     static var fixtures: URL {
-        // Tests/yazTests/ -> paket kökü
+        // Tests/yazTests/ -> package root
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -17,23 +17,23 @@ struct AudioLoaderTests {
 
     static func path(_ name: String) -> String { fixtures.appending(path: name).path }
 
-    @Test("gerçek konuşma dosyası 16 kHz mono olarak yüklenir")
+    @Test("a real speech file loads as 16 kHz mono")
     func loadsSpeech() throws {
         let samples = try AudioLoader.load(Self.path("t1.wav"))
         let seconds = Double(samples.count) / AudioLoader.sampleRate
-        // Kaynak 5.57 sn; yeniden örnekleme birkaç kare oynatabilir.
+        // The source is 5.57 s; resampling can shift it by a few frames.
         #expect(seconds > 5.4 && seconds < 5.8)
         #expect(SpeechGate.level(samples).peak > 0.01)
     }
 
-    @Test("uzun dosya da tam yüklenir — pencereli okuma kare kaybetmemeli")
+    @Test("a long file loads in full — windowed reading must not lose frames")
     func loadsLongerFileFully() throws {
         let samples = try AudioLoader.load(Self.path("t2.wav"))
         let seconds = Double(samples.count) / AudioLoader.sampleRate
         #expect(seconds > 11.9 && seconds < 12.3)
     }
 
-    @Test("olmayan dosya anlamlı hata verir — 'nilError' değil")
+    @Test("a missing file gives a meaningful error — not 'nilError'")
     func missingFileIsDescriptive() {
         #expect(throws: YazError.self) {
             try AudioLoader.load("/yok/boyle/bir/dosya.wav")
@@ -44,23 +44,23 @@ struct AudioLoaderTests {
             #expect(error.description.contains("dosya.wav"))
             #expect(!error.description.contains("nilError"))
         } catch {
-            Issue.record("YazError bekleniyordu")
+            Issue.record("expected a YazError")
         }
     }
 
-    @Test("süre sınırı aşılırsa reddedilir ve sınır mesajda geçer")
+    @Test("exceeding the duration limit is rejected, and the limit is in the message")
     func enforcesMaxSeconds() {
         do {
             _ = try AudioLoader.load(Self.path("t2.wav"), maxSeconds: 5)
-            Issue.record("süre sınırı uygulanmadı")
+            Issue.record("the duration limit was not enforced")
         } catch let error as YazError {
             #expect(error.description.contains("too long"))
         } catch {
-            Issue.record("YazError bekleniyordu")
+            Issue.record("expected a YazError")
         }
     }
 
-    @Test("sessiz dosya yüklenir ama kapıda takılır")
+    @Test("a silent file loads but is stopped at the gate")
     func silenceLoadsThenGates() throws {
         let samples = try AudioLoader.load(Self.path("silence-3s.wav"))
         #expect(!samples.isEmpty)
@@ -68,14 +68,14 @@ struct AudioLoaderTests {
         #expect(throws: YazError.self) { try SpeechGate().check(samples) }
     }
 
-    @Test("çok kısa dosya yüklenir ama kapıda takılır")
+    @Test("a very short file loads but is stopped at the gate")
     func tinyLoadsThenGates() throws {
         let samples = try AudioLoader.load(Self.path("tiny-100ms.wav"))
         #expect(!samples.isEmpty)
         #expect(throws: YazError.self) { try SpeechGate().check(samples) }
     }
 
-    @Test("eşik altı gürültü sessizlik olarak elenir")
+    @Test("noise below the threshold is filtered out as silence")
     func noiseFloorGated() throws {
         let samples = try AudioLoader.load(Self.path("noise-floor-2s.wav"))
         let level = SpeechGate.level(samples)
@@ -83,68 +83,69 @@ struct AudioLoaderTests {
         #expect(throws: YazError.self) { try SpeechGate().check(samples) }
     }
 
-    @Test("tilde ile başlayan yol genişletilir")
+    @Test("a path beginning with a tilde is expanded")
     func expandsTilde() {
-        // Yol genişlemezse hata metni "~" içerir; genişlerse ev dizinini gösterir.
+        // Unexpanded, the error text contains "~"; expanded, it names the
+        // home directory.
         do {
             _ = try AudioLoader.load("~/kesinlikle-yok-12345.wav")
-            Issue.record("hata bekleniyordu")
+            Issue.record("expected an error")
         } catch let error as YazError {
             #expect(error.description.contains("kesinlikle-yok-12345.wav"))
         } catch {
-            Issue.record("YazError bekleniyordu")
+            Issue.record("expected a YazError")
         }
     }
 }
 
-@Suite("AudioLoader — hata mesajlarının okunabilirliği")
+@Suite("AudioLoader — are the error messages readable")
 struct AudioLoaderErrorTests {
 
-    @Test("olmayan dosya ham CoreAudio kodu değil, düz Türkçe döner")
+    @Test("a missing file gives plain language, not a raw CoreAudio code")
     func missingFileIsPlainLanguage() {
         do {
             _ = try AudioLoader.load("/yok/boyle/bir/dosya.wav")
-            Issue.record("hata bekleniyordu")
+            Issue.record("expected an error")
         } catch let error as YazError {
             #expect(error.description.contains("not found"))
             #expect(!error.description.contains("Code="))
             #expect(!error.description.contains("com.apple"))
         } catch {
-            Issue.record("YazError bekleniyordu")
+            Issue.record("expected a YazError")
         }
     }
 
-    @Test("klasör verilirse ayırt edilir")
+    @Test("a directory is distinguished")
     func directoryIsDistinguished() {
         do {
             _ = try AudioLoader.load(AudioLoaderTests.fixtures.path)
-            Issue.record("hata bekleniyordu")
+            Issue.record("expected an error")
         } catch let error as YazError {
             #expect(error.description.contains("directory"))
         } catch {
-            Issue.record("YazError bekleniyordu")
+            Issue.record("expected a YazError")
         }
     }
 
-    @Test("ses olmayan dosya anlaşılır hata verir")
+    @Test("a non-audio file gives a comprehensible error")
     func nonAudioFileIsExplained() {
         let readme = AudioLoaderTests.fixtures
             .deletingLastPathComponent().appending(path: "README.md")
         do {
             _ = try AudioLoader.load(readme.path)
-            Issue.record("hata bekleniyordu")
+            Issue.record("expected an error")
         } catch let error as YazError {
             #expect(error.description.contains("couldn't open"))
         } catch {
-            Issue.record("YazError bekleniyordu")
+            Issue.record("expected a YazError")
         }
     }
 }
 
-@Suite("ModelStore — yarım indirme tam sayılmamalı")
+@Suite("ModelStore — a half download must not count as complete")
 struct ModelStoreTests {
 
-    @Test("hiç indirilmemiş model eksik raporlanır")
+    @Test("a model never downloaded is reported as missing")
     func missingModelIsIncomplete() {
         let status = ModelStore.status(for: "kesinlikle-olmayan-model-12345")
         #expect(!status.isComplete)
@@ -152,23 +153,23 @@ struct ModelStoreTests {
         #expect(!status.missing.isEmpty)
     }
 
-    @Test("yol ~/Documents/huggingface altında — iCloud senkronu uyarısı için gerekli")
+    @Test("the path is under ~/Documents/huggingface — needed for the iCloud sync warning")
     func pathIsUnderDocuments() {
         let status = ModelStore.status(for: "herhangi")
         #expect(status.path.contains("Documents/huggingface"))
     }
 
-    /// Bu makinede large-v3-turbo indirili; indirili değilse test atlanır.
-    @Test("indirili model tam raporlanır ve boyutu okunur")
+    /// large-v3-turbo is downloaded on this machine; the test skips if not.
+    @Test("a downloaded model is reported complete and its size is read")
     func downloadedModelIsComplete() throws {
         let status = ModelStore.status(for: WhisperModel.largeV3Turbo.whisperKitID)
-        try #require(status.sizeBytes > 0, "model indirili değil — test atlandı")
+        try #require(status.sizeBytes > 0, "the model is not downloaded — test skipped")
         #expect(status.isComplete)
         #expect(status.missing.isEmpty)
         #expect(status.sizeBytes > 1_000_000_000)   // ~1.6 GB
     }
 
-    @Test("boyut biçimlendirmesi insan okunabilir")
+    @Test("size formatting is human readable")
     func sizeIsHumanReadable() {
         let status = ModelStore.status(for: WhisperModel.largeV3Turbo.whisperKitID)
         #expect(!status.sizeDescription.isEmpty)

@@ -19,23 +19,24 @@ private struct StubBackend: RefinerBackend {
 
 private struct Boom: Error {}
 
-@Suite("FillerFilter — modelsiz, risksiz temizlik")
+@Suite("FillerFilter — cleanup with no model and no risk")
 struct FillerFilterTests {
 
-    @Test("tereddüt sesleri atılır")
+    @Test("hesitation sounds are dropped")
     func stripsHesitations() {
         #expect(FillerFilter.strip("ıı yarın toplantı var") == "yarın toplantı var")
         #expect(FillerFilter.strip("yarın eee toplantı var") == "yarın toplantı var")
         #expect(FillerFilter.strip("mmm tamam") == "tamam")
     }
 
-    @Test("birden fazla tereddüt aynı anda atılır")
+    @Test("several hesitations are dropped at once")
     func stripsMultiple() {
         #expect(FillerFilter.strip("ıı yarın ee saat ikide mmm toplantı")
             == "yarın saat ikide toplantı")
     }
 
-    /// Bunlar gerçek kelime; bağlam olmadan atılamaz. Karar dil modelinin.
+    /// These are real words and cannot be dropped without context. That
+    /// decision belongs to the language model.
     @Test(
         "gerçek kelimeler korunur — bağlam gerektiren dolgu sözcükleri LLM'in işi",
         arguments: [
@@ -51,87 +52,88 @@ struct FillerFilterTests {
         #expect(FillerFilter.strip(text) == text)
     }
 
-    /// "o" zamir, "a" bağlaç. Tek harfli sesli yalnız başka bir tereddüdün
-    /// yanındayken tereddüt sayılır.
-    @Test("tek harfli sesli tek başına atılmaz")
+    /// "o" is a pronoun and "a" a particle. A single-letter vowel counts as a
+    /// hesitation only when it sits next to another one.
+    @Test("a lone single-letter vowel is not dropped")
     func singleVowelKept() {
         #expect(FillerFilter.strip("o proje için") == "o proje için")
         #expect(FillerFilter.strip("bu o değil") == "bu o değil")
     }
 
-    @Test("art arda gelen tek harfli sesliler tereddüt sayılır")
+    @Test("consecutive single-letter vowels count as hesitation")
     func adjacentSingleVowelsAreHesitation() {
         #expect(FillerFilter.strip("ı ı yarın gidiyorum") == "yarın gidiyorum")
     }
 
-    @Test("ekli kelime asla atılmaz")
+    @Test("a word carrying a suffix is never dropped")
     func suffixedWordsKept() {
         #expect(FillerFilter.strip("E'nin anlamı") == "E'nin anlamı")
     }
 
-    @Test("temizlik sonrası noktalama toparlanır")
+    @Test("punctuation is tidied after the removal")
     func tidiesPunctuation() {
         #expect(FillerFilter.strip("yarın ıı , toplantı var") == "yarın, toplantı var")
         #expect(FillerFilter.strip("ıı, yarın toplantı") == "yarın toplantı")
     }
 
-    @Test("değişiklik yoksa metin aynen döner")
+    @Test("text comes back untouched when nothing changed")
     func noChangeIsIdentity() {
         let text = "Yarın saat ikide toplantımız var."
         #expect(FillerFilter.strip(text) == text)
     }
 
-    @Test("boş girdi çökmez")
+    @Test("empty input does not crash")
     func emptyInput() {
         #expect(FillerFilter.strip("") == "")
         #expect(FillerFilter.strip("   ").isEmpty)
     }
 }
 
-@Suite("RefinementGuard — modelin çıktısı hak ederek girer")
+@Suite("RefinementGuard — model output has to earn its way in")
 struct RefinementGuardTests {
 
     static let original = "ıı yarın saat ikide toplantımız var hani o proje için hazırlık lazım"
 
-    @Test("makul bir temizlik kabul edilir")
+    @Test("a reasonable cleanup is accepted")
     func acceptsPlausibleCleanup() {
         let candidate = "Yarın saat ikide toplantımız var. O proje için hazırlık lazım."
         #expect(RefinementGuard.reject(original: Self.original, candidate: candidate) == nil)
     }
 
-    @Test("boş çıktı reddedilir")
+    @Test("empty output is rejected")
     func rejectsEmpty() {
         #expect(RefinementGuard.reject(original: Self.original, candidate: "") != nil)
     }
 
-    /// Özetleme en olası kötü davranış: model "temizle" yerine "kısalt" anlıyor.
-    @Test("özetleme reddedilir")
+    /// Summarising is the likeliest misbehaviour: the model reads "tidy" as
+    /// "shorten".
+    @Test("summarising is rejected")
     func rejectsSummary() {
         let reason = RefinementGuard.reject(original: Self.original, candidate: "Toplantı var.")
         #expect(reason != nil)
     }
 
-    @Test("ekleme yapan çıktı reddedilir")
+    @Test("output that adds material is rejected")
     func rejectsAddition() {
         let candidate = Self.original
             + " Ayrıca size yardımcı olabileceğim başka bir konu var mı? Umarım bu yardımcı olmuştur."
         #expect(RefinementGuard.reject(original: Self.original, candidate: candidate) != nil)
     }
 
-    @Test("soruyu cevaplayan çıktı reddedilir")
+    @Test("output that answers the question is rejected")
     func rejectsAnswering() {
         let question = "ıı yarın hava nasıl olacak acaba sence"
         let answer = "Yarın hava güneşli ve sıcak olacak, sıcaklık 25 derece civarında."
         #expect(RefinementGuard.reject(original: question, candidate: answer) != nil)
     }
 
-    @Test("içerik kelimeleri kaybolursa reddedilir")
+    @Test("losing content words is rejected")
     func rejectsContentLoss() {
         let candidate = "Yarın saat ikide bir şeyler yapacağız herhalde böyle."
         #expect(RefinementGuard.reject(original: Self.original, candidate: candidate) != nil)
     }
 
-    @Test("noktalama ve büyük harf düzeltmesi kayıp sayılmaz")
+    @Test("fixing punctuation and capitalisation does not count as loss")
     func punctuationOnlyIsFullRetention() {
         let source = "toplantımızı ertelediler proje hazırlığını bekliyoruz"
         let candidate = "Toplantımızı ertelediler. Proje hazırlığını bekliyoruz."
@@ -139,65 +141,66 @@ struct RefinementGuardTests {
         #expect(RefinementGuard.reject(original: source, candidate: candidate) == nil)
     }
 
-    @Test("küçük ek farkları tolere edilir")
+    @Test("small suffix differences are tolerated")
     func minorSuffixDriftTolerated() {
         let source = "yarınki toplantıya hazırlığımızı bitirelim"
         let candidate = "Yarınki toplantıya hazırlığımızı bitirelim."
         #expect(RefinementGuard.contentRetention(original: source, candidate: candidate) >= 0.75)
     }
 
-    /// Çatı değişimi (etken → edilgen) anlamı değiştirir; temizlik değildir.
-    /// Ölçüldü: bu adayda içerik kelimelerinin %40'ı tanınmıyor.
-    @Test("etken/edilgen çatı değişimi reddedilir")
+    /// Changing voice (active → passive) changes the meaning; that is not a
+    /// cleanup. Measured: 40% of the content words in this candidate are
+    /// unrecognisable.
+    @Test("an active/passive voice change is rejected")
     func rejectsVoiceChange() {
         let source = "toplantımızı ertelediler proje hazırlığını bekliyoruz"
         let candidate = "Toplantımız ertelendi. Proje hazırlığı bekleniyor."
         #expect(RefinementGuard.reject(original: source, candidate: candidate) != nil)
     }
 
-    /// Ölçülerek bulundu: model "yani" ve "hani" kelimelerini doğru biçimde
-    /// attı, koruma bunu %30 içerik kaybı sayıp iyi bir temizliği çöpe attı.
-    /// Modelden atmasını istediğimiz kelimeler kayıp sayılamaz.
-    @Test("bağlamsal dolgu kelimelerinin atılması kayıp sayılmaz")
+    /// Found by measurement: the model correctly dropped "yani" and "hani",
+    /// and the guard called that 30% content loss and threw away a good
+    /// cleanup. Words we asked the model to remove cannot count as lost.
+    @Test("dropping contextual fillers does not count as loss")
     func removingFillerWordsIsNotLoss() {
         let source = "yarın şey saat ikide yani toplantımız var hani o proje için hazırlık yapmamız lazım"
         let candidate = "Yarın saat ikide toplantımız var. O proje için hazırlık yapmamız lazım."
         #expect(RefinementGuard.reject(original: source, candidate: candidate) == nil)
     }
 
-    @Test("gerçek içerik kaybı hâlâ yakalanır")
+    @Test("real content loss is still caught")
     func realContentLossStillCaught() {
         let source = "yarın saat ikide toplantımız var proje için hazırlık yapmamız lazım"
         let candidate = "Yarın toplantı var."
         #expect(RefinementGuard.reject(original: source, candidate: candidate) != nil)
     }
 
-    @Test("model başlığı ve tırnakları soyulur")
+    @Test("a model preamble and surrounding quotes are stripped")
     func cleansWrappers() {
         #expect(RefinementGuard.clean("\"Yarın toplantı var.\"") == "Yarın toplantı var.")
         #expect(RefinementGuard.clean("İşte temizlenmiş metin:\nYarın toplantı var.")
             == "Yarın toplantı var.")
     }
 
-    @Test("boşluklar kırpılır")
+    @Test("whitespace is trimmed")
     func trims() {
         #expect(RefinementGuard.clean("  metin  ") == "metin")
     }
 }
 
-@Suite("Refiner — hiçbir koşulda dikteyi kaybetme")
+@Suite("Refiner — never lose the dictation, under any circumstance")
 struct RefinerTests {
 
     static let messy = "ıı yarın saat ikide toplantımız var hani o proje için hazırlık lazım"
 
-    @Test("off modu metne dokunmaz")
+    @Test("off mode does not touch the text")
     func offIsIdentity() async {
         let result = await Refiner(mode: .off, backend: StubBackend(response: "x")).refine(Self.messy)
         #expect(result.text == Self.messy)
         #expect(!result.changed)
     }
 
-    @Test("fillers modu modeli hiç çağırmaz")
+    @Test("fillers mode never calls the model")
     func fillersSkipsModel() async {
         let refiner = Refiner(mode: .fillers, backend: StubBackend(response: "MODEL ÇAĞRILDI"))
         let result = await refiner.refine(Self.messy)
@@ -206,7 +209,7 @@ struct RefinerTests {
         #expect(result.changed)
     }
 
-    @Test("llm modu iyi çıktıyı kabul eder")
+    @Test("llm mode accepts good output")
     func llmAcceptsGoodOutput() async {
         let good = "Yarın saat ikide toplantımız var. O proje için hazırlık lazım."
         let refiner = Refiner(mode: .llm, backend: StubBackend(response: good))
@@ -215,8 +218,9 @@ struct RefinerTests {
         #expect(result.rejection == nil)
     }
 
-    /// En önemli davranış: temizleme adımı yüzünden dikte kaybolmamalı.
-    @Test("model hata verirse deterministik sonuca düşülür")
+    /// The behaviour that matters most: a cleanup step must never cost the
+    /// dictation.
+    @Test("a model error falls back to the deterministic result")
     func fallsBackOnError() async {
         let refiner = Refiner(mode: .llm, backend: StubBackend(response: "", failure: Boom()))
         let result = await refiner.refine(Self.messy)
@@ -224,7 +228,7 @@ struct RefinerTests {
         #expect(result.rejection != nil)
     }
 
-    @Test("model zaman aşımına uğrarsa deterministik sonuca düşülür")
+    @Test("a model timeout falls back to the deterministic result")
     func fallsBackOnTimeout() async {
         let slow = StubBackend(response: "geç kaldı", delay: .seconds(5))
         let refiner = Refiner(mode: .llm, timeout: .milliseconds(120), backend: slow)
@@ -236,7 +240,7 @@ struct RefinerTests {
         #expect(result.rejection != nil)
     }
 
-    @Test("koruma reddederse deterministik sonuca düşülür")
+    @Test("a guard rejection falls back to the deterministic result")
     func fallsBackOnRejection() async {
         let refiner = Refiner(mode: .llm, backend: StubBackend(response: "Toplantı."))
         let result = await refiner.refine(Self.messy)
@@ -244,14 +248,14 @@ struct RefinerTests {
         #expect(result.rejection != nil)
     }
 
-    @Test("boş metin modeli hiç çağırmaz")
+    @Test("empty text never calls the model")
     func emptyTextSkipsModel() async {
         let refiner = Refiner(mode: .llm, backend: StubBackend(response: "uydurma"))
         let result = await refiner.refine("   ")
         #expect(!result.text.contains("uydurma"))
     }
 
-    @Test("off ve fillers her makinede kullanılabilir")
+    @Test("off and fillers are available on every machine")
     func cheapModesAlwaysAvailable() {
         #expect(Refiner.availability(for: .off).isAvailable)
         #expect(Refiner.availability(for: .fillers).isAvailable)

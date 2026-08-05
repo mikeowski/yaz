@@ -3,11 +3,11 @@ import Testing
 
 @testable import yaz
 
-@Suite("StatusIcon — menü barı işareti")
+@Suite("StatusIcon — the menu bar mark")
 @MainActor
 struct StatusIconTests {
 
-    @Test("her durum için görsel üretilir", arguments: [
+    @Test("an image is produced for every state", arguments: [
         IndicatorState.idle, .recording, .transcribing, .refining,
     ])
     func producesImage(_ state: IndicatorState) {
@@ -16,23 +16,23 @@ struct StatusIconTests {
         #expect(image.isValid)
     }
 
-    /// Şablon olmayan bir görsel koyu modda görünmez olur.
-    @Test("görseller şablon — macOS renklendirir", arguments: [
+    /// A non-template image goes invisible in dark mode.
+    @Test("images are templates — macOS does the colouring", arguments: [
         IndicatorState.idle, .recording, .transcribing, .refining,
     ])
     func imagesAreTemplates(_ state: IndicatorState) {
         #expect(StatusIcon.image(for: state).isTemplate)
     }
 
-    @Test("menü barı boyutunda")
+    @Test("sized for the menu bar")
     func menuBarSized() {
         #expect(StatusIcon.size.width == 18)
         #expect(StatusIcon.size.height == 18)
     }
 
-    /// Boş bir görsel, sıfır genişlikte bir status item demek — bu da
-    /// "daemon başlamadı" gibi görünür.
-    @Test("hiçbir durum boş piksel üretmiyor", arguments: [
+    /// An empty image means a zero-width status item, which looks exactly
+    /// like "the daemon did not start".
+    @Test("no state produces an empty pixel buffer", arguments: [
         IndicatorState.idle, .recording, .transcribing, .refining,
     ])
     func drawsSomething(_ state: IndicatorState) throws {
@@ -48,12 +48,12 @@ struct StatusIconTests {
                 }
             }
         }
-        #expect(inked > 20, "\(state) neredeyse boş: \(inked) piksel")
+        #expect(inked > 20, "\(state) is nearly blank: \(inked) pixels")
     }
 
-    /// Kayıt hâli boşta hâlinden görünür biçimde daha "dolu" olmalı, yoksa
-    /// kullanıcı mikrofonun açık olduğunu anlamaz.
-    @Test("kayıt hâli boştan daha çok mürekkep kullanır")
+    /// Recording must look visibly fuller than idle, or the user cannot tell
+    /// the microphone is live.
+    @Test("recording uses more ink than idle")
     func recordingIsDenserThanIdle() throws {
         func ink(_ state: IndicatorState) throws -> Int {
             let tiff = try #require(StatusIcon.image(for: state).tiffRepresentation)

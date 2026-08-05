@@ -31,10 +31,10 @@ private final class Counter: @unchecked Sendable {
     var peakConcurrent: Int { lock.withLock { _peakConcurrent } }
 }
 
-@Suite("SingleFlight — aynı yüklemeyi iki kez yapma")
+@Suite("SingleFlight — never load the same thing twice")
 struct SingleFlightTests {
 
-    @Test("eşzamanlı çağrılar tek yüklemeye indirgenir — 1.6 GB modeli iki kez yükleme hatası")
+    @Test("concurrent callers collapse into one load — the bug that loaded 1.6 GB twice")
     func collapsesConcurrentCalls() async throws {
         let flight = SingleFlight()
         let counter = Counter()
@@ -56,7 +56,7 @@ struct SingleFlightTests {
         #expect(counter.finishes == 1)
     }
 
-    @Test("tamamlandıktan sonraki çağrı yeniden çalışır")
+    @Test("a call after completion runs again")
     func runsAgainAfterCompletion() async throws {
         let flight = SingleFlight()
         let counter = Counter()
@@ -69,9 +69,9 @@ struct SingleFlightTests {
         #expect(counter.starts == 2)
     }
 
-    /// Başarısız bir indirme genellikle geçicidir; sonraki çağrı yeniden
-    /// denemeli, hatayı önbelleğe almamalı.
-    @Test("başarısız yükleme önbelleğe alınmaz")
+    /// A failed download is usually transient: the next call should retry
+    /// rather than cache the failure.
+    @Test("a failed load is not cached")
     func failureIsNotCached() async {
         struct Boom: Error {}
         let flight = SingleFlight()
@@ -86,7 +86,7 @@ struct SingleFlightTests {
         #expect(counter.starts == 2)
     }
 
-    @Test("bekleyen çağrılar da hatayı görür")
+    @Test("waiting callers see the error too")
     func waitersObserveFailure() async {
         struct Boom: Error {}
         let flight = SingleFlight()
@@ -107,10 +107,10 @@ struct SingleFlightTests {
     }
 }
 
-@Suite("SerialGate — çıkarımı sıraya sok")
+@Suite("SerialGate — put inference in a queue")
 struct SerialGateTests {
 
-    @Test("işler asla üst üste binmez — WhisperKit reentrancy garantisi vermiyor")
+    @Test("work never overlaps — WhisperKit makes no reentrancy guarantee")
     func neverOverlaps() async throws {
         let gate = SerialGate()
         let counter = Counter()
@@ -133,7 +133,7 @@ struct SerialGateTests {
         #expect(counter.finishes == 10)
     }
 
-    @Test("hata veren iş zinciri koparmaz")
+    @Test("work that throws does not break the chain")
     func failureDoesNotBreakChain() async throws {
         struct Boom: Error {}
         let gate = SerialGate()
@@ -145,7 +145,7 @@ struct SerialGateTests {
         #expect(value == 42)
     }
 
-    @Test("sonuçlar doğru çağırana döner")
+    @Test("results go back to the right caller")
     func resultsGoToTheRightCaller() async throws {
         let gate = SerialGate()
         var seen: Set<Int> = []

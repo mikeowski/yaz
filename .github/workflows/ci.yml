@@ -58,11 +58,39 @@ jobs:
         run: for f in scripts/*.sh; do sh -n "$f"; done
       - name: No Turkish in user-facing strings
         # The UI and CLI are English. Turkish survives only as linguistic data
-        # (the lexicon, phonetic tables, hesitation sounds), so this guards the
-        # files that are not data.
+        # (the lexicon, phonetic tables, hesitation sounds, the model prompt),
+        # so this guards the files that are not data.
+        #
+        # Daemon.swift and both Info.plists are listed because leaving them out
+        # is exactly how the Accessibility alert and the microphone permission
+        # prompt stayed Turkish after everything else had been translated —
+        # the two first sentences a new user reads.
+        #
+        # grep -E, not -P: the runner is macOS, whose BSD grep has no -P. It
+        # exits 2 on the unknown flag, `if grep ...` reads that as "no match",
+        # and the guard passes without having looked at anything. A check that
+        # cannot fail is worse than no check, so the sanity case below proves
+        # the pattern still matches before the real check runs.
         run: |
-          if grep -rlP '"[^"]*[çğıöşüÇĞİÖŞÜ][^"]*"' \
+          printf 'let x = "%s"\n' "çalışıyor" > /tmp/tr-probe.swift
+          grep -lE '"[^"]*[çğıöşüÇĞİÖŞÜ][^"]*"' /tmp/tr-probe.swift >/dev/null \
+            || { echo "the Turkish pattern matches nothing — this guard is broken"; exit 1; }
+          rm -f /tmp/tr-probe.swift
+          if grep -rlE '"[^"]*[çğıöşüÇĞİÖŞÜ][^"]*"' \
                Sources/yaz/Yaz.swift Sources/yaz/Doctor.swift \
-               Sources/yaz/UI/ 2>/dev/null; then
+               Sources/yaz/Daemon.swift Sources/yaz/UI/ 2>/dev/null; then
             echo "Turkish string found in a user-facing file"; exit 1
+          fi
+          if grep -lE '<string>[^<]*[çğıöşüÇĞİÖŞÜ]' \
+               Sources/yaz/Info.plist Resources/AppInfo.plist 2>/dev/null; then
+            echo "Turkish string found in a permission prompt"; exit 1
+          fi
+
+      - name: Test names are English
+        # Suite and test names are the closest thing this repo has to prose
+        # documentation of behaviour. Turkish string *data* inside a test body
+        # is fine and expected; the names are not.
+        run: |
+          if grep -rhoE '@(Suite|Test)\("[^"]*[çğıöşüÇĞİÖŞÜ][^"]*"' Tests/; then
+            echo "Turkish test name found"; exit 1
           fi

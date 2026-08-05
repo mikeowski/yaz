@@ -25,7 +25,7 @@ private func entry(
 @Suite("TranscriptHistory — ne, nerede, ne zaman")
 struct TranscriptHistoryTests {
 
-    @Test("kayıt yazılır ve geri okunur")
+    @Test("an entry is written and read back")
     func recordsAndReads() async {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -39,7 +39,7 @@ struct TranscriptHistoryTests {
         #expect(entries.first?.appName == "Slack")
     }
 
-    @Test("en yeni kayıt başta döner")
+    @Test("the newest entry comes back first")
     func newestFirst() async {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -53,7 +53,7 @@ struct TranscriptHistoryTests {
         #expect(entries.map(\.text) == ["üçüncü", "ikinci", "birinci"])
     }
 
-    @Test("limit uygulanır")
+    @Test("the limit is applied")
     func limitApplies() async {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -65,8 +65,8 @@ struct TranscriptHistoryTests {
         #expect(await store.entries(limit: 3).first?.text == "kayıt 9")
     }
 
-    /// Gün boyu dikte edilen bir makinede dosya sınırsız büyüyemez.
-    @Test("eski kayıtlar üst sınırda düşer")
+    /// On a machine dictated into all day, the file cannot grow forever.
+    @Test("old entries fall off at the cap")
     func trimsToLimit() async {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -94,7 +94,7 @@ struct TranscriptHistoryTests {
         #expect(hits.first?.text.contains("pull request") == true)
     }
 
-    @Test("uygulama adında arama")
+    @Test("searching by app name")
     func searchesAppName() async {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -106,8 +106,8 @@ struct TranscriptHistoryTests {
         #expect(await store.entries(matching: "notion").count == 1)
     }
 
-    /// Türkçe I/İ ile arama, varsayılan locale ile katlanırsa bozulur.
-    @Test("arama Türkçe büyük harfe takılmaz")
+    /// Searching across Turkish I/İ breaks if folded with the default locale.
+    @Test("search is not tripped by Turkish uppercasing")
     func searchIsTurkishAware() async {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -117,7 +117,7 @@ struct TranscriptHistoryTests {
         #expect(await store.entries(matching: "istanbul").count == 1)
     }
 
-    @Test("kapalıyken hiçbir şey yazılmaz")
+    @Test("nothing is written while it is switched off")
     func disabledWritesNothing() async {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -128,7 +128,7 @@ struct TranscriptHistoryTests {
         #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 
-    @Test("temizleme her şeyi siler")
+    @Test("clearing removes everything")
     func clearRemovesEverything() async {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -141,8 +141,8 @@ struct TranscriptHistoryTests {
         #expect(await store.entries().isEmpty)
     }
 
-    /// Çökme sırasında yarım kalan son satır, dosyanın tamamına mal olmamalı.
-    @Test("bozuk satır yalnızca kendi kaydına mal olur")
+    /// A last line left half-written by a crash must not cost the whole file.
+    @Test("a corrupt line costs only its own entry")
     func corruptLineCostsOneEntry() async throws {
         let url = temporaryURL()
         try FileManager.default.createDirectory(
@@ -152,7 +152,7 @@ struct TranscriptHistoryTests {
         let store = TranscriptHistory(url: url)
         await store.record(entry("sağlam kayıt"))
 
-        // Yarım yazılmış bir satır ekle.
+        // Append a half-written line.
         let handle = try FileHandle(forWritingTo: url)
         try handle.seekToEnd()
         try handle.write(contentsOf: Data(#"{"text":"yarım kal"#.utf8))
@@ -163,14 +163,14 @@ struct TranscriptHistoryTests {
         #expect(entries.first?.text == "sağlam kayıt")
     }
 
-    @Test("olmayan dosya boş liste verir, çökmez")
+    @Test("a missing file gives an empty list rather than crashing")
     func missingFileIsEmpty() async {
         let store = TranscriptHistory(url: temporaryURL())
         #expect(await store.entries().isEmpty)
         #expect(await store.count() == 0)
     }
 
-    @Test("sözlük düzeltmeleri kayda geçer")
+    @Test("vocabulary corrections are recorded")
     func recordsCorrections() async {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -180,8 +180,8 @@ struct TranscriptHistoryTests {
         #expect(await store.entries().first?.corrections == ["Sılacık → Slack"])
     }
 
-    /// JSONL: her kayıt tek satır. Çok satırlı olsaydı format bozulurdu.
-    @Test("her kayıt tek satır")
+    /// JSONL: one entry per line. Multi-line entries would break the format.
+    @Test("each entry is a single line")
     func oneLinePerEntry() async throws {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -194,7 +194,7 @@ struct TranscriptHistoryTests {
         #expect(text.split(separator: "\n", omittingEmptySubsequences: true).count == 2)
     }
 
-    @Test("tarihler ISO-8601 olarak saklanır")
+    @Test("dates are stored as ISO-8601")
     func datesAreISO8601() async throws {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -205,8 +205,9 @@ struct TranscriptHistoryTests {
         #expect(text.contains("1970-01-01"))
     }
 
-    /// Ses saklanmıyor: bu kasıtlı bir sınır, kayıt formatı bunu yansıtmalı.
-    @Test("kayıtta ses alanı yok")
+    /// No audio is stored. That is a deliberate boundary, and the record
+    /// format has to reflect it.
+    @Test("no audio field exists in an entry")
     func storesNoAudio() async throws {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -215,21 +216,21 @@ struct TranscriptHistoryTests {
         await store.record(entry("kayıt"))
         let text = try String(contentsOf: url, encoding: .utf8).lowercased()
         for forbidden in ["audio", "samples", "wav", "pcm", "\"path\""] {
-            #expect(!text.contains(forbidden), "kayıtta \(forbidden) geçiyor")
+            #expect(!text.contains(forbidden), "the entry contains \(forbidden)")
         }
     }
 }
 
-@Suite("Config — geçmiş anahtarları")
+@Suite("Config — the history switches")
 struct HistoryConfigTests {
 
-    @Test("varsayılan olarak açık")
+    @Test("it is on by default")
     func defaultsOn() {
         #expect(Config().history)
         #expect(Config().historyLimit == TranscriptHistory.defaultLimit)
     }
 
-    @Test("config'den kapatılabilir ve sınırı değiştirilebilir")
+    @Test("it can be switched off and its limit changed from config")
     func configurable() throws {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "yaz-hist-cfg-\(UUID().uuidString).json")
@@ -242,7 +243,7 @@ struct HistoryConfigTests {
         #expect(config.historyLimit == 50)
     }
 
-    @Test("geçersiz sınır yok sayılır")
+    @Test("an invalid limit is ignored")
     func rejectsBadLimit() throws {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "yaz-hist-bad-\(UUID().uuidString).json")

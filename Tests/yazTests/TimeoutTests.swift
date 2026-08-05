@@ -5,16 +5,16 @@ import Testing
 
 /// The timeout wrapper is the only thing standing between a wedged Core ML
 /// call and a daemon that never dictates again. It had no test until now.
-@Suite("withTranscriptionTimeout — takılan çıkarımdan kurtulma")
+@Suite("withTranscriptionTimeout — surviving a wedged inference")
 struct TimeoutTests {
 
-    @Test("zamanında biten iş sonucunu döndürür")
+    @Test("work that finishes in time returns its result")
     func fastWorkReturns() async throws {
         let value = try await withTranscriptionTimeout(.seconds(5), engine: "test") { 42 }
         #expect(value == 42)
     }
 
-    @Test("takılan iş zaman aşımına uğrar ve çağıranı serbest bırakır")
+    @Test("wedged work times out and releases the caller")
     func hungWorkTimesOut() async {
         let started = Date()
         do {
@@ -22,7 +22,7 @@ struct TimeoutTests {
                 try await Task.sleep(for: .seconds(30))
                 return 1
             }
-            Issue.record("zaman aşımı bekleniyordu")
+            Issue.record("expected a timeout")
         } catch let error as YazError {
             guard case .transcriptionTimedOut(let engine, _) = error else {
                 Issue.record("transcriptionTimedOut bekleniyordu, gelen: \(error)")
@@ -32,11 +32,11 @@ struct TimeoutTests {
         } catch {
             Issue.record("YazError bekleniyordu, gelen: \(error)")
         }
-        // Asıl garanti bu: çağıran 30 sn beklemedi.
+        // This is the actual guarantee: the caller did not wait 30 s.
         #expect(Date().timeIntervalSince(started) < 5)
     }
 
-    @Test("işin kendi hatası zaman aşımı hatasına dönüşmez")
+    @Test("an error from the work is not turned into a timeout error")
     func workErrorPropagates() async {
         struct Boom: Error {}
         await #expect(throws: Boom.self) {
@@ -46,7 +46,7 @@ struct TimeoutTests {
         }
     }
 
-    @Test("zaman aşımı sonrası takılan iş iptal edilir — sızıntı bırakmamalı")
+    @Test("wedged work is cancelled after the timeout — it must not leak")
     func losingBranchIsCancelled() async throws {
         let cancelled = CancellationFlag()
         do {
@@ -54,19 +54,19 @@ struct TimeoutTests {
                 do {
                     try await Task.sleep(for: .seconds(30))
                 } catch {
-                    cancelled.set()          // Task.sleep iptalde fırlatır
+                    cancelled.set()          // Task.sleep throws on cancellation
                     throw error
                 }
                 return 1
             }
         } catch {}
 
-        // İptalin yayılması için kısa bir pencere tanı.
+        // Give cancellation a short window to propagate.
         try await Task.sleep(for: .milliseconds(150))
         #expect(cancelled.value)
     }
 
-    @Test("zaman aşımı süresi hata mesajında geçer")
+    @Test("the timeout duration appears in the error message")
     func messageNamesTheLimit() async {
         do {
             _ = try await withTranscriptionTimeout(.seconds(1), engine: "whisper") {
@@ -77,7 +77,7 @@ struct TimeoutTests {
             #expect(error.description.contains("whisper"))
             #expect(error.description.contains("1"))
         } catch {
-            Issue.record("YazError bekleniyordu")
+            Issue.record("expected a YazError")
         }
     }
 }

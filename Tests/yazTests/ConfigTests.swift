@@ -3,7 +3,7 @@ import Testing
 
 @testable import yaz
 
-@Suite("Config — parrot'un hiç göndermediği dosya")
+@Suite("Config — the file parrot never shipped")
 struct ConfigTests {
 
     static func write(_ json: String) throws -> URL {
@@ -13,7 +13,7 @@ struct ConfigTests {
         return url
     }
 
-    @Test("dosya yoksa varsayılanlar kullanılır")
+    @Test("defaults are used when the file is absent")
     func defaultsWithoutFile() {
         let config = Config.load(from: URL(fileURLWithPath: "/yok/config.json"))
         #expect(config == Config())
@@ -22,7 +22,7 @@ struct ConfigTests {
         #expect(config.injectMode == .paste)
     }
 
-    @Test("tüm alanlar okunur")
+    @Test("every field is read")
     func readsEveryField() throws {
         let url = try Self.write("""
             {
@@ -47,44 +47,44 @@ struct ConfigTests {
         #expect(config.onTranscript == "pbcopy")
     }
 
-    @Test("kısmi config yalnızca verilen alanları değiştirir")
+    @Test("a partial config changes only the fields it names")
     func partialConfigKeepsDefaults() throws {
         let url = try Self.write(#"{ "hotkey": "right-command" }"#)
         defer { try? FileManager.default.removeItem(at: url) }
 
         let config = Config.load(from: url)
         #expect(config.hotkey == .rightCommand)
-        #expect(config.language == "tr")           // dokunulmadı
-        #expect(config.injectMode == .paste)       // dokunulmadı
+        #expect(config.language == "tr")           // untouched
+        #expect(config.injectMode == .paste)       // untouched
     }
 
-    /// Sessizce varsayılana düşmek, kullanıcıyı "kısayolum neden değişmedi"
-    /// sorusuyla baş başa bırakır.
-    @Test("bozuk JSON varsayılanlara düşer ama sessizce değil")
+    /// Falling back silently leaves the user asking "why did my hotkey not
+    /// change?" with nothing to go on.
+    @Test("malformed JSON falls back to defaults, but not silently")
     func malformedJSONFallsBack() throws {
-        let url = try Self.write("{ bu json değil ")
+        let url = try Self.write("{ this is not json ")
         defer { try? FileManager.default.removeItem(at: url) }
         #expect(Config.load(from: url) == Config())
     }
 
-    @Test("tanınmayan değer o alanı varsayılanda bırakır")
+    @Test("an unrecognised value leaves that field at its default")
     func unknownValueKeepsDefault() throws {
         let url = try Self.write(#"{ "hotkey": "caps-lock", "language": "en" }"#)
         defer { try? FileManager.default.removeItem(at: url) }
 
         let config = Config.load(from: url)
-        #expect(config.hotkey == .fn)      // tanınmadı → varsayılan
-        #expect(config.language == "en")   // geçerli olan uygulandı
+        #expect(config.hotkey == .fn)      // unrecognised → default
+        #expect(config.language == "en")   // the valid one was applied
     }
 
-    @Test("boş dil değeri yok sayılır")
+    @Test("an empty language value is ignored")
     func emptyLanguageIgnored() throws {
         let url = try Self.write(#"{ "language": "" }"#)
         defer { try? FileManager.default.removeItem(at: url) }
         #expect(Config.load(from: url).language == "tr")
     }
 
-    @Test("örnek config geçerli JSON ve kendi kendini tekrar okuyabiliyor")
+    @Test("the sample config is valid JSON and reads itself back")
     func exampleIsValid() throws {
         let data = Data(Config.example.utf8)
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -92,10 +92,10 @@ struct ConfigTests {
 
         var config = Config()
         config.apply(parsed, source: "example")
-        #expect(config == Config())   // örnek, varsayılanları yansıtmalı
+        #expect(config == Config())   // the sample must mirror the defaults
     }
 
-    @Test("config seçilen motoru kurar")
+    @Test("config builds the engine it names")
     func buildsSelectedEngine() {
         var config = Config()
         config.engine = .whisper
@@ -104,7 +104,7 @@ struct ConfigTests {
         #expect(config.makeEngine().name == "parakeet")
     }
 
-    @Test("Parakeet + Türkçe config'i de reddedilir")
+    @Test("a Parakeet + Turkish config is rejected too")
     func rejectsParakeetTurkishFromConfig() {
         var config = Config()
         config.engine = .parakeet
@@ -115,7 +115,7 @@ struct ConfigTests {
     }
 }
 
-@Suite("Config — diske yazma ve geri okuma")
+@Suite("Config — writing to disk and reading back")
 struct ConfigRoundTripTests {
 
     static func url() -> URL {
@@ -124,9 +124,9 @@ struct ConfigRoundTripTests {
             .appending(path: "config.json")
     }
 
-    /// Ayarlar penceresinin yazdığı dosya, elle düzenlenebilir kalmalı: aynı
-    /// anahtar adları, aynı okuyucu.
-    @Test("varsayılanlar yazılıp aynen geri okunur")
+    /// The file the settings window writes must stay hand-editable: same key
+    /// names, same reader.
+    @Test("defaults survive a write and a read")
     func defaultsRoundTrip() throws {
         let url = Self.url()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -135,7 +135,7 @@ struct ConfigRoundTripTests {
         #expect(Config.load(from: url) == Config())
     }
 
-    @Test("değiştirilmiş her alan korunur")
+    @Test("every modified field is preserved")
     func everyFieldRoundTrips() throws {
         let url = Self.url()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -158,7 +158,7 @@ struct ConfigRoundTripTests {
         #expect(Config.load(from: url) == config)
     }
 
-    @Test("sözlük terimleri korunur")
+    @Test("vocabulary terms are preserved")
     func vocabularyRoundTrips() throws {
         let url = Self.url()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -178,9 +178,9 @@ struct ConfigRoundTripTests {
         #expect(loaded.vocabulary[1].minSimilarity == 0.85)
     }
 
-    /// Sade terim sade kalmalı; her şeyi nesneye çevirmek dosyayı elle
-    /// düzenlemeyi zorlaştırır.
-    @Test("takma adı olmayan terim düz metin olarak yazılır")
+    /// A plain term stays plain; turning everything into an object makes the
+    /// file harder to edit by hand.
+    @Test("a term with no aliases is written as a plain string")
     func plainTermsStayPlain() throws {
         var config = Config()
         config.vocabulary = [VocabularyTerm(canonical: "Slack")]
@@ -188,7 +188,7 @@ struct ConfigRoundTripTests {
         #expect(list?.first is String)
     }
 
-    @Test("yazılan dosya geçerli JSON")
+    @Test("the file written is valid JSON")
     func writesValidJSON() throws {
         let url = Self.url()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -198,7 +198,7 @@ struct ConfigRoundTripTests {
         #expect((try? JSONSerialization.jsonObject(with: data)) != nil)
     }
 
-    @Test("olmayan dizin oluşturulur")
+    @Test("a missing directory is created")
     func createsDirectory() throws {
         let url = Self.url()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

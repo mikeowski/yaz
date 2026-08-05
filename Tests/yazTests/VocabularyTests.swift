@@ -21,55 +21,57 @@ private func vocab(_ terms: [VocabularyTerm] = devTerms) -> Vocabulary {
     Vocabulary(terms: terms)
 }
 
-@Suite("PhoneticKey — Türkçe ünlü türemesine karşı")
+@Suite("PhoneticKey — standing up to Turkish vowel epenthesis")
 struct PhoneticKeyTests {
 
-    @Test("Türkçe büyük/küçük harf doğru katlanır")
+    @Test("Turkish case folds correctly")
     func turkishCaseFolding() {
         #expect(PhoneticKey.lowercasedTurkish("ISTANBUL") == "ıstanbul")
         #expect(PhoneticKey.lowercasedTurkish("İSTANBUL") == "istanbul")
-        // Varsayılan locale ile İ, i + birleşik nokta olur ve karşılaştırma bozulur.
+        // Under the default locale İ becomes i + a combining dot, and the
+        // comparison breaks.
         #expect(!PhoneticKey.lowercasedTurkish("İ").unicodeScalars.contains { $0.value == 0x307 })
     }
 
-    @Test("aksanlar katlanır")
+    @Test("diacritics are folded")
     func diacriticsFold() {
         #expect(PhoneticKey.normalize("çğıöşü") == "cgiosu")
     }
 
-    @Test("İngilizce digraf'lar Türkçe sese çevrilir")
+    @Test("English digraphs are mapped onto Turkish sounds")
     func digraphsMap() {
         #expect(PhoneticKey.normalize("slack") == "slak")
         #expect(PhoneticKey.normalize("php").contains("f"))
         #expect(PhoneticKey.normalize("query").hasPrefix("k"))
     }
 
-    @Test("noktalama atılır — Whisper kısaltmaları 'C.I.P.' diye yazıyor")
+    @Test("punctuation is dropped — Whisper writes abbreviations as 'C.I.P.'")
     func punctuationDropped() {
-        // Aynı harfler, yalnızca noktalar farklı: anahtar da aynı olmalı.
+        // Same letters, only the dots differ: the key must be the same too.
         #expect(PhoneticKey.normalize("C.I.P.") == PhoneticKey.normalize("CIP"))
         #expect(PhoneticKey.normalize("C.I.") == PhoneticKey.normalize("CI"))
     }
 
-    /// Türkçe I/İ ayrımı her iki tarafa da aynı uygulandığı sürece eşleşmeyi
-    /// bozmaz; bozan şey varsayılan locale ile katlamaktır.
-    @Test("noktasız I her iki tarafta da aynı katlanır")
+    /// The Turkish I/İ distinction does not break matching as long as it is
+    /// applied to both sides the same way. What breaks it is folding with the
+    /// default locale.
+    @Test("dotless I folds the same way on both sides")
     func dotlessIIsConsistent() {
         #expect(PhoneticKey.normalize("CI") == PhoneticKey.normalize("cı"))
     }
 
-    @Test("tekrarlı harfler sadeleşir")
+    @Test("repeated letters collapse")
     func runsCollapse() {
         #expect(PhoneticKey.normalize("parrot") == PhoneticKey.normalize("parot"))
     }
 
-    @Test("iskelet ünlüleri atar — ünlü türemesi tam burada yaşanıyor")
+    @Test("the skeleton drops vowels — epenthesis happens exactly there")
     func skeletonDropsVowels() {
         #expect(PhoneticKey.skeleton("Slack") == "slk")
         #expect(PhoneticKey.skeleton("Sılacık") == "slkk")
     }
 
-    @Test("boş ve noktalama-yalnız girdi çökmez")
+    @Test("empty and punctuation-only input does not crash")
     func handlesDegenerateInput() {
         #expect(PhoneticKey.normalize("") == "")
         #expect(PhoneticKey.skeleton("...") == "")
@@ -87,7 +89,7 @@ struct EditDistanceTests {
         #expect(EditDistance.levenshtein("abc", "abc") == 0)
     }
 
-    @Test("benzerlik 0…1 aralığında")
+    @Test("similarity stays within 0…1")
     func similarityBounds() {
         #expect(EditDistance.similarity("abc", "abc") == 1)
         #expect(EditDistance.similarity("", "") == 1)
@@ -95,11 +97,12 @@ struct EditDistanceTests {
     }
 }
 
-@Suite("Vocabulary — ölçülmüş bozulmaları düzeltme")
+@Suite("Vocabulary — repairing measured manglings")
 struct VocabularyRecallTests {
 
-    /// Bu cümle gerçekten ölçüldü: fixtures/t2.wav, whisper large-v3-turbo.
-    @Test("ölçülen tam cümle düzelir")
+    /// This sentence was actually measured: fixtures/t2.wav, whisper
+    /// large-v3-turbo.
+    @Test("the full measured sentence is repaired")
     func correctsTheMeasuredSentence() {
         let heard = "Yarın saat 14'te toplantı var. Ahmet'e Sılacık üzerinden mesaj atmayı unutma. "
             + "Puhrıkı Esti'de merge etmem lazım. C.I.P. eline yeşile döndüğünde deploy ederiz."
@@ -108,10 +111,10 @@ struct VocabularyRecallTests {
         #expect(result.text.contains("Slack"))
         #expect(result.text.contains("pull request"))
         #expect(result.text.contains("CI pipeline"))
-        // Doğru olanlara dokunulmamalı.
+        // The correct ones must be left alone.
         #expect(result.text.contains("merge"))
         #expect(result.text.contains("deploy"))
-        // Türkçe kısımlar korunmalı.
+        // The Turkish parts must survive.
         #expect(result.text.contains("Yarın saat 14'te toplantı var"))
         #expect(result.text.contains("Ahmet'e"))
         #expect(result.text.contains("yeşile döndüğünde"))
@@ -131,7 +134,7 @@ struct VocabularyRecallTests {
         #expect(result.text.contains(expected), "\(input) → \(result.text)")
     }
 
-    @Test("zaten doğru yazılmış terim değiştirilmez ve düzeltme sayılmaz")
+    @Test("an already-correct term is neither changed nor counted as a correction")
     func exactTermsUntouched() {
         let text = "Slack üzerinden pull request gönder"
         let result = vocab().correct(text)
@@ -139,7 +142,7 @@ struct VocabularyRecallTests {
         #expect(!result.didChange)
     }
 
-    @Test("düzeltmeler raporlanır")
+    @Test("corrections are reported")
     func reportsCorrections() throws {
         let result = vocab().correct("Sılacık aç")
         #expect(result.didChange)
@@ -149,30 +152,30 @@ struct VocabularyRecallTests {
         #expect(correction.score > 0.7)
     }
 
-    @Test("boş sözlük hiçbir şey yapmaz")
+    @Test("an empty vocabulary does nothing")
     func emptyVocabularyIsNoOp() {
         let text = "Sılacık üzerinden yaz"
         #expect(Vocabulary(terms: []).correct(text).text == text)
     }
 
-    @Test("boş metin çökmez")
+    @Test("empty text does not crash")
     func emptyTextIsSafe() {
         #expect(vocab().correct("").text == "")
     }
 }
 
-@Suite("Vocabulary — Türkçe ek koruması")
+@Suite("Vocabulary — preserving Turkish suffixes")
 struct VocabularySuffixTests {
 
-    /// Türkçe özel isimlere ekleri kesme işaretiyle bağlar. Eki düşürmek
-    /// cümleyi bozar: "Slack üzerinden" değil "Slack'ten" demek istiyoruz.
-    @Test("kesme işaretli ek korunur")
+    /// Turkish attaches suffixes to proper nouns with an apostrophe. Dropping
+    /// the suffix breaks the sentence: we mean "Slack'ten", not "Slack".
+    @Test("an apostrophe suffix is preserved")
     func preservesApostropheSuffix() {
         let result = vocab().correct("Sılacık'ten mesaj geldi")
         #expect(result.text == "Slack'ten mesaj geldi")
     }
 
-    @Test("tipografik kesme işareti de tanınır — Whisper bunu üretiyor")
+    @Test("the typographic apostrophe is recognised too — Whisper emits it")
     func recognisesTypographicApostrophe() {
         let result = vocab().correct("Sılacık\u{2019}a yazdım")
         #expect(result.text.contains("Slack\u{2019}a"))
@@ -185,7 +188,7 @@ struct VocabularySuffixTests {
         #expect(vocab().correct("Sılacık?").text == "Slack?")
     }
 
-    @Test("baştaki noktalama korunur")
+    @Test("leading punctuation is preserved")
     func preservesLeadingPunctuation() {
         #expect(vocab().correct("(Sılacık)").text == "(Slack)")
         #expect(vocab().correct("\"Sılacık\"").text == "\"Slack\"")
@@ -196,7 +199,7 @@ struct VocabularySuffixTests {
         #expect(vocab().correct("Sılacık'ten, dedi").text == "Slack'ten, dedi")
     }
 
-    @Test("çok kelimeli terimde ek son kelimede kalır")
+    @Test("in a multi-word term the suffix stays on the last word")
     func multiWordSuffixOnLastWord() {
         let result = vocab().correct("Puhrıkı Esti'yi merge et")
         #expect(result.text.contains("pull request'yi") || result.text.contains("pull request"))
@@ -204,11 +207,11 @@ struct VocabularySuffixTests {
     }
 }
 
-@Suite("Vocabulary — yanlış eşleşmeye karşı")
+@Suite("Vocabulary — guarding against a false match")
 struct VocabularyPrecisionTests {
 
-    /// Asıl risk bu: kullanıcının gerçekten söylediği bir kelimeyi değiştirmek.
-    /// Bozuk terim görünür kalır, yanlış değiştirme görünmez.
+    /// This is the real risk: replacing a word the user actually said. A
+    /// mangled term stays visible; a wrong replacement does not.
     @Test(
         "sıradan Türkçe cümleler değiştirilmez",
         arguments: [
@@ -231,26 +234,26 @@ struct VocabularyPrecisionTests {
             "değiştirildi: \(result.corrections.map { "\($0.from)→\($0.to)" }.joined(separator: ", "))")
     }
 
-    @Test("çok kısa terimler sözlüğe alınmaz — üç harfli iskelet her şeye benzer")
+    @Test("very short terms are refused — a three-letter skeleton resembles everything")
     func shortTermsAreRejected() {
         let tiny = Vocabulary(terms: [VocabularyTerm(canonical: "CI"), VocabularyTerm(canonical: "Go")])
         let text = "Bu iş çok zor ve uzun sürecek"
         #expect(tiny.correct(text).text == text)
     }
 
-    @Test("alakasız kelime yüksek eşikte geçmez")
+    @Test("an unrelated word does not pass at a high threshold")
     func unrelatedWordsDoNotMatch() {
         let result = vocab().correct("Kalem masanın üzerinde duruyor")
         #expect(!result.didChange)
     }
 
-    @Test("eşik yükseltilince kapsam daralır")
+    @Test("raising the threshold narrows the coverage")
     func higherThresholdReducesRecall() {
         let strict = Vocabulary(terms: devTerms, threshold: 0.95, skeletonThreshold: 0.95)
         #expect(!strict.correct("Sılacık aç").didChange)
     }
 
-    @Test("terim başına eşik geçersiz kılınabilir")
+    @Test("the threshold can be overridden per term")
     func perTermThresholdApplies() {
         let loose = Vocabulary(
             terms: [VocabularyTerm(canonical: "parrot", minSimilarity: 0.6)],
@@ -258,7 +261,7 @@ struct VocabularyPrecisionTests {
         #expect(loose.correct("Pilot projesi").didChange)
     }
 
-    @Test("takma ad ile eşleşme")
+    @Test("matching through an alias")
     func aliasesMatch() {
         let withAlias = Vocabulary(terms: [
             VocabularyTerm(canonical: "Notion", aliases: ["noşın", "noşin"])
@@ -267,10 +270,10 @@ struct VocabularyPrecisionTests {
     }
 }
 
-@Suite("Vocabulary — çakışan eşleşmeler")
+@Suite("Vocabulary — overlapping matches")
 struct VocabularyOverlapTests {
 
-    @Test("uzun terim kısa terimi yener")
+    @Test("the longer term beats the shorter one")
     func longerTermWins() {
         let terms = [
             VocabularyTerm(canonical: "pull request"),
@@ -281,14 +284,14 @@ struct VocabularyOverlapTests {
         #expect(result.corrections.count == 1)
     }
 
-    @Test("aynı terim birden fazla kez düzeltilir")
+    @Test("the same term is repaired more than once")
     func repeatedTermsAllCorrected() {
         let result = vocab().correct("Sılacık aç, sonra Sılacık'tan yaz")
         #expect(result.corrections.count == 2)
         #expect(!result.text.contains("Sılacık"))
     }
 
-    @Test("düzeltmeler metindeki sırayla raporlanır")
+    @Test("corrections are reported in the order they appear in the text")
     func correctionsAreInOrder() throws {
         let result = vocab().correct("Sılacık aç ve Körsır kapat")
         try #require(result.corrections.count == 2)
@@ -296,7 +299,7 @@ struct VocabularyOverlapTests {
         #expect(result.corrections[1].to.contains("Cursor"))
     }
 
-    @Test("bitişik iki farklı terim çakışmaz")
+    @Test("two adjacent but different terms do not collide")
     func adjacentTermsDoNotCollide() {
         let result = vocab().correct("Sılacık Körsır")
         #expect(result.text == "Slack Cursor")
@@ -306,7 +309,7 @@ struct VocabularyOverlapTests {
 @Suite("Tokenizer")
 struct TokenizerTests {
 
-    @Test("kelime, ek ve noktalama ayrışır")
+    @Test("word, suffix and punctuation separate cleanly")
     func splitsParts() {
         let tokens = Tokenizer.tokenize("(Slack'ten,)")
         #expect(tokens.count == 1)
@@ -316,13 +319,13 @@ struct TokenizerTests {
         #expect(tokens[0].trailing == ",)")
     }
 
-    @Test("kesme işareti harf gelmezse ek sayılmaz")
+    @Test("an apostrophe with no letter after it is not a suffix")
     func apostropheWithoutLettersIsNotSuffix() {
         let tokens = Tokenizer.tokenize("Slack'")
         #expect(tokens[0].suffix.isEmpty)
     }
 
-    @Test("boşluklar atlanır, aralıklar doğru")
+    @Test("whitespace is skipped and the ranges stay correct")
     func rangesAreCorrect() {
         let text = "  bir   iki  "
         let tokens = Tokenizer.tokenize(text)
@@ -331,23 +334,23 @@ struct TokenizerTests {
         #expect(String(text[tokens[1].range]) == "iki")
     }
 
-    @Test("yalnız noktalamadan oluşan parça atılır")
+    @Test("a token made only of punctuation is discarded")
     func punctuationOnlyDropped() {
         #expect(Tokenizer.tokenize("...").isEmpty)
     }
 
-    @Test("boş metin boş liste verir")
+    @Test("empty text gives an empty list")
     func emptyText() {
         #expect(Tokenizer.tokenize("").isEmpty)
         #expect(Tokenizer.tokenize("   ").isEmpty)
     }
 }
 
-/// Eşik ayarı ancak gerçek bir yanlış-eşleşme korpusuna karşı savunulabilir.
-/// Buradaki cümlelerin hiçbirinde teknik terim yok; sözlük ise bir
-/// geliştiricinin gerçekten yazacağı terimlerle dolu ve kasıtlı olarak
-/// Türkçe kelimelere benzeyen kısa terimler içeriyor.
-@Suite("Vocabulary — geniş yanlış-eşleşme korpusu")
+/// A threshold is only defensible against a real false-match corpus. None of
+/// the sentences here contain a technical term, while the vocabulary is full
+/// of terms a developer would actually write — including short ones chosen
+/// because they deliberately resemble Turkish words.
+@Suite("Vocabulary — the broad false-match corpus")
 struct VocabularyFalsePositiveCorpusTests {
 
     static let corpus = [
@@ -383,7 +386,7 @@ struct VocabularyFalsePositiveCorpusTests {
         "Parkur çok zorluydu, yarısında bıraktım koşuyu.",
     ]
 
-    @Test("otuz cümlelik korpusta tek bir yanlış eşleşme yok", arguments: corpus)
+    @Test("not one false match across the thirty-sentence corpus", arguments: corpus)
     func noFalsePositives(_ sentence: String) {
         let result = vocab().correct(sentence)
         #expect(
@@ -391,8 +394,8 @@ struct VocabularyFalsePositiveCorpusTests {
             "yanlış eşleşme: \(result.corrections.map { "\"\($0.from)\" → \"\($0.to)\" (\($0.score))" }.joined(separator: ", "))")
     }
 
-    /// Türkçeye tehlikeli biçimde benzeyen terimlerle aynı korpus.
-    @Test("Türkçe kelimelere benzeyen terimlerde de temiz kalır")
+    /// The same corpus, with terms that resemble Turkish dangerously closely.
+    @Test("it stays clean even with terms that look like Turkish words")
     func riskyTermsStayClean() {
         let risky = Vocabulary(terms: [
             VocabularyTerm(canonical: "Docker"),

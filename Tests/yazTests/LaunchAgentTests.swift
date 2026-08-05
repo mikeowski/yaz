@@ -3,7 +3,7 @@ import Testing
 
 @testable import yaz
 
-@Suite("LaunchAgent — launchd iş tanımı")
+@Suite("LaunchAgent — the launchd job definition")
 struct LaunchAgentJobTests {
 
     static let binary = "/usr/local/bin/yaz"
@@ -12,41 +12,41 @@ struct LaunchAgentJobTests {
         LaunchAgent.job(binary: binary)
     }
 
-    @Test("etiket gömülü Info.plist'teki kimlikle aynı")
+    @Test("the label matches the identifier in the embedded Info.plist")
     func labelMatchesBundleIdentifier() {
-        // launchd işi ve TCC kimliği aynı şeye işaret etmeli.
+        // The launchd job and the TCC identity must point at the same thing.
         #expect(LaunchAgent.label == "com.mikeowski.yaz")
         #expect(Self.job()["Label"] as? String == LaunchAgent.label)
     }
 
-    @Test("ikili yolu ve argümanlar doğru sırada")
+    @Test("the binary path and arguments are in the right order")
     func programArguments() throws {
         let arguments = try #require(Self.job()["ProgramArguments"] as? [String])
         #expect(arguments.first == Self.binary)
         #expect(arguments.contains("run"))
     }
 
-    @Test("girişte çalışır")
+    @Test("it runs at login")
     func runsAtLoad() {
         #expect(Self.job()["RunAtLoad"] as? Bool == true)
     }
 
-    /// Menü barından "Çık" temiz bir çıkıştır ve kapalı kalmalı; çökme ise
-    /// yeniden başlatılmalı. Koşulsuz KeepAlive, Çık menüsünü yalancı yapar.
-    @Test("KeepAlive yalnızca başarısız çıkışta yeniden başlatır")
+    /// "Quit" from the menu bar is a clean exit and must stay quit; a crash
+    /// should restart. An unconditional KeepAlive makes the Quit menu a lie.
+    @Test("KeepAlive restarts only after a failed exit")
     func keepAliveIsConditional() throws {
         let keepAlive = try #require(Self.job()["KeepAlive"] as? [String: Any])
         #expect(keepAlive["SuccessfulExit"] as? Bool == false)
     }
 
-    @Test("Interactive tip — launchd gecikmeyi kısmasın")
+    @Test("Interactive type — launchd must not throttle it")
     func processTypeIsInteractive() {
         #expect(Self.job()["ProcessType"] as? String == "Interactive")
     }
 
-    /// launchd giriş ajanlarına çıplak bir ortam veriyor; PATH olmadan
-    /// `on_transcript` kancası hiçbir komutu bulamaz.
-    @Test("PATH ortam değişkeni tanımlı")
+    /// launchd hands login agents a bare environment; without PATH the
+    /// `on_transcript` hook cannot find any command.
+    @Test("the PATH environment variable is set")
     func environmentCarriesPath() throws {
         let environment = try #require(Self.job()["EnvironmentVariables"] as? [String: String])
         let path = try #require(environment["PATH"])
@@ -54,13 +54,13 @@ struct LaunchAgentJobTests {
         #expect(path.contains("/opt/homebrew/bin"))
     }
 
-    @Test("günlük yolları tanımlı")
+    @Test("the log paths are set")
     func logPaths() {
         #expect(Self.job()["StandardOutPath"] as? String == LaunchAgent.standardOutPath)
         #expect(Self.job()["StandardErrorPath"] as? String == LaunchAgent.standardErrorPath)
     }
 
-    @Test("plist geçerli XML olarak serileştirilir ve geri okunur")
+    @Test("the plist serialises to valid XML and reads back")
     func serialisesAndRoundTrips() throws {
         let data = try LaunchAgent.plistData(binary: Self.binary)
         #expect(!data.isEmpty)
@@ -70,20 +70,20 @@ struct LaunchAgentJobTests {
         #expect(plist["Label"] as? String == LaunchAgent.label)
         #expect((plist["ProgramArguments"] as? [String])?.first == Self.binary)
 
-        // launchd XML bekliyor; ikili plist de geçerli ama okunabilirlik
-        // kullanıcının bunu inceleyebilmesi için değerli.
+        // launchd expects XML. A binary plist is valid too, but readability
+        // is what lets the user inspect this.
         let text = try #require(String(data: data, encoding: .utf8))
         #expect(text.contains("<?xml"))
     }
 
-    @Test("özel argümanlar geçirilebilir")
+    @Test("custom arguments can be passed through")
     func customArguments() throws {
         let job = LaunchAgent.job(binary: Self.binary, arguments: ["run", "--verbose"])
         let arguments = try #require(job["ProgramArguments"] as? [String])
         #expect(arguments == [Self.binary, "run", "--verbose"])
     }
 
-    @Test("plist yolu LaunchAgents dizininde ve etiketle adlandırılmış")
+    @Test("the plist path is in LaunchAgents and named after the label")
     func plistLocation() {
         let path = LaunchAgent.plistURL.path
         #expect(path.contains("Library/LaunchAgents"))
@@ -91,11 +91,12 @@ struct LaunchAgentJobTests {
     }
 }
 
-@Suite("LaunchAgent — durum tespiti")
+@Suite("LaunchAgent — working out the state")
 struct LaunchAgentStatusTests {
 
-    /// Bu makinede kurulu olmayabilir; test kurulum yapmadan da anlamlı olmalı.
-    @Test("kurulu değilse temiz durum döner")
+    /// It may not be installed on this machine; the test has to mean
+    /// something without installing anything.
+    @Test("a clean state is reported when it is not installed")
     func uninstalledIsClean() {
         let state = LaunchAgent.status()
         if !state.isInstalled {
@@ -104,9 +105,9 @@ struct LaunchAgentStatusTests {
         }
     }
 
-    /// Asıl kötü senaryo: plist duruyor ama ikili taşınmış. launchd denemeye
-    /// devam eder, kullanıcı hiçbir şey görmez.
-    @Test("eksik ikili bayat olarak işaretlenir")
+    /// The bad case: the plist is still there but the binary has moved.
+    /// launchd keeps retrying and the user sees nothing.
+    @Test("a missing binary is reported as stale")
     func missingBinaryIsStale() throws {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "yaz-agent-\(UUID().uuidString)")
@@ -122,10 +123,10 @@ struct LaunchAgentStatusTests {
         #expect(!FileManager.default.isExecutableFile(atPath: recorded))
     }
 
-    @Test("çalışan ikilinin yolu çözülür")
+    @Test("the running binary's path resolves")
     func currentBinaryResolves() {
-        // Test koşucusu altında CommandLine.arguments[0] xctest ikilisidir;
-        // önemli olan bir şey döndürmesi ve o şeyin çalıştırılabilir olması.
+        // Under the test runner CommandLine.arguments[0] is the xctest
+        // binary; what matters is that it returns something executable.
         if let binary = LaunchAgent.currentBinary() {
             #expect(FileManager.default.isExecutableFile(atPath: binary.path))
             #expect(!binary.path.isEmpty)
@@ -133,7 +134,7 @@ struct LaunchAgentStatusTests {
     }
 }
 
-@Suite("Info.plist — TCC kimliği")
+@Suite("Info.plist — the TCC identity")
 struct EmbeddedInfoPlistTests {
 
     static var source: String {
@@ -145,26 +146,53 @@ struct EmbeddedInfoPlistTests {
         return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
     }
 
-    @Test("mikrofon kullanım açıklaması var ve Türkçe")
+    @Test("the microphone usage description is present and in English")
     func microphoneUsageDescription() {
         let text = Self.source
+        #expect(!text.isEmpty, "Info.plist not found — the path below has moved")
         #expect(text.contains("NSMicrophoneUsageDescription"))
-        // macOS bu metni izin penceresinde gösteriyor; boş bırakmak
-        // "yaz mikrofona erişmek istiyor" diye çıplak bir kutu demek.
-        #expect(text.contains("mikrofon"))
+        // macOS shows this in the permission prompt; leaving it out means a
+        // bare "yaz would like to access the microphone" box with no reason.
+        #expect(text.contains("microphone"))
     }
 
-    @Test("bundle kimliği LaunchAgent etiketiyle aynı")
+    /// There are two of these — this one is embedded in the binary so the CLI
+    /// has its own TCC identity, and `Resources/AppInfo.plist` is copied into
+    /// the bundle. They are separate files with nothing keeping them in step,
+    /// and the prompt text drifted between them once already: the bundle was
+    /// translated to English while the CLI kept showing Turkish.
+    @Test("both Info.plists show the same permission text")
+    func plistsAgreeOnUsageDescription() throws {
+        let bundled = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appending(path: "Resources/AppInfo.plist")
+        let other = try String(contentsOf: bundled, encoding: .utf8)
+
+        func usageDescription(_ source: String) -> String? {
+            guard let range = source.range(of: "NSMicrophoneUsageDescription"),
+                  let open = source.range(of: "<string>", range: range.upperBound..<source.endIndex),
+                  let close = source.range(of: "</string>", range: open.upperBound..<source.endIndex)
+            else { return nil }
+            return String(source[open.upperBound..<close.lowerBound])
+        }
+
+        let embedded = try #require(usageDescription(Self.source))
+        #expect(embedded == usageDescription(other))
+    }
+
+    @Test("the bundle identifier matches the LaunchAgent label")
     func identifierMatchesLabel() {
         #expect(Self.source.contains(LaunchAgent.label))
     }
 
-    @Test("arka plan süreci olarak işaretli")
+    @Test("it is marked as a background process")
     func marksBackgroundOnly() {
         #expect(Self.source.contains("LSBackgroundOnly"))
     }
 
-    @Test("geçerli plist")
+    @Test("it is a valid plist")
     func isValidPlist() throws {
         let data = Data(Self.source.utf8)
         let parsed = try PropertyListSerialization.propertyList(from: data, format: nil)
@@ -174,32 +202,33 @@ struct EmbeddedInfoPlistTests {
     }
 }
 
-@Suite("Doctor — erişilebilirlik izni kime verilecek")
+@Suite("Doctor — who the Accessibility grant lands on")
 struct AccessibilityOwnerTests {
 
-    /// Kabuktan çalıştırıldığında macOS izni terminale atfeder, yaz'a değil.
+    /// Run from a shell, macOS attributes the grant to the terminal, not yaz.
     @Test(
-        "terminalden çalışınca terminal adlandırılır",
+        "run from a terminal, the terminal is named",
         arguments: ["zsh", "bash", "fish", "Terminal", "iTerm2", "ghostty"]
     )
     func namesTheTerminal(_ shell: String) {
         #expect(DoctorReport.accessibilityOwner(parentName: shell, parentPID: 4242) == shell)
     }
 
-    /// launchd altında terminal yok. "launchd etkinleştir" demek işe yaramaz;
-    /// izin, gömülü Info.plist sayesinde kendi kimliği olan yaz'a ait.
-    @Test("launchd altında yaz'ın kendisi adlandırılır")
+    /// Under launchd there is no terminal. Saying "enable launchd" helps
+    /// nobody: the grant belongs to yaz, which has its own identity thanks to
+    /// the embedded Info.plist.
+    @Test("under launchd, yaz itself is named")
     func namesYazUnderLaunchd() {
         #expect(DoctorReport.accessibilityOwner(parentName: "launchd", parentPID: 1) == "yaz")
         #expect(DoctorReport.accessibilityOwner(parentName: "launchd", parentPID: 9999) == "yaz")
     }
 
-    @Test("ebeveyn süreç 1 ise yaz adlandırılır")
+    @Test("yaz is named when the parent process is 1")
     func reparentedToInit() {
         #expect(DoctorReport.accessibilityOwner(parentName: "her ne ise", parentPID: 1) == "yaz")
     }
 
-    @Test("ebeveyn adı okunamazsa yaz adlandırılır")
+    @Test("yaz is named when the parent's name cannot be read")
     func unknownParentFallsBackToYaz() {
         #expect(DoctorReport.accessibilityOwner(parentName: nil, parentPID: 4242) == "yaz")
         #expect(DoctorReport.accessibilityOwner(parentName: "", parentPID: 4242) == "yaz")
