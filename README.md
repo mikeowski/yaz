@@ -1,5 +1,9 @@
 # yaz
 
+[![CI](https://github.com/mikeowski/yaz/actions/workflows/ci.yml/badge.svg)](https://github.com/mikeowski/yaz/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![macOS 26+](https://img.shields.io/badge/macOS-26%2B%20Apple%20Silicon-black.svg)](#install)
+
 Push-to-talk dictation for macOS. Hold a key, speak, release — the text appears
 at your cursor. Nothing leaves the machine.
 

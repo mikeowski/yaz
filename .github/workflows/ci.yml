@@ -16,7 +16,7 @@ jobs:
     # targets macOS 26.
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Swift version
         run: swift --version
@@ -53,7 +53,7 @@ jobs:
   lint:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Shell scripts parse
         run: for f in scripts/*.sh; do sh -n "$f"; done
       - name: No Turkish in user-facing strings
