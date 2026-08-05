@@ -11,14 +11,29 @@ the three things it deliberately refuses: a **multilingual default**,
 
 ## Install
 
-**As an app (recommended):**
+**Download the DMG** from
+[Releases](https://github.com/mikeowski/yaz/releases/latest), open it, drag
+`yaz.app` to Applications. It lives in the menu bar.
+
+The build is signed with a Developer ID certificate and notarised by Apple, so
+it opens normally — no right-click → Open, no Gatekeeper warning. To check the
+download before opening it:
+
+```sh
+shasum -a 256 -c SHA256SUMS.txt
+spctl --assess --type execute --verbose /Applications/yaz.app
+# accepted · source=Notarized Developer ID
+```
+
+**Or build it yourself:**
 
 ```sh
 ./scripts/bundle.sh --dmg     # produces dist/yaz-0.1.0.dmg
 ```
 
-Open the DMG, drag `yaz.app` to Applications, launch it. It lives in the menu
-bar.
+Your own build is signed with a local certificate rather than a Developer ID,
+so Gatekeeper calls it unidentified — expected, and it changes nothing about
+how the app behaves.
 
 Installing as an app also solves a permissions problem. macOS attributes an
 Accessibility grant to the *responsible process*, and for a CLI run in a
