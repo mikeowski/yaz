@@ -734,8 +734,26 @@ struct Vocab: ParsableCommand {
         @Option(name: .long, help: "Mode: off, fillers, llm.")
         var mode: RefineMode = .llm
 
+        @Option(name: .long, help: "Dictation language. Cleanup is Turkish-only.")
+        var language: String = FillerFilter.lexiconLanguage
+
         func run() throws {
             try runBlocking {
+                // Said out loud rather than left as a silent no-op: text coming
+                // back identical looks like a broken cleanup, not a deliberate
+                // one.
+                guard FillerFilter.isSupported(language: language) else {
+                    log("""
+                        post-processing is skipped for '\(language)' — both tiers are \
+                        Turkish-specific (hesitation list and model instructions), and \
+                        applying them to another language corrupts rather than cleans.
+                        """)
+                    print("before: \(text)")
+                    print("after : \(text)")
+                    print("\nmode \(mode.rawValue) · skipped (language \(language))")
+                    return
+                }
+
                 switch Refiner.availability(for: mode) {
                 case .available: break
                 case .unavailable(let reason):
@@ -744,7 +762,7 @@ struct Vocab: ParsableCommand {
                 }
 
                 let started = Date()
-                let result = await Refiner(mode: mode).refine(text)
+                let result = await Refiner(mode: mode, language: language).refine(text)
                 let elapsed = Date().timeIntervalSince(started)
 
                 print("before: \(text)")

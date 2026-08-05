@@ -19,15 +19,15 @@
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
 
-    <!-- Menü barında yaşar; dock ikonu ve pencere yok. -->
+    <!-- Lives in the menu bar; no dock icon and no window. -->
     <key>LSUIElement</key>
     <true/>
 
-    <!-- İzin penceresinde kullanıcının göreceği metin. Bir .app olarak yaz
-         kendi TCC kimliğine sahip: istem "yaz" adıyla çıkar ve verilen izin
-         onu başlatan terminale değil yaz'a bağlanır. -->
+    <!-- What the user reads in the permission prompt. As a .app, yaz has its
+         own TCC identity: the prompt says "yaz", and the grant attaches to yaz
+         rather than to the terminal that launched it. -->
     <key>NSMicrophoneUsageDescription</key>
-    <string>yaz, kısayola basılı tuttuğunuz sürece mikrofonu dinler ve konuşmanızı metne çevirir. Ses bu Mac'ten çıkmaz.</string>
+    <string>yaz listens to the microphone while you hold the push-to-talk key and turns your speech into text. The audio never leaves this Mac.</string>
 
     <key>NSHumanReadableCopyright</key>
     <string>MIT</string>

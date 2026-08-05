@@ -57,11 +57,18 @@ struct RefineResult: Sendable, Equatable {
 actor Refiner {
 
     private let mode: RefineMode
+    private let language: String
     private let timeout: Duration
     private let backend: RefinerBackend?
 
-    init(mode: RefineMode, timeout: Duration = .seconds(8), backend: RefinerBackend? = nil) {
+    init(
+        mode: RefineMode,
+        language: String = FillerFilter.lexiconLanguage,
+        timeout: Duration = .seconds(8),
+        backend: RefinerBackend? = nil
+    ) {
         self.mode = mode
+        self.language = language
         self.timeout = timeout
         self.backend = backend ?? (mode == .llm ? FoundationModelsBackend() : nil)
     }
@@ -77,6 +84,18 @@ actor Refiner {
     func refine(_ text: String) async -> RefineResult {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, mode != .off else { return .unchanged(text) }
+
+        // Both tiers are Turkish-specific, so both are skipped rather than
+        // applied elsewhere — the same rule the vocabulary layer follows.
+        //
+        // `FillerFilter`'s hesitation set is Turkish ("ıı", "ee", "yani"), and
+        // includes bare vowels that are ordinary English words. The model
+        // instructions open with "Sen bir Türkçe dikte temizleme asistanısın",
+        // so handing them English asks a Turkish-primed model to tidy text it
+        // was not described. Neither is a cleanup at that point.
+        guard FillerFilter.isSupported(language: language) else {
+            return .unchanged(text)
+        }
 
         let stripped = FillerFilter.strip(trimmed)
         guard mode == .llm, let backend else {

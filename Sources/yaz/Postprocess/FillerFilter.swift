@@ -14,12 +14,17 @@ import Foundation
 /// that might be unavailable, slow, or switched off.
 enum FillerFilter {
 
+    /// The one language whose hesitations this filter knows.
+    static let lexiconLanguage = "tr"
+
     /// The hesitation list and the "these are real words" exclusions are both
-    /// Turkish. On English it removes nothing — `um` and `uh` are not in the
-    /// list — so running it elsewhere is inert rather than harmful, but it is
-    /// still not doing the job the caller thinks it is.
+    /// Turkish. On English it removes nothing useful — `um` and `uh` are not in
+    /// the list — while the bare vowels it *does* carry (`a`, `o`, `e`) are
+    /// ordinary English words, held back only by the adjacency rule below.
+    /// Inert in the common case, wrong in principle, and never the job the
+    /// caller thinks it is doing.
     static func isSupported(language: String) -> Bool {
-        language.lowercased().hasPrefix("tr")
+        language.lowercased().hasPrefix(lexiconLanguage)
     }
 
     /// Pure hesitation sounds. Every entry is a vowel or nasal run that

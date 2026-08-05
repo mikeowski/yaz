@@ -30,7 +30,7 @@ struct TranscriptPipeline: Sendable {
 
     init(config: Config) {
         self.vocabulary = Vocabulary(terms: config.vocabulary)
-        self.refiner = Refiner(mode: config.refine)
+        self.refiner = Refiner(mode: config.refine, language: config.language)
         self.language = config.language
     }
 

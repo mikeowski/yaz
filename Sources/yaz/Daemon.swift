@@ -272,9 +272,10 @@ final class Daemon {
         let alert = NSAlert()
         alert.messageText = "yaz needs Accessibility permission"
         alert.informativeText = """
-            Kısayol tuşunu dinlemek ve metni imlece yapıştırmak için gerekli.
+            Needed to watch the push-to-talk key and paste text at your cursor.
 
-            Sistem Ayarları → Gizlilik ve Güvenlik → Erişilebilirlik listesinde             yaz'ı işaretle. İzni verdiğin anda çalışmaya başlar — uygulamayı             yeniden başlatman gerekmez.
+            Tick yaz in System Settings → Privacy & Security → Accessibility. \
+            It starts working the moment you grant it — no need to restart the app.
             """
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Later")
