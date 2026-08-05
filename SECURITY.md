@@ -2,7 +2,7 @@
 
 ## Reporting
 
-Email **burakmahyk@gmail.com** with `yaz security` in the subject. Please do not
+Email **hi@mike4.dev** with `yaz security` in the subject. Please do not
 open a public issue for anything exploitable.
 
 Expect an acknowledgement within a week. This is a personal project, not a

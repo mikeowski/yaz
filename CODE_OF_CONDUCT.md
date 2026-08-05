@@ -19,7 +19,7 @@ issues, pull requests, commits, or anywhere else this project is discussed.
 
 ## Reporting
 
-Email **burakmahyk@gmail.com**. Reports are read by the maintainer and kept
+Email **hi@mike4.dev**. Reports are read by the maintainer and kept
 private. Responses range from a request to change behaviour to a permanent ban,
 depending on what happened.
 
