@@ -2,8 +2,12 @@
 
 ## Reporting
 
-Email **hi@mike4.dev** with `yaz security` in the subject. Please do not
-open a public issue for anything exploitable.
+Use GitHub's [private vulnerability
+reporting](https://github.com/mikeowski/yaz/security/advisories/new) — it is
+enabled on this repository, and it keeps the report private until a fix exists.
+Email **hi@mike4.dev** with `yaz security` in the subject if you prefer.
+
+Please do not open a public issue for anything exploitable.
 
 Expect an acknowledgement within a week. This is a personal project, not a
 funded one — there is no bounty and no formal SLA.
