@@ -79,8 +79,25 @@ remembering, update `docs/architecture.md`.
 
 ## Releasing
 
-Only the maintainer can do this — it needs a Developer ID Application
-certificate and notarisation credentials, neither of which can live in the repo.
+**Maintainer only.** This section is documentation of how the released
+artefacts are produced, not an invitation — a release needs a Developer ID
+Application private key and notarisation credentials, both of which live in a
+Keychain and neither of which can be committed. Running these scripts without
+them produces a locally-signed build, which is fine for development and is not
+a release.
+
+Notarisation credentials are stored once:
+
+```sh
+xcrun notarytool store-credentials yaz \
+    --apple-id <apple-id> --team-id <TEAMID> --password <app-specific-password>
+```
+
+The password is an **app-specific password** from
+[appleid.apple.com](https://appleid.apple.com) → Sign-In and Security →
+App-Specific Passwords; an account password will not work. A `401 — the account
+does not exist` almost always means the wrong Apple ID rather than the wrong
+password.
 
 ```sh
 swift test                  # 262 tests, ~1 s

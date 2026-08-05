@@ -236,27 +236,24 @@ every build.
 
 ### Releases: signed, notarised, stapled
 
-Released builds are signed with a Developer ID Application certificate under the
-Hardened Runtime, notarised by Apple and stapled — so the DMG opens with no
-warning and no right-click → Open.
+Builds on the [releases page](https://github.com/mikeowski/yaz/releases) are
+signed with a Developer ID Application certificate under the Hardened Runtime,
+notarised by Apple and stapled — so the DMG opens with no warning and no
+right-click → Open. The only entitlement requested is microphone access.
+
+Releases are cut by the maintainer, and only by the maintainer: it takes a
+private signing key and notarisation credentials that exist in a Keychain and
+never in this repository. A build produced by anyone else carries a different
+signing identity, which is exactly what the check below detects.
 
 ```sh
-./scripts/bundle.sh        # picks up the Developer ID automatically
-./scripts/notarize.sh      # notarise + staple the app, then the DMG
+codesign -dvv /Applications/yaz.app 2>&1 | grep Authority
+# Authority=Developer ID Application: BURAK MIKE (XMCHPUCJS2)
 ```
 
-Notarising needs credentials once. The password is an **app-specific password**
-from [appleid.apple.com](https://appleid.apple.com) → Sign-In and Security →
-App-Specific Passwords; your account password will not work:
-
-```sh
-xcrun notarytool store-credentials yaz \
-    --apple-id <your-apple-id> --team-id <TEAMID> --password <app-specific-password>
-```
-
-The only entitlement requested is microphone access — see
-[SECURITY.md](SECURITY.md) for what is deliberately not requested, and how to
-verify a download yourself.
+[SECURITY.md](SECURITY.md) has the full verification steps and what is
+deliberately *not* requested. The release procedure itself lives in
+[CONTRIBUTING.md](CONTRIBUTING.md#releasing).
 
 ## Models — downloaded, not bundled
 
