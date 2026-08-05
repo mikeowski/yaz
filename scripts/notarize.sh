@@ -21,7 +21,21 @@
 #       --password <app-specific-password>
 #
 # The app-specific password comes from appleid.apple.com → Sign-In and
-# Security → App-Specific Passwords. Your account password will not work.
+# Security → App-Specific Passwords. Your account password will not work, and
+# the dashes are part of the password.
+#
+# "HTTP 401 — The account does not exist" almost never means the password is
+# wrong. It means the Apple ID is not the one enrolled in the Developer
+# Program. The address you receive mail at and the address the account is
+# registered under are often different; developer.apple.com/account shows the
+# real one.
+#
+# An App Store Connect API key avoids the Apple ID entirely and is the better
+# choice for CI, since it carries no personal account and can be revoked on its
+# own. Same profile name, so nothing below changes:
+#
+#   xcrun notarytool store-credentials yaz \
+#       --key <AuthKey_XXXX.p8> --key-id <KEYID> --issuer <ISSUER-UUID>
 
 set -eu
 
@@ -62,7 +76,10 @@ if ! xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1; the
      xcrun notarytool store-credentials $PROFILE \\
          --apple-id <your-apple-id> --team-id $TEAM_ID \\
          --password <app-specific-password>
-   The app-specific password comes from appleid.apple.com, not your account password."
+   The app-specific password comes from appleid.apple.com, not your account
+   password. If that returns 'HTTP 401 — the account does not exist', the Apple
+   ID is the wrong one, not the password: developer.apple.com/account shows the
+   address the Developer Program is actually registered under."
 fi
 
 # --- notarise the app -------------------------------------------------------

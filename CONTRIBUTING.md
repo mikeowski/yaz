@@ -76,3 +76,31 @@ from 3 corrections to 4, precision corpus still clean" is.
 
 If a change is user-visible, update the README. If it is a design decision worth
 remembering, update `docs/architecture.md`.
+
+## Releasing
+
+Only the maintainer can do this — it needs a Developer ID Application
+certificate and notarisation credentials, neither of which can live in the repo.
+
+```sh
+swift test                  # 255 tests, ~1 s
+./scripts/bundle.sh         # picks up the Developer ID automatically
+./scripts/notarize.sh       # app + DMG, notarised and stapled
+```
+
+Then check what a stranger's Mac would see, which is not the same as the build
+machine's view — the build machine trusts certificates it holds locally:
+
+```sh
+spctl --assess --type execute --verbose dist/yaz.app     # source=Notarized Developer ID
+xcrun stapler validate dist/yaz.app                      # ticket present offline
+```
+
+Validate the app **inside** the mounted DMG too, not just the DMG. Stapling the
+DMG alone leaves the copy the user drags to Applications without its own
+ticket, which then needs a network round trip on first launch — and fails
+closed if the machine is offline.
+
+Bump the version in `Package.swift`, `scripts/bundle.sh` and `CHANGELOG.md`
+together; `bundle.sh` names the DMG from the bundle's version, so a mismatch
+ships a file whose name disagrees with what is inside it.
