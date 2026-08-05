@@ -6,7 +6,22 @@ Notable changes to yaz. Format loosely follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Developer ID signing and notarisation.** `scripts/bundle.sh` now picks the
+  best signing identity available — Developer ID Application, then a local
+  self-signed certificate, then ad-hoc — and signs with the Hardened Runtime
+  and an explicit entitlements file. `scripts/notarize.sh` submits the build to
+  Apple, staples the ticket to the app, rebuilds the DMG from the stapled app
+  and staples that too, so the download opens with no Gatekeeper warning.
+- `Resources/yaz.entitlements` — microphone only, with the entitlements that
+  are deliberately *not* requested written down alongside the reasons.
+
+### Fixed
+
+- `scripts/bundle.sh` could silently fall back to an ad-hoc signature and
+  discard the reason, whose only visible symptom was macOS permissions resetting
+  on every rebuild. The error is now shown.
 
 ## [0.1.0] — 2026-08-02
 

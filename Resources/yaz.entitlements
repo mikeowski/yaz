@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Hardened Runtime is required for notarisation, and it revokes several
+      capabilities unless they are asked for back. Only one is asked for here.
+
+      Microphone: the whole point of the app. Without this entitlement the
+      hardened runtime blocks capture before TCC is ever consulted.
+    -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!--
+      Deliberately NOT requested:
+
+      - App Sandbox. Sandboxing would break the global CGEventTap (there is no
+        entitlement that restores it outside the App Store) and cut off
+        ~/Documents, where WhisperKit keeps its weights.
+      - allow-unsigned-executable-memory / allow-jit. Core ML loads compiled
+        .mlmodelc artefacts as data, not as code. Adding these weakens the
+        runtime for nothing; if a future engine genuinely needs them, that
+        should be a deliberate, tested change.
+      - disable-library-validation. yaz loads no third-party plug-ins.
+      - Apple Events. yaz drives nothing through AppleScript.
+
+      Watching the hotkey and pasting the transcript need no entitlement at
+      all: they are governed by TCC (Accessibility and Input Monitoring), which
+      the user grants at runtime.
+    -->
+</dict>
+</plist>

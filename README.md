@@ -198,17 +198,46 @@ yaz reset-permissions     # clears the records
 
 macOS keys a permission to the **code signing identity**. An ad-hoc signature
 has no identity beyond the binary's own hash, so every rebuild invalidates what
-you granted. `scripts/bundle.sh` signs with a stable self-signed certificate,
-created once:
+you granted. `scripts/bundle.sh` picks the best identity available, in order:
+
+| | Gatekeeper | Permissions survive a rebuild |
+|---|---|---|
+| **Developer ID Application** | opens anywhere, once notarised | yes |
+| **Self-signed local certificate** | unidentified developer | yes |
+| **Ad-hoc** | unidentified developer | **no** |
+
+Contributors want the middle one, created once:
 
 ```sh
 ./scripts/signing-identity.sh    # one-time; asks for your login password
 ```
 
-After that the designated requirement is identical across rebuilds. It is not a
-Developer ID — Gatekeeper still treats the app as unidentified elsewhere — but
-it is the difference between granting permission once and granting it every
-time.
+That is the difference between granting permission once and granting it on
+every build.
+
+### Releases: signed, notarised, stapled
+
+Released builds are signed with a Developer ID Application certificate under the
+Hardened Runtime, notarised by Apple and stapled — so the DMG opens with no
+warning and no right-click → Open.
+
+```sh
+./scripts/bundle.sh        # picks up the Developer ID automatically
+./scripts/notarize.sh      # notarise + staple the app, then the DMG
+```
+
+Notarising needs credentials once. The password is an **app-specific password**
+from [appleid.apple.com](https://appleid.apple.com) → Sign-In and Security →
+App-Specific Passwords; your account password will not work:
+
+```sh
+xcrun notarytool store-credentials yaz \
+    --apple-id <your-apple-id> --team-id <TEAMID> --password <app-specific-password>
+```
+
+The only entitlement requested is microphone access — see
+[SECURITY.md](SECURITY.md) for what is deliberately not requested, and how to
+verify a download yourself.
 
 ## Models — downloaded, not bundled
 
