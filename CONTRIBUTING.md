@@ -83,7 +83,7 @@ Only the maintainer can do this — it needs a Developer ID Application
 certificate and notarisation credentials, neither of which can live in the repo.
 
 ```sh
-swift test                  # 255 tests, ~1 s
+swift test                  # 262 tests, ~1 s
 ./scripts/bundle.sh         # picks up the Developer ID automatically
 ./scripts/notarize.sh       # app + DMG, notarised and stapled
 ```

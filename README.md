@@ -352,12 +352,9 @@ swift test              # ~1 s, offline, no microphone
 ./scripts/bundle.sh     # dist/yaz.app
 ```
 
-255 tests. See [CONTRIBUTING.md](CONTRIBUTING.md) for the parts that are easy
+262 tests. See [CONTRIBUTING.md](CONTRIBUTING.md) for the parts that are easy
 to break, and [docs/architecture.md](docs/architecture.md) for why things are
 the way they are — including the failures that shaped them.
-
-> **Note:** `docs/architecture.md` is still written in Turkish. Everything else
-> — the app, the CLI, and the rest of the documentation — is English.
 
 ## Stack
 

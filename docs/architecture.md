@@ -1,427 +1,444 @@
-# yaz — mimari
+# yaz — architecture
 
-## Neden var
+## Why it exists
 
-parrot (digimata) macOS için mükemmel bir dikte iskeleti kurmuş, ama üç şeyi
-tasarım gereği reddediyor. Türkçe konuşan bir geliştirici için bu üçü tam da
-ihtiyaç duyulan şeyler:
+parrot (digimata) built an excellent dictation skeleton for macOS, and refuses
+three things by design. For a Turkish-speaking developer those three are
+exactly what is needed:
 
-1. **Çok dilli varsayılan** — parrot `whisper-base.en` ile geliyor, Türkçe hiç çalışmıyor.
-2. **Güvenilir metin yerleştirme** — parrot 20 karakterlik `CGEvent` parçaları
-   yazıyor; Electron uygulamalarında (Slack, Notion, Cursor) karakter düşüyor.
-3. **Son işleme yok** — "No custom vocabulary, prompts, or post-processing."
-   Dikte çıktısı ham geliyor: dolgu kelimeler, bozuk teknik terimler.
+1. **A multilingual default** — parrot ships `whisper-base.en`; Turkish does
+   not work at all.
+2. **Reliable text insertion** — parrot types 20-character `CGEvent` chunks,
+   and Electron apps (Slack, Notion, Cursor) drop characters.
+3. **No post-processing** — "No custom vocabulary, prompts, or
+   post-processing." The output arrives raw: filler words, mangled technical
+   terms.
 
-yaz bu üçünü hedefliyor. İskelet parrot'tan, hedefler ondan farklı.
+yaz aims at those three. The skeleton comes from parrot; the goals do not.
 
-## Ölçülmüş gerçekler (M4 Pro, 24 GB, macOS 26.5)
+## Measured facts (M4 Pro, 24 GB, macOS 26.5)
 
-Bu sayılar iddia değil, bu makinede ölçüldü. `fixtures/` altındaki sabit
-Türkçe seslerle `yaz transcribe` üzerinden tekrarlanabilir.
+These numbers are not claims — they were measured on this machine, and are
+reproducible through `yaz transcribe` against the fixed Turkish audio under
+`fixtures/`.
 
 | | whisper large-v3-turbo |
 |---|---|
-| İlk model yükleme (CoreML derlemesi) | ~115–210 sn, tek seferlik |
-| Sonraki her açılış | ~6.5–7 sn |
-| 5.6 sn konuşma → metin | **506 ms** (RTF 0.091) |
-| 12.1 sn konuşma → metin | **855 ms** (RTF 0.071) |
-| RAM | ~210–260 MB |
-| 0.6 sn'lik ifade | boş dönüyor |
+| First model load (Core ML compile) | ~115–210 s, once |
+| Every later launch | ~6.5–7 s |
+| 5.6 s of speech → text | **506 ms** (RTF 0.091) |
+| 12.1 s of speech → text | **855 ms** (RTF 0.071) |
+| Resident memory | ~210–260 MB |
+| A 0.6 s utterance | comes back empty |
 
-## Motor seçimi — ve neden Parakeet değil
+## Choosing an engine — and why not Parakeet
 
-İlk plan Parakeet TDT v3'e geçmekti: 600 MB (Whisper'ın 1.6 GB'ına karşı),
-ANE'de çok daha hızlı, "25 Avrupa dili" desteği. **Bu plan yanlıştı.**
+The first plan was to move to Parakeet TDT v3: 600 MB against Whisper's 1.6 GB,
+far faster on the ANE, "25 European languages". **That plan was wrong.**
 
-Parakeet TDT v3'ün dil listesi 25 AB dili + Rusça + Ukraynaca:
-bg, hr, cs, da, nl, en, et, fi, fr, de, el, hu, it, lv, lt, mt, pl, pt, ro,
-sk, sl, es, sv, ru, uk. **Türkçe yok.** İki bağımsız kaynakla doğrulandı:
-NVIDIA'nın model kartı ve FluidAudio'nun kendi `Language` enum'u (`tr` case'i
-yok; kütüphanenin tamamında `"tr"` yalnızca bir TTS sabit listesinde geçiyor).
+Parakeet TDT v3's language list is 25 EU languages plus Russian and Ukrainian:
+bg, hr, cs, da, nl, en, et, fi, fr, de, el, hu, it, lv, lt, mt, pl, pt, ro, sk,
+sl, es, sv, ru, uk. **Turkish is not among them.** Verified against two
+independent sources: NVIDIA's model card, and FluidAudio's own `Language` enum
+(no `tr` case; across the whole library `"tr"` appears only in a TTS constant
+list).
 
-Dolayısıyla **Türkçe için Whisper tek on-device seçenek.** Bedeli: 1.6 GB
-ağırlık ve utterance başına 500–900 ms. Parakeet `--engine-name parakeet` ile
-duruyor; İngilizce dikte için hâlâ çok daha hızlı.
+So **Whisper is the only on-device option for Turkish.** The price is 1.6 GB of
+weights and 500–900 ms per utterance. Parakeet stays available behind
+`--engine-name parakeet`; it is still much faster for English dictation.
 
-## Özel sözlük — neden ASR seviyesinde çözülemedi
+## Custom vocabulary — why it could not be solved at the ASR level
 
-Asıl doğruluk sorunu düz Türkçede değil, İngilizce teknik terimlerde:
-
-```
-girdi : "Ahmet'e Slack üzerinden yaz, pull request'i merge et, CI pipeline yeşile dönsün"
-çıktı : "Ahmet'e Sılacık üzerinden yaz, Puhrıkı Esti'de merge et, C.I.P. eline yeşile dönsün"
-```
-
-Denenen ve **elenen** iki yol:
-
-1. **Whisper initial-prompt biasing** (`DecodingOptions.promptTokens`) — ASR'a
-   jargonu öğretmenin standart yolu. WhisperKit'te `large-v3-turbo` ile
-   **her seferinde boş çıktı** veriyor (0 segment, sıfır istatistik).
-   `prefixTokens` ise prompt'u olduğu gibi echo'luyor — o farklı bir özellik.
-2. **LLM'e sözlük verip düzelttirme** — Apple FoundationModels'a hedef terim
-   listesi verildi, yine de "Sılacık"ı düzeltemedi (1.40 sn harcandı).
-   ~3B'lik on-device model bu bulanık fonetik eşlemeyi Türkçede yapamıyor.
-
-Dolayısıyla özel sözlük **deterministik bir son işleme katmanı** olacak:
-kullanıcı sözlüğüne karşı fonetik normalizasyon + düzenleme mesafesi eşleşmesi.
-Model tahmininden değil, kullanıcının verdiği listeden çalışır.
-
-## Son işleme — LLM'in gerçekten iyi olduğu yer
-
-Aynı FoundationModels, dolgu temizlemede çok başarılı (**0.46 sn**):
+The real accuracy problem is not plain Turkish, it is English technical terms:
 
 ```
-girdi : "ıı yarın şey saat ikide yani toplantımız var hani o proje için ee hazırlık yapmamız lazım"
-çıktı : "Yarın saat ikide toplantımız var. O proje için hazırlık yapmamız lazım."
+in  : "Ahmet'e Slack üzerinden yaz, pull request'i merge et, CI pipeline yeşile dönsün"
+out : "Ahmet'e Sılacık üzerinden yaz, Puhrıkı Esti'de merge et, C.I.P. eline yeşile dönsün"
 ```
 
-Yani katman ayrımı net:
+Two routes were tried and **eliminated**:
 
-| Sorun | Çözen |
+1. **Whisper initial-prompt biasing** (`DecodingOptions.promptTokens`) — the
+   standard way to teach an ASR your jargon. In WhisperKit with
+   `large-v3-turbo` it returns **empty output every time** (0 segments, zero
+   statistics). `prefixTokens` echoes the prompt back verbatim — that is a
+   different feature.
+2. **Handing an LLM the vocabulary and asking it to repair** — Apple
+   FoundationModels was given the list of target terms and still could not fix
+   "Sılacık", after spending 1.40 s. A ~3B on-device model cannot do this
+   kind of fuzzy phonetic matching in Turkish.
+
+So the custom vocabulary is a **deterministic post-processing layer**: phonetic
+normalisation plus edit-distance matching against the user's own list. It works
+from what the user supplied, not from what a model guessed.
+
+## Post-processing — where the LLM genuinely is good
+
+The same FoundationModels is very good at filler removal (**0.46 s**):
+
+```
+in  : "ıı yarın şey saat ikide yani toplantımız var hani o proje için ee hazırlık yapmamız lazım"
+out : "Yarın saat ikide toplantımız var. O proje için hazırlık yapmamız lazım."
+```
+
+So the split between the layers is clean:
+
+| Problem | Solved by |
 |---|---|
-| Bozuk özel isim / teknik terim | deterministik sözlük eşleştirme |
-| Dolgu kelime, kekeleme, noktalama | FoundationModels (on-device, indirme yok) |
+| A mangled proper noun or technical term | deterministic vocabulary matching |
+| Filler words, stuttering, punctuation | FoundationModels (on-device, no download) |
 
-FoundationModels macOS 26 ile geliyor — sıfır indirme, sıfır bağımlılık.
-Paketin `platforms: [.macOS(.v26)]` olmasının sebebi bu.
+FoundationModels ships with macOS 26 — zero download, zero dependency. That is
+why the package declares `platforms: [.macOS(.v26)]`.
 
-## Katmanlar
+## Layers
 
 ```
 hotkey (CGEventTap)
    ↓ .pressed / .released
 AudioCapture (AVAudioEngine → 16 kHz mono Float32)
    ↓ [Float]
-Transcriber  ← protokol; motor buradan takılır
-   ├── WhisperTranscriber   (varsayılan, Türkçe)
-   └── ParakeetTranscriber  (opsiyonel, hızlı, İngilizce)
+Transcriber  ← protocol; the engine plugs in here
+   ├── WhisperTranscriber   (default, Turkish)
+   └── ParakeetTranscriber  (optional, fast, English)
    ↓ TranscriptionOutput
-Vocabulary   (deterministik terim düzeltme)
+Vocabulary   (deterministic term repair)
    ↓
-Refiner      (FoundationModels: dolgu temizleme, noktalama)
+Refiner      (FoundationModels: filler removal, punctuation)
    ↓ String
-TextInjector (pano yapıştırma; CGEvent yazımı yedek)
+TextInjector (clipboard paste; CGEvent typing as fallback)
 ```
 
-`Transcriber` protokolü kasıtlı olarak küçük: `prepare / transcribe / release`.
-`transcribe` dosya URL'i değil `[Float]` alıyor — dikte utterance'ları saniyeler
-uzunluğunda ve bellekte; sırf geri okumak için diske yazmak, gecikmenin ürünün
-kendisi olduğu tek yola gecikme ekler.
+The `Transcriber` protocol is deliberately small: `prepare / transcribe /
+release`. `transcribe` takes `[Float]`, not a file URL — dictation utterances
+are seconds long and already in memory, and writing them to disk just to read
+them back adds latency to the one path where latency *is* the product.
 
-`release()` protokolde çünkü yaz gün boyu açık duran bir daemon; boştayken
-yüzlerce megabaytlık CoreML ağırlığını resident tutmamalı.
+`release()` is in the protocol because yaz is a daemon that stays open all day
+and must not keep hundreds of megabytes of Core ML weights resident while idle.
 
 
-## Sağlamlaştırma katmanı
+## The hardening layer
 
-Motor katmanı "çalışıyor"dan "güvenilir"e taşındı. Dikte, çıktısı doğrudan
-kullanıcının imlecine yazılan bir araç: yanlış metin, hata mesajından daha
-pahalı. Bu yüzden üç savunma hattı var.
+The engine layer moved from "it works" to "it is trustworthy". Dictation writes
+its output straight to the user's cursor: wrong text costs more than an error
+message. Hence three lines of defence.
 
-### 1. Çıkarımdan önce — `SpeechGate`
+### 1. Before inference — `SpeechGate`
 
-Ölçülen iki gerçek: 0.6 sn'lik ifade Whisper'dan **boş** dönüyor, ve sessizlik
-verildiğinde model susmuyor — `[BLANK_AUDIO]`, `(müzik)` ya da düpedüz uydurma
-bir cümle üretiyor.
+Two measured facts: a 0.6 s utterance comes back **empty** from Whisper, and
+given silence the model does not stay quiet — it produces `[BLANK_AUDIO]`,
+`(müzik)`, or an outright invented sentence.
 
-Kısa/sessiz tamponu burada elemek mikrosaniye sürüyor; çıkarımdan sonra elemek
-~500 ms. Kapılar: en az 0.35 sn süre, en az 0.005 tepe genlik.
+Dropping a short or silent buffer here takes microseconds; dropping it after
+inference takes ~500 ms. The gates: at least 0.35 s of duration, at least
+0.005 peak amplitude.
 
-Bu reddedişler `isBenignInput` ile işaretli — kısayola yanlışlıkla basmak hata
-değil, daemon bunları sessizce atmalı.
+These rejections are marked `isBenignInput` — brushing the hotkey by accident
+is not an error, and the daemon should discard them quietly.
 
-### 2. Çıkarımdan sonra — `TranscriptionQuality`
+### 2. After inference — `TranscriptionQuality`
 
-Whisper asla "bilmiyorum" demez, her zaman metin döndürür. Ama decoder segment
-başına üç sinyal veriyor ve parrot bunları yere düşürüyor:
+Whisper never says "I don't know"; it always returns text. But the decoder
+gives three signals per segment, and parrot drops them on the floor:
 
-| Sinyal | Yakaladığı |
+| Signal | What it catches |
 |---|---|
-| `noSpeechProb` > 0.6 | konuşma değil |
-| `compressionRatio` > 2.4 | tekrar döngüsü ("teşekkürler teşekkürler…") |
-| `avgLogprob` < -1.0 | uydurma metin |
-| `avgLogprob` < -0.7 | düşük güven (kullanılabilir ama işaretli) |
+| `noSpeechProb` > 0.6 | that was not speech |
+| `compressionRatio` > 2.4 | a repeat loop ("teşekkürler teşekkürler…") |
+| `avgLogprob` < -1.0 | invented text |
+| `avgLogprob` < -0.7 | low confidence (usable, but flagged) |
 
-Ek olarak doğrudan kelime-tekrarı tespiti var: kısa bir ifadede sıkıştırma
-oranı eşiği geçmeden döngü oluşabiliyor.
+There is also direct word-repetition detection: on a short utterance a loop can
+form without the compression ratio ever crossing its threshold.
 
-Eşikler OpenAI'nin referans decoder'ından. Segment sinyalleri süreye göre
-ağırlıklı ortalanıyor — tek kelimelik bir segment kararı çekmesin diye. Ama
-sıkıştırma oranında **en kötü** segment alınıyor: tek döngüye giren segment
-tüm ifadeyi mahkûm eder, ortalamada erimemeli.
+The thresholds come from OpenAI's reference decoder. Segment signals are
+averaged weighted by duration, so a one-word segment cannot drag the verdict.
+The compression ratio is the exception — there the **worst** segment is taken:
+a single segment that falls into a loop condemns the whole utterance and must
+not dissolve into an average.
 
-### 3. Sınırlarda — tip güvenli hatalar ve zaman aşımı
+### 3. At the boundaries — typed errors and a timeout
 
-`YazError` her başarısızlığı adlandırıyor. Sebebi somut: ilk prototipte
-`AVAudioFile` çağrısı patladı, Foundation onu çıplak
-`_GenericObjCError.nilError`'a çevirdi, CLI `Error: nilError` yazdı. Bu kimseye
-bir şey söylemiyor.
+`YazError` names every failure. The reason is concrete: in the first prototype
+an `AVAudioFile` call blew up, Foundation turned it into a bare
+`_GenericObjCError.nilError`, and the CLI printed `Error: nilError`. That tells
+nobody anything.
 
-`withTranscriptionTimeout` takılan bir Core ML çağrısının daemon'ı kilitlemesini
-engelliyor. Dürüst sınır: çağıran serbest kalır, ANE hemen durmaz.
+`withTranscriptionTimeout` stops a wedged Core ML call from locking up the
+daemon. It is an honest boundary: the caller is released, the ANE does not stop
+immediately.
 
-### Dil doğrulaması — sessiz yanlıştan iyi hata
+### Language validation — an error beats a silent wrong answer
 
-Parakeet, Türkçe sese kendinden emin saçmalık üretiyor, reddetmiyor:
+Parakeet does not reject Turkish audio; it produces confident nonsense:
 
 ```
 $ yaz transcribe --engine-name parakeet --language en fixtures/t1.wav
 Bugun Parot Krojesini in Jeledimweon device transcription mimari sinichosdum.
 ```
 
-Bu yüzden `supportedLanguages` motor protokolünde. Desteklenmeyen çift model
-indirilmeden önce reddediliyor:
+So `supportedLanguages` is part of the engine protocol, and an unsupported pair
+is refused before the model is even downloaded:
 
 ```
 $ yaz transcribe --engine-name parakeet --language tr fixtures/t1.wav
-Error: parakeet motoru 'tr' dilini desteklemiyor (desteklenen: bg, hr, cs, da, nl, en, et, fi…)
+Error: the parakeet engine does not support 'tr' (supported: bg, hr, cs, da, nl, en, et, fi…)
 ```
 
-### Ses yükleme — pencereli ve sınırlı
+### Audio loading — windowed and bounded
 
-Bir saatlik 48 kHz stereo kayıt tek Float32 tamponda ~690 MB. `AudioLoader`
-kaynak sesi 32768 karelik pencerelerde okuyup dönüştürüyor; bellekte tek pencere
-duruyor. `maxSeconds` ile üst sınır var.
+An hour of 48 kHz stereo is ~690 MB in a single Float32 buffer. `AudioLoader`
+reads and converts the source in 32768-frame windows, holding one window in
+memory at a time. `maxSeconds` puts a ceiling on it.
 
-**Bulunan hata:** `AVAudioFile.read(into:)` dosya sonunda 0 kare döndürmüyor,
-**hata fırlatıyor** — ve Foundation bunu yine `nilError`'a çeviriyor. Döngü
-`frameLength == 0` yerine `framePosition < length` ile sürülmeli. Bu hatayı
-test paketi yazıldığı gün yakaladı.
+**A bug found here:** `AVAudioFile.read(into:)` does not return 0 frames at end
+of file, it **throws** — and Foundation turns that into `nilError` again. The
+loop has to be driven by `framePosition < length`, not `frameLength == 0`. The
+test suite caught this the day it was written.
 
-Ayrıca dosya varlığı önden kontrol ediliyor: AVAudioFile eksik dosyayı
-`Code=2003334207` diye bildiriyor, bu da kullanıcının bilmesi gereken tek şeyi
-gömüyor.
+File existence is also checked up front: AVAudioFile reports a missing file as
+`Code=2003334207`, which buries the one thing the user needs to know.
 
-### Test paketi
+### Test suite
 
-37 test, 5 suite (`swift test`). Kapsam: kapı eşikleri, kalite kararları,
-temizleme regex'leri, ses yükleme, hata mesajlarının okunabilirliği.
+37 tests, 5 suites (`swift test`). Coverage: gate thresholds, quality verdicts,
+the sanitising regexes, audio loading, and whether the error messages are
+readable.
 
-Düşmanca fixture'lar `fixtures/` altında: tam sessizlik, 100 ms'lik ifade,
-eşik altı gürültü. Sağlamlaştırmanın kanıtı bunların uçtan uca elenmesi:
+Adversarial fixtures live under `fixtures/`: complete silence, a 100 ms
+utterance, sub-threshold noise. The proof of hardening is that these are
+eliminated end to end:
 
 ```
 $ yaz transcribe --strict fixtures/t1.wav fixtures/silence-3s.wav fixtures/tiny-100ms.wav
-═══ t1.wav (5.57 sn) ═══
-  gecikme 567 ms · RTF 0.102 · tepe 0.702 · rms 0.151
-  noSpeech 0.00 · logProb -0.21 · sıkıştırma 1.07
+═══ t1.wav (5.57 s) ═══
+  latency 567 ms · RTF 0.102 · peak 0.702 · rms 0.151
+  noSpeech 0.00 · logProb -0.21 · compression 1.07
   Bugün Pilot Projesini inceledim ve On Device Transcription Mimarisini çözdüm.
 
 ═══ silence-3s.wav ═══
-  ✗ kayıtta ses yok (tepe 0.0000, eşik 0.0050)
+  ✗ no sound in the recording (peak 0.0000, threshold 0.0050)
 
 ═══ tiny-100ms.wav ═══
-  ✗ kayıt çok kısa (0.10 sn, en az 0.35 sn gerekli)
+  ✗ recording too short (0.10 s, needs at least 0.35 s)
 ```
 
-`sanitize` de sıkılaştırıldı. parrot her `(...)` içeriğini siliyor — bu, dikte
-edilen gerçek parantezli ifadeleri de götürüyor. yaz yalnızca bilinen not
-sözcüklerini (`sessizlik`, `müzik`, `applause`…) ve 40 karakteri aşmayan
-span'ları siliyor; "toplantı (yarın değil, öbür gün) yapılacak" olduğu gibi kalıyor.
+`sanitize` was tightened too. parrot deletes the contents of every `(...)`,
+which also takes away real dictated parentheticals. yaz removes only known
+annotation words (`sessizlik`, `müzik`, `applause`…) and only spans no longer
+than 40 characters; "toplantı (yarın değil, öbür gün) yapılacak" survives
+intact.
 
 
-## Sağlamlaştırma — ikinci tur
+## Hardening — round two
 
-İlk tur girdi ve çıktıyı savundu. İkinci tur kodu kendine karşı savunuyor:
-üç gerçek hata bulundu, üçü de kod okunarak.
+The first round defended the input and the output. The second round defends the
+code against itself: three real bugs, all three found by reading it.
 
-### Actor reentrancy — modeli iki kez yükleme
+### Actor reentrancy — loading the model twice
 
 ```swift
 func prepare() async throws {
-    guard box.kit == nil else { return }        // ← 1. çağrı buradan geçer
-    box.kit = try await WhisperKit(...)         // ← burada askıya alınır
-}                                               //   2. çağrı guard'ı geçer!
+    guard box.kit == nil else { return }        // ← the first call passes here
+    box.kit = try await WhisperKit(...)         // ← and suspends here
+}                                               //   the second call passes the guard!
 ```
 
-Actor **ifadeleri** serileştirir, askıya alma noktasını aşan **işlemleri**
-değil. `await` sırasında ikinci çağrı içeri girip aynı 1.6 GB modeli bir daha
-yüklüyordu.
+Actors serialise **statements**, not **operations** that cross a suspension
+point. During the `await`, a second caller walked in and loaded the same 1.6 GB
+model again.
 
-`SingleFlight` bunu tek uçuşa indiriyor. Bekleyenler kazananın sonucunu görür.
-Başarısız yükleme **önbelleğe alınmaz** — sebebi genelde geçici bir indirme
-hatası, sonraki çağrı yeniden denemeli.
+`SingleFlight` collapses that into one flight; waiters see the winner's result.
+A failed load is **not cached** — the cause is usually a transient download
+failure, and the next call should retry.
 
-### Sinyal yokluğu ≠ kusursuz sinyal
+### Absent signals ≠ perfect signals
 
-`Signals` alanlarının hepsi sıfır varsayılanlı. Ama `avgLogProb: 0` = log(1.0) =
-**mümkün olan en yüksek güven**, `noSpeechProb: 0` = kesinlikle konuşma. Yani
-sıfırlanmış bir `Signals`, "veri yok"u "kusursuz decode" diye raporluyordu.
+Every field of `Signals` defaults to zero. But `avgLogProb: 0` = log(1.0) = the
+**highest confidence possible**, and `noSpeechProb: 0` = definitely speech. So a
+zeroed `Signals` was reporting "no data" as "a flawless decode".
 
-Parakeet segment başına güven vermiyor ve tam da bunu geçiyordu — sonuç:
-**her Parakeet transkripti kalite kapılarından otomatik geçiyordu.**
+Parakeet gives no per-segment confidence and was passing exactly that — with
+the result that **every Parakeet transcript sailed through the quality gates.**
 
-Artık tip bunu ifade ediyor: `signals: Signals?`. `nil` geçildiğinde yalnızca
-metin-temelli kontroller (boş çıktı, tekrar döngüsü) uygulanıyor — bunlar
-motordan bağımsız olarak imlece ulaşan hata türleri. CLI de sıfır basmak
-yerine durumu söylüyor:
+Now the type says so: `signals: Signals?`. When `nil` is passed, only the
+text-based checks apply (empty output, repeat loop) — the failure modes that
+reach the cursor regardless of engine. The CLI states the situation rather than
+printing zeros:
 
 ```
-  (motor güven sinyali vermiyor — karar yalnızca metne dayanıyor)
+  (the engine reports no confidence signals — the verdict is text-only)
 ```
 
-### İki gerçek veri yarışı
+### Two real data races
 
-`PipelineBox` `@unchecked Sendable`'dı ama senkronizasyonu yoktu. `box.kit`
-actor üzerinde `prepare()`/`release()` tarafından yazılıyor, zaman aşımı
-sarmalayıcısının **task-group child task'ından** okunuyordu. Artık `NSLock`
-korumalı ve `current()` güçlü referans döndürüyor: eşzamanlı bir `release()`
-uçuştaki transkripsiyonun altından pipeline'ı çekemez.
+`PipelineBox` was `@unchecked Sendable` with no synchronisation. `box.kit` was
+written on the actor by `prepare()`/`release()` and read from the timeout
+wrapper's **task-group child task**. It is `NSLock`-protected now, and
+`current()` returns a strong reference: a concurrent `release()` cannot pull the
+pipeline out from under an in-flight transcription.
 
-İkincisi daha sinsi: actor `transcribe()`'ı serileştirmiyor. Method `await`'te
-askıya alınınca ikinci çağrı içeri girip Core ML pipeline'ına **paralel**
-ulaşabiliyordu. WhisperKit reentrancy garantisi vermiyor — bu yavaşlık değil,
-tanımsız davranış. `SerialGate` işleri geliş sırasına göre kuyruğa alıyor;
-hata veren iş zinciri koparmıyor.
+The second is subtler: the actor does not serialise `transcribe()`. Once the
+method suspends at an `await`, a second call could enter and reach the Core ML
+pipeline **in parallel**. WhisperKit makes no reentrancy guarantee — that is
+undefined behaviour, not merely slowness. `SerialGate` queues work in arrival
+order, and work that throws does not break the chain.
 
-`release()` de artık kuyruğu boşaltmadan ağırlıkları düşürmüyor.
+`release()` no longer drops the weights without draining the queue first.
 
-### Ölçüm kapısı ölçülmeye değmemeli
+### The measurement gate must not be worth measuring
 
-`SpeechGate.level` skaler döngüydü. Bu kapı her ifadede çalışıyor ve uzun bir
-dosyada tampon on milyonlarca örnek (bir saat @ 16 kHz = 57.6 M). Çıkarımdan
-ucuz olması gereken kontrol, maliyetin kendisi olmamalı — `vDSP_maxmgv` /
-`vDSP_rmsqv`'ye geçildi. Skaler referansla birebir eşleştiği test ediliyor.
+`SpeechGate.level` was a scalar loop. This gate runs on every utterance, and on
+a long file the buffer holds tens of millions of samples (an hour at 16 kHz is
+57.6 M). A check whose whole point is being cheaper than inference must not
+become the cost itself — it moved to `vDSP_maxmgv` / `vDSP_rmsqv`, and a test
+asserts it matches the scalar reference exactly.
 
-### Gerçek mikrofon formatları
+### Real microphone formats
 
-Gerçek girişler 16 kHz mono değil: dahili mikrofonlar 48 kHz, USB arayüzler
-44.1 kHz, kulaklıklar bazen 8 kHz, ve quill'in rca-001'i **dokuz kanallı** bir
-route bulmuştu. Fixture'lara stereo 44.1 kHz, mono 48 kHz ve mono 8 kHz
-varyantları eklendi.
+Real inputs are not 16 kHz mono: built-in microphones are 48 kHz, USB
+interfaces 44.1 kHz, headsets sometimes 8 kHz, and quill's rca-001 found a
+**nine-channel** route. Stereo 44.1 kHz, mono 48 kHz and mono 8 kHz variants
+were added to the fixtures.
 
-Test yalnızca süreyi değil **sinyalin hayatta kaldığını** da doğruluyor —
-rca-001'in tuzağı tam olarak doğru süreli ama dijital sessiz dosyaydı. Stereo
-44.1 kHz girdi, 16 kHz mono ile birebir aynı transkripti veriyor.
+The test verifies not only the duration but that **the signal survived** —
+rca-001's trap was exactly a file of the right duration that was digitally
+silent. A stereo 44.1 kHz input yields a transcript identical to 16 kHz mono.
 
-### Sayılar
+### Numbers
 
-57 test, 10 suite. Yeni kapsam: tek-uçuş yükleme, seri kuyruk, sinyal
-yokluğu, vDSP doğruluğu, dört giriş formatı, pencere sınırında kare kaybı.
+57 tests, 10 suites. New coverage: single-flight loading, the serial queue,
+absent signals, vDSP accuracy, four input formats, frame loss at a window
+boundary.
 
 
-## M2 + M3 — dikte döngüsü kapandı
+## M2 + M3 — the dictation loop closes
 
-Motor katmanı iki tur sağlamlaştırmadan sonra üstüne inşa edilecek kadar
-sağlam. Bu tur döngüyü kapatıyor: kısayol → mikrofon → çeviri → imleç.
+After two rounds of hardening the engine layer is solid enough to build on.
+This round closes the loop: hotkey → microphone → transcription → cursor.
 
-### Yapılandırılabilir kısayol
+### A configurable hotkey
 
-parrot README'sinde `--hotkey right-option` yazıyor ama böyle bir bayrak yok
-ve monitor Fn'e sabit. yaz'da `Hotkey` gerçek bir tip: fn, sağ option, sağ
-command, sağ control, sağ shift.
+parrot's README documents `--hotkey right-option`, but no such flag exists and
+the monitor is hard-wired to Fn. In yaz, `Hotkey` is a real type: fn, right
+option, right command, right control, right shift.
 
-Sağ/sol ayrımı maske ile yapılamıyor — `.maskAlternate` iki option tuşunda da
-yanıyor. Bu yüzden `Hotkey.keyCode` var ve olay keycode'u ile doğrulanıyor.
-Fn'in ayrı keycode'u yok, orada maske yeterli.
+Left and right cannot be told apart by mask — `.maskAlternate` lights up for
+both option keys. Hence `Hotkey.keyCode`, verified against the event's keycode.
+Fn has no separate keycode, and there the mask is enough.
 
-**Kendi kendini onaran tap.** macOS uzun süren veya bloke eden tap'leri
-kapatıyor. parrot'un cevabı bir yorum satırı: *"we'll need to re-enable. For
-now just no-op and let the user restart parrot."* Gün boyu açık duran bir
-daemon için bu sessiz ölüm demek. yaz `tapDisabledByTimeout` /
-`tapDisabledByUserInput` olaylarında tap'i yeniden açıyor.
+**A self-healing tap.** macOS disables taps that run long or block. parrot's
+answer is a comment: *"we'll need to re-enable. For now just no-op and let the
+user restart parrot."* For a daemon that stays open all day that is a silent
+death. yaz re-enables the tap on `tapDisabledByTimeout` /
+`tapDisabledByUserInput`.
 
-### Pano ile yerleştirme — parrot'un asıl zayıf noktası
+### Clipboard insertion — parrot's real weak point
 
-parrot `CGEventKeyboardSetUnicodeString` ile yazıyor; API olay başına ~20
-UTF-16 birimi kabul ettiği için bir cümle onlarca sentetik tuş olayına
-bölünüyor. İki sonuç, ikisi de dikte aracının en çok kullanıldığı yerde:
-Electran uygulamaları (Slack, Notion, Cursor) böyle patlamalardan karakter
-düşürüyor, ve süre söylediğin şeyin uzunluğuyla büyüyor.
+parrot types with `CGEventKeyboardSetUnicodeString`, and since the API accepts
+~20 UTF-16 units per event, a sentence becomes dozens of synthetic key events.
+Two consequences, both where a dictation tool is used most: Electron apps
+(Slack, Notion, Cursor) drop characters under bursts like that, and the
+duration grows with the length of what you said.
 
-yaz panoya yazıp ⌘V gönderiyor: tek olay, uzunluk sınırı yok, hedef uygulama
-sıradan bir yapıştırma görüyor. Panonun eski içeriği **tüm tipleriyle**
-(`NSPasteboardItem` bazında) kaydedilip 0.25 sn sonra geri konuyor — sadece
-metin değil, görsel ve dosya da. Dikte sonrası panosunu kaybetmek, diktenin
-başarısız olmasından kötü.
+yaz writes to the clipboard and sends ⌘V: one event, no length limit, and the
+target app sees an ordinary paste. The previous clipboard contents are saved
+**with every type** (per `NSPasteboardItem`) and restored 0.25 s later — not
+just text, but images and files too. Losing your clipboard to a dictation is
+worse than the dictation failing.
 
-⌘V olayları `privateState` kaynağıyla ve açıkça `.maskCommand` ile
-gönderiliyor: kullanıcı hâlâ push-to-talk tuşunu basılı tutuyor olabilir, o
-modifier yapıştırmayı başka bir kısayola çevirmemeli.
+The ⌘V events are posted from `privateState` with an explicit `.maskCommand`:
+the user may still be holding the push-to-talk key, and that modifier must not
+turn the paste into some other shortcut.
 
-Tuş tuş yazma `--inject-mode type` ile duruyor. Orada da bir düzeltme var:
-parrot UTF-16 dizisini körlemesine kesiyor, bu birleşik karakterlerin
-ortasından bölebiliyor. yaz grafem kümesi sınırlarında bölüyor — Türkçe metin
-ve emoji bunlarla dolu.
+Key-by-key typing is still there behind `--inject-mode type`, with one fix:
+parrot slices the UTF-16 sequence blindly, which can cut through a composed
+character. yaz splits on grapheme cluster boundaries — Turkish text and emoji
+are full of them.
 
-### Mikrofon — voice processing bilerek kapalı
+### The microphone — voice processing deliberately off
 
-`AudioCapture`, `AVAudioEngine` tap'i kuruyor ve cihazın kendi formatında
-dinleyip callback içinde 16 kHz mono'ya çeviriyor. Donanımın üretmediği bir
-formatı tap'ten istemek, boş dosyaya giden yol.
+`AudioCapture` installs an `AVAudioEngine` tap, listens in the device's own
+format, and converts to 16 kHz mono inside the callback. Asking the tap for a
+format the hardware does not produce is the road to an empty file.
 
-Voice processing **açılmıyor**. rca-001'in bedeli belli: duplex I/O unit'i
-yanlış kurmak doğru süreli ama dijital sessiz kayıt üretiyor, hiçbir yerde
-hata yok. Tek faydası echo cancellation ve bas-konuş diktesinde iptal edilecek
-bir echo yok.
+Voice processing is **not enabled**. rca-001's cost is on record: setting up the
+duplex I/O unit wrongly produces a recording of the right duration that is
+digitally silent, with no error anywhere. Its only benefit is echo
+cancellation, and push-to-talk dictation has no echo to cancel.
 
-Liveness kontrolü yine de kaldı, çünkü asıl arıza voice processing'e özgü
-değil: bir cihaz sıfır dolu callback'ler gönderebiliyor. `didSeeSignal`
-"sessiz kaldın" ile "mikrofon ölü" arasını ayırıyor.
+The liveness check stayed anyway, because the underlying failure is not
+specific to voice processing: a device can send callbacks full of zeros.
+`didSeeSignal` separates "you stayed quiet" from "the microphone is dead".
 
-**Üst sınır.** Takılı kalan bir modifier tuşu tamponu makine takas edene kadar
-büyütür — 16 kHz mono Float32 dakikada 3.7 MB. On dakikada kesiliyor.
+**A ceiling.** A stuck modifier key grows the buffer until the machine swaps —
+16 kHz mono Float32 is 3.7 MB per minute. It cuts off at ten minutes.
 
-### Sıralama — ucuz hatalar önce
+### Ordering — cheap failures first
 
-İlk yazımda `run` önce 1.6 GB modeli yüklüyor, sonra kısayolu kuruyordu.
-Erişilebilirlik izni yoksa kullanıcı 7 saniye bekleyip izin hatası alıyordu.
-Artık tap önce kuruluyor: **0.54 sn**'de başarısız oluyor.
+The first version of `run` loaded the 1.6 GB model and only then installed the
+hotkey. Without Accessibility permission the user waited 7 seconds to be told
+about a permission error. The tap is installed first now: it fails in
+**0.54 s**.
 
-Tap yükleme bitmeden var olduğu için `ready` bayrağı eklendi; henüz model
-yokken gelen basış sessizce yutulmuyor, durum söyleniyor.
+Because the tap exists before loading finishes, a `ready` flag was added; a
+press that arrives before the model is up is not swallowed silently, the state
+is reported.
 
-### Config dosyası
+### The config file
 
-parrot'un mimari dokümanı `~/.config/parrot/config.toml` anlatıyor; kaynakta
-`Config` diye bir tip **yok**, dosya hiç okunmuyor. LaunchAgent ile başlatılan
-bir daemon yalnızca plist düzenlenerek yeniden yapılandırılabiliyor.
+parrot's architecture document describes `~/.config/parrot/config.toml`; there
+is **no** `Config` type in the source and the file is never read. A daemon
+started by a LaunchAgent can only be reconfigured by editing the plist.
 
-yaz `~/.config/yaz/config.json` okuyor. Tanınmayan bir *değer* stderr'e
-yazılıyor — sessizce varsayılana düşmek kullanıcıyı "kısayolum neden
-değişmedi" sorusuyla baş başa bırakır.
+yaz reads `~/.config/yaz/config.json`. An unrecognised *value* is written to
+stderr — falling back to a default silently leaves the user asking "why did my
+hotkey not change?"
 
 ### doctor
 
-İzin, model bütünlüğü, yerleştirme modu ve Fn tuşu ayarı tek yerde. Her
-başarısız kontrol ne yapılacağını söylüyor. Erişilebilirlik satırı **ebeveyn
-süreci adlandırıyor** — macOS izni binary'ye değil onu başlatana verir, bu da
-eyleme geçirilebilir mesaj ile bilmece arasındaki fark.
+Permissions, model integrity, insertion mode and the Fn key setting in one
+place. Every failed check says what to do about it. The Accessibility line
+**names the parent process** — macOS attributes the grant to whatever launched
+the binary, not the binary, and that is the difference between an actionable
+message and a riddle.
 
-Model kontrolü artık bütünlük bakıyor: klasörün varlığı yarım indirmeyi tam
-sayıyordu ve hata dakikalar sonra Core ML yükleme hatası olarak çıkıyordu.
-`ModelStore` her bileşeni ve boyutunu doğruluyor.
+The model check now looks at integrity: the presence of a folder was counting a
+half download as complete, and the failure surfaced minutes later as a Core ML
+load error. `ModelStore` verifies each component and its size.
 
 
-## M4 — sözlük katmanı
+## M4 — the vocabulary layer
 
-Projenin varlık sebebi olan doğruluk problemi. Ölçüm baştan beri buydu:
+The accuracy problem this project exists for. The measurement was the same from
+the start:
 
 ```
-girdi : "Ahmet'e Slack üzerinden yaz, pull request'i merge et, CI pipeline yeşile dönsün"
-çıktı : "Ahmet'e Sılacık üzerinden yaz, Puhrıkı Esti'de merge et, C.I.P. eline yeşile dönsün"
+in  : "Ahmet'e Slack üzerinden yaz, pull request'i merge et, CI pipeline yeşile dönsün"
+out : "Ahmet'e Sılacık üzerinden yaz, Puhrıkı Esti'de merge et, C.I.P. eline yeşile dönsün"
 ```
 
-Düz Türkçe iyi; çöken şey İngilizce teknik terimler — yani bir yazılımcının
-dikte ettiği her cümlenin yarısı.
+Plain Turkish is fine; what collapses is the English technical terms — which is
+half of every sentence a developer dictates.
 
-### Neden ASR seviyesinde değil
+### Why not at the ASR level
 
-İki standart yol denendi, ikisi de bu yığında çalışmadı:
+Two standard routes were tried and neither works on this stack:
 
 1. **Whisper initial-prompt biasing** (`DecodingOptions.promptTokens`) —
-   `large-v3-turbo` üzerinde denenen her varyantta **boş çıktı**.
-2. **LLM'e sözlüğü verip düzelttirme** — Apple FoundationModels'a hedef terim
-   listesi verildi, `Sılacık` yine düzelmedi. 1.40 sn harcandı.
+   **empty output** on every variant tried with `large-v3-turbo`.
+2. **Handing the vocabulary to an LLM** — Apple FoundationModels was given the
+   list of target terms and `Sılacık` still came back unrepaired, after 1.40 s.
 
-Dolayısıyla düzeltme kural tabanlı. Bunun bir yan faydası var: motor yalnızca
-kullanıcının kendi listesine koyduğu kelimeleri üretebilir, uydurma yapamaz.
+So repair is rule-based, and that has a side benefit: the engine can only ever
+produce words the user put in their own list. It cannot invent.
 
-### Ünsüz iskeleti
+### The consonant skeleton
 
-Türkçe fonotaktiği ünsüz kümelerini sevmez; konuşmacı da akustik model de
-araya ünlü sokar: `sl` → `sıl`. Yani **ünlüler sinyalin en güvenilmez, ünsüzler
-en güvenilir kısmı.**
+Turkish phonotactics dislike consonant clusters, and both the speaker and the
+acoustic model insert a vowel to break them: `sl` → `sıl`. So **vowels are the
+least trustworthy part of the signal and consonants the most.**
 
 ```
 Slack        → slk    ·  Sılacık      → slkk
@@ -429,622 +446,630 @@ pull request → plrkst ·  Puhrıkı Esti → phrkst
 CI pipeline  → sppln  ·  C.I.P. eline → spln
 ```
 
-Normalizasyon Türkçe I/İ katlaması, aksan katlaması ve İngilizce grafemlerin
-(`ck`, `ph`, `qu`, `x`) Türkçe karşılıklarına çevrilmesini içeriyor.
+Normalisation covers Turkish I/İ folding, diacritic folding, and mapping
+English graphemes (`ck`, `ph`, `qu`, `x`) onto their Turkish equivalents.
 
-**İngilizce C kuralı** ayrı bir kazanç: İngilizce `c`, arka ünlü ve ünsüzden
-önce /k/, ön ünlüden önce /s/. `Cursor` → `kursor` → iskelet `krsr`; duyulan
-`Körsır` → `krsr`. **Tam eşleşme (1.000).** Bu kural olmadan c/k farkı iki
-kelimeyi alakasız gösteriyordu.
+**The English C rule** is a separate win: English `c` is /k/ before a back vowel
+or a consonant and /s/ before a front vowel. `Cursor` → `kursor` → skeleton
+`krsr`; what was heard, `Körsır` → `krsr`. **An exact match (1.000).** Without
+this rule the c/k difference made the two words look unrelated.
 
-Sıralama önemli: aksan katlaması C kuralından **sonra** çalışıyor. Önce
-çalışsaydı Türkçe `ç` (kendi başına bir ses) `c`'ye düşüp `k`'ye çevrilir ve
-"saç" kelimesi "Slack"e benzemeye başlardı — bu tam olarak yaşandı ve
-düzeltildi.
+Order matters: diacritic folding runs **after** the C rule. Had it run first,
+Turkish `ç` (a sound in its own right) would collapse to `c`, then be converted
+to `k`, and the word "saç" would start to resemble "Slack" — which is exactly
+what happened, and was fixed.
 
-### Oran eşiği neden yetmiyor
+### Why a ratio threshold is not enough
 
-Ölçüm bunu tartışmasız gösterdi. İskelet olarak karşılaştırıldığında:
+The measurement settled this beyond argument. Compared as skeletons:
 
 ```
-Slack  (slk)  vs  Sılacık (slkk)  → 0.75   ← değişmeli
-Docker (dkr)  vs  Doktor  (dktr)  → 0.75   ← ASLA değişmemeli
-Sentry (sntr) vs  sonra   (snr)   → 0.75   ← ASLA değişmemeli
+Slack  (slk)  vs  Sılacık (slkk)  → 0.75   ← must be replaced
+Docker (dkr)  vs  Doktor  (dktr)  → 0.75   ← must NEVER be replaced
+Sentry (sntr) vs  sonra   (snr)   → 0.75   ← must NEVER be replaced
 ```
 
-**Aynı puan, zıt beklenti.** Hiçbir eşik bunları ayıramaz. Ayıran şey şu:
-`doktor` ve `sonra` konuşmacının açıkça söylediği sıradan Türkçe kelimeler;
-`Sılacık` ise hiçbir dilde kelime değil — yalnızca akustik modelin İngilizce
-ünsüz kümesini ünlüyle kırmasından doğdu.
+**The same score, the opposite expectation.** No threshold can separate them.
+What separates them is this: `doktor` and `sonra` are ordinary Turkish words the
+speaker plainly said, while `Sılacık` is not a word in any language — it exists
+only because the acoustic model broke an English consonant cluster with a vowel.
 
-Üç savunma birlikte çalışıyor:
+Three defences work together:
 
-1. **Türkçe yaygın kelime vetosu** (`TurkishLexicon`) — pencerede sıradan bir
-   Türkçe kelime varsa yalnızca 0.90+ tam-form kanıtıyla değiştirilebilir,
-   iskelet tahminiyle asla. ~450 kelime, ek soyma ile çekimli hâlleri de
-   yakalıyor.
-2. **Baş ünsüz kısıtı** — ünlü türemesi araya ünlü sokar ama kelimenin neyle
-   başladığını değiştirmez. `Redis (rds)` / `neredeyse (nrds)` 0.75 alıyordu;
-   `r ≠ n` olduğu için reddediliyor.
-3. **Pencere genişletme sınırı** — tek kelimelik kısa terim iki kelimelik
-   pencereye eşleşemez. Bu kural olmadan "ama kargo" → "merge" oluyordu ve
-   "merge et" içindeki "et" yutuluyordu.
+1. **A common-Turkish-word veto** (`TurkishLexicon`) — if the window contains an
+   ordinary Turkish word, it can only be replaced on 0.90+ full-form evidence,
+   never on a skeleton guess. ~450 words, with suffix stripping so inflected
+   forms are caught too.
+2. **A first-consonant constraint** — epenthesis inserts a vowel but does not
+   change what a word starts with. `Redis (rds)` / `neredeyse (nrds)` scored
+   0.75; it is rejected because `r ≠ n`.
+3. **A span expansion limit** — a short single-word term cannot match a
+   two-word window. Without this rule "ama kargo" became "merge", swallowing
+   the "et" in "merge et".
 
-### Türkçe ek koruması
+### Preserving Turkish suffixes
 
-Türkçe özel isimlere ekleri kesme işaretiyle bağlar. `Sılacık'ten` düzeltilip
-`'ten` düşürülürse cümle bozulur. `Tokenizer` her kelimeyi baştaki noktalama /
-gövde / kesme-eki / sondaki noktalama olarak ayırıyor ve yalnızca gövdeyi
-değiştiriyor. Tipografik kesme işareti (`’`) de tanınıyor — Whisper bunu
-üretiyor.
+Turkish attaches suffixes to proper nouns with an apostrophe. Repairing
+`Sılacık'ten` and dropping the `'ten` breaks the sentence. `Tokenizer` splits
+each word into leading punctuation / stem / apostrophe suffix / trailing
+punctuation, and only the stem is replaced. The typographic apostrophe (`’`) is
+recognised too — Whisper emits it.
 
-Çok kelimeli terimde ek son kelimede kalıyor: `Puhrıkı Esti'de` →
+On a multi-word term the suffix stays on the last word: `Puhrıkı Esti'de` →
 `pull request'de`.
 
-### Ölçülen sonuç
+### The measured result
 
-Gerçek ses dosyası üzerinde uçtan uca:
+End to end on a real audio file:
 
 ```
 $ yaz transcribe --vocabulary fixtures/t2.wav
-  sözlük: Sılacık → Slack (0.749, skeleton)
-  sözlük: Puhrıkı Esti'de → pull request'de (0.832, skeleton)
-  sözlük: C.I.P. eline → CI pipeline (0.799, skeleton)
+  vocabulary: Sılacık → Slack (0.749, skeleton)
+  vocabulary: Puhrıkı Esti'de → pull request'de (0.832, skeleton)
+  vocabulary: C.I.P. eline → CI pipeline (0.799, skeleton)
   Yarın saat 14'te toplantı var. Ahmet'e Slack üzerinden mesaj atmayı unutma.
   pull request'de merge etmem lazım. CI pipeline yeşile döndüğünde deploy ederiz.
 ```
 
-Üç bozulmanın üçü de düzeldi, Türkçe eki korundu, Türkçe metne dokunulmadı.
+All three manglings repaired, the Turkish suffix preserved, the Turkish text
+untouched.
 
-### Yanlış eşleşme testi
+### The false-match test
 
-Asıl risk kullanıcının gerçekten söylediği bir kelimeyi değiştirmek: bozuk
-terim görünür kalır, yanlış değiştirme görünmez. 30 cümlelik sıradan Türkçe
-korpus var (teknik terim içermeyen günlük cümleler) ve iki sözlükle
-sınanıyor — biri gerçek geliştirici terimleri, diğeri kasıtlı olarak Türkçeye
-benzeyen terimler (`Docker`, `Redis`, `Vercel`, `Sentry`, `Linear`, `Figma`).
-Sıfır yanlış eşleşme.
+The real risk is replacing a word the user actually said: a mangled term stays
+visible, a wrong replacement does not. There is a 30-sentence corpus of ordinary
+Turkish (everyday sentences containing no technical terms), tested against two
+vocabularies — one of real developer terms, one deliberately full of terms that
+resemble Turkish (`Docker`, `Redis`, `Vercel`, `Sentry`, `Linear`, `Figma`).
+Zero false matches.
 
-Bu korpus eşikleri belirledi: 0.74 iskelet eşiği ilk denemede beş yanlış
-eşleşme üretti, tam-form eşiği 0.72 iken "Saç" → "Slack" oldu.
+That corpus is what set the thresholds: a 0.74 skeleton threshold produced five
+false matches on the first attempt, and at a full-form threshold of 0.72 "Saç"
+became "Slack".
 
-### Ayar araçları
+### Tuning tools
 
-Eşikler tahminle değil gerçek bozuk çıktıyla ayarlanır, o yüzden bunlar CLI'da:
-
-```
-yaz vocab test "Sılacık'ten yazdım"     # düzelt ve puanları göster
-yaz vocab explain "Cursor" "Körsır"      # fonetik anahtarları karşılaştır
-```
-
-### Bilinen sınır
-
-Vetonun gücü sözlük kapsamına bağlı. `TurkishLexicon` bir sözlük değil, sık
-kullanılan kelimeler listesi; listede olmayan nadir bir Türkçe kelime, ona
-fonetik olarak yakın bir terimle çakışırsa yanlış değiştirilebilir. Kullanıcı
-tarafındaki çare `min_similarity` ile terim başına eşiği yükseltmek.
-
-
-## M5 — son işleme katmanı
-
-Dikte çıktısı ham gelir: kekelemeler, tereddüt sesleri, noktalama yok. parrot
-bunu tasarım gereği reddediyor ("No AI post-processing"). yaz iki kademede
-yapıyor, çünkü işin bir kısmı risksiz, bir kısmı değil.
-
-### Kademe 1 — deterministik, ~1 ms
-
-`FillerFilter` yalnızca **hiçbir dilde kelime olmayan** sesleri atıyor: `ııı`,
-`eee`, `mmm`, `hmm`. Kapsam bilerek dar. Türkçede `yani`, `şey`, `hani`,
-`işte`, `falan` bağlama göre gerçek kelimeler; kör bir "dolgu kelime listesi"
-bunları silerse kullanıcının söylediğini değiştirir.
-
-Tek harfli sesliler ayrı bir tuzak: `o` zamir, `a` bağlaç. Bunlar yalnızca
-başka bir tereddüdün yanındayken (`ı ı yarın`) atılıyor.
-
-Bu kademe varsayılan. Bedava, modelsiz, anlamı değiştiremez.
-
-### Kademe 2 — dil modeli, opsiyonel
-
-Bağlama bağlı dolgu kelimeler, noktalama ve cümle sınırları için Apple
-FoundationModels. macOS 26 ile geliyor — indirme yok, ikinci çalışma zamanı
-yok; on-device transkripsiyonu değerli kılan argümanın aynısı.
+Thresholds are set against real mangled output rather than guesswork, so these
+live in the CLI:
 
 ```
-girdi : ıı yarın şey saat ikide yani toplantımız var hani o proje için ee hazırlık yapmamız lazım
-çıktı : Yarın saat ikide toplantımız var. O proje için hazırlık yapmamız lazım.
+yaz vocab test "Sılacık'ten yazdım"      # repair it and show the scores
+yaz vocab explain "Cursor" "Körsır"      # compare the phonetic keys
 ```
 
-**Ölçülen maliyet:** M4 Pro'da 0.3–1.4 sn (uzunluğa göre), motorun zaten
-harcadığı 0.5–0.9 sn'nin üstüne. Bu yüzden opt-in.
+### A known limit
 
-### Korumalar — model çıktısı hak ederek girer
+The veto is only as strong as the lexicon's coverage. `TurkishLexicon` is a list
+of common words, not a dictionary; a rare Turkish word that is not in the list
+can still be replaced wrongly if it collides phonetically with a term. The
+user-side remedy is raising the per-term threshold with `min_similarity`.
 
-Bir dil modeline "temizle" demek, onun özetleyebileceği, çevirebileceği, soruyu
-cevaplayabileceği veya reddedebileceği anlamına gelir. Bunlardan biri
-kullanıcının imlecine giderse, temizlemeye çalıştığımız kekelemeden kötü olur.
 
-`RefinementGuard` reddediyor:
+## M5 — the post-processing layer
 
-| Kontrol | Yakaladığı |
+Dictation arrives raw: stutters, hesitation sounds, no punctuation. parrot
+refuses this by design ("No AI post-processing"). yaz does it in two tiers,
+because part of the job is risk-free and part is not.
+
+### Tier 1 — deterministic, ~1 ms
+
+`FillerFilter` removes only sounds that are **not words in any language**: `ııı`,
+`eee`, `mmm`, `hmm`. The scope is deliberately narrow. In Turkish `yani`, `şey`,
+`hani`, `işte`, `falan` are real words depending on context, and a blind "filler
+word list" that deletes them changes what the user said.
+
+Single-letter vowels are a separate trap: `o` is a pronoun, `a` a particle.
+Those are removed only when they sit next to another hesitation (`ı ı yarın`).
+
+This tier is the default. It is free, model-free, and cannot change meaning.
+
+### Tier 2 — the language model, optional
+
+Apple FoundationModels handles context-dependent fillers, punctuation and
+sentence boundaries. It ships with macOS 26 — no download, no second runtime;
+the same argument that makes on-device transcription worth the trouble.
+
+```
+in  : ıı yarın şey saat ikide yani toplantımız var hani o proje için ee hazırlık yapmamız lazım
+out : Yarın saat ikide toplantımız var. O proje için hazırlık yapmamız lazım.
+```
+
+**Measured cost:** 0.3–1.4 s on an M4 Pro depending on length, on top of the
+0.5–0.9 s the engine already spends. Hence opt-in.
+
+### Guards — model output has to earn its way in
+
+Telling a language model to "tidy this" means it may also summarise it,
+translate it, answer a question in it, or refuse. If any of those reach the
+user's cursor it is worse than the stutter we were trying to remove.
+
+`RefinementGuard` rejects:
+
+| Check | What it catches |
 |---|---|
-| Uzunluk oranı < 0.55 | özetleme |
-| Uzunluk oranı > 1.25 | model ekleme yapmış / soruyu cevaplamış |
-| İçerik kelimesi tutulumu < 0.75 | cümle parçası düşmüş, çatı değişmiş |
-| Boş çıktı | model reddetmiş |
+| Length ratio < 0.55 | summarising |
+| Length ratio > 1.25 | the model added material / answered the question |
+| Content-word retention < 0.75 | a clause was dropped, the voice changed |
+| Empty output | the model refused |
 
-Ayrıca sohbet modellerinin sevdiği sarmalayıcılar soyuluyor: `"İşte
-düzeltilmiş metin:"` başlığı ve çevreleyen tırnaklar.
+The wrappers chat models like are also stripped: a `"Here is the corrected
+text:"` preamble and surrounding quotes.
 
-**Her başarısızlık yumuşak.** Hata, zaman aşımı veya red durumunda deterministik
-sonuca dönülüyor. Bir temizlik adımı yüzünden dikte kaybolamaz.
+**Every failure is soft.** On an error, a timeout or a rejection it falls back
+to the deterministic result. A cleanup step can never cost you the dictation.
 
-### Korumanın kendi hatası
+### The guard's own bug
 
-İlk sürüm iyi bir temizliği çöpe attı. Model `yani` ve `hani` kelimelerini
-doğru biçimde atmıştı; tutulum kontrolü bunları 4+ harfli "içerik kelimesi"
-sayıp %30 kayıp raporladı.
+The first version threw away a good cleanup. The model had correctly dropped
+`yani` and `hani`; the retention check counted those as 4+ letter "content
+words" and reported 30% loss.
 
-Yani koruma, modelden **istediğimiz** davranışı cezalandırıyordu. Bağlamsal
-dolgu kelimeleri tutulum hesabından çıkarıldı. Gerçek içerik kaybı hâlâ
-yakalanıyor — ikisi de test edilmiş durumda.
+So the guard was punishing the behaviour we **wanted** from the model.
+Contextual fillers were excluded from the retention calculation. Real content
+loss is still caught — both are tested.
 
-### Sıralama: sözlük önce, son işleme sonra
+### Ordering: vocabulary first, post-processing second
 
-`TranscriptPipeline` sırayı bir karar olarak sabitliyor.
+`TranscriptPipeline` fixes the order as a decision.
 
-Sözlük **önce** çalışıyor ki model doğru yazılmış terimleri görsün: `Sılacık`
-verilen bir dil modeli onu makul görünen başka bir şeyle değiştirebilir ve o
-noktadan sonra deterministik katman onu tanıyamaz. `Slack` verilince
-düzeltecek bir şey bulmaz.
+The vocabulary runs **first** so the model sees correctly spelled terms: a
+language model handed `Sılacık` may well replace it with something else
+plausible, and from that point the deterministic layer can no longer recognise
+it. Handed `Slack`, it finds nothing to fix.
 
-Ters risk de kapalı: son işlemeden sonra, sözlüğün onardığı her terimin hâlâ
-metinde olduğu doğrulanıyor. Biri düştüyse temizlik atılıyor. Deterministik
-katman her iki yönde de kazanıyor.
+The reverse risk is closed too: after post-processing, every term the vocabulary
+repaired is verified to still be present. If one is gone, the refinement is
+discarded. The deterministic layer wins in both directions.
 
-Ölçülen tam zincir:
+The full chain, measured:
 
 ```
 $ yaz transcribe --vocabulary --refine llm fixtures/t2.wav
-  gecikme 907 ms · RTF 0.075
-  sözlük: Sılacık → Slack (0.749, skeleton)
-  sözlük: Puhrıkı Esti'de → pull request'de (0.832, skeleton)
-  sözlük: C.I.P. eline → CI pipeline (0.799, skeleton)
-  son işleme 1310 ms
+  latency 907 ms · RTF 0.075
+  vocabulary: Sılacık → Slack (0.749, skeleton)
+  vocabulary: Puhrıkı Esti'de → pull request'de (0.832, skeleton)
+  vocabulary: C.I.P. eline → CI pipeline (0.799, skeleton)
+  post-processing 1310 ms
   Yarın saat 14'te toplantı var. Ahmet'e Slack üzerinden mesaj atmayı unutma.
   Pull request'de merge etmem lazım. CI pipeline yeşile döndüğünde deploy ederiz.
 ```
 
-Model cümle başındaki `pull` kelimesini büyüttü — meşru bir düzeltme, ve terim
-doğrulaması bunu (normalize ederek karşılaştırdığı için) kayıp saymadı.
+The model capitalised `pull` at the start of a sentence — a legitimate fix, and
+the term verification did not count it as loss because it compares normalised.
 
-### Ayar aracı
+### Tuning tool
 
 ```
 yaz vocab refine --mode llm "ıı yarın şey toplantı var"
 ```
 
 
-## M6 — kayıt göstergesi ve menü barı
+## M6 — the recording indicator and the menu bar
 
-Bas-konuş'un tek dürüst arıza biçimi şu: tuşu basılı tutuyorsun, konuşuyorsun,
-ama kimse dinlemiyormuş. Geri bildirim olmadan bunu ancak metin gelmeyince
-anlarsın. Gösterge bu sorunun tamamının cevabı.
+Push-to-talk has one honest failure mode: you hold the key, you speak, and
+nobody was listening. Without feedback you only find out when no text arrives.
+The indicator is the entire answer to that.
 
-### Test edilebilir çekirdek ayrı
+### A testable core, kept separate
 
-`LevelMeter` ve `IndicatorState` içinde hiç AppKit yok. İlginç kısım —
-ham tepe değerinin çubuk yüksekliğine dönüşmesi — pencere sunucusu
-başlatmadan sınanabilecek bir aritmetik.
+`LevelMeter` and `IndicatorState` contain no AppKit at all. The interesting part
+— how a raw peak becomes a bar height — is arithmetic that can be exercised
+without starting a window server.
 
-Konuşma tepe değerleri dahili mikrofonda kabaca 0.05–0.7. Doğrusal çizilirse
-ölü bir çizgi çıkıyor, o yüzden `sqrt` ile sıkıştırılıp 3.4 kazançla
-ölçekleniyor: bağırınca metre tavana yapışıp düzleşmiyor, sessiz cümle
-görünür kalıyor.
+Speech peaks land roughly in 0.05–0.7 on a built-in microphone. Drawn linearly
+that is a dead flat line, so levels are compressed with `sqrt` and scaled by a
+gain of 3.4: a shout does not pin the meter to the ceiling and flatten it, and a
+quiet sentence stays visible.
 
-Sonlu olmayan bir değer **tabanda** kalıyor, tavanda değil. `NaN` veya
-`infinity` buraya geldiyse okuma bozuk demektir, oda gürültülü demek değil —
-tavana yapışmış bir metre, düz olandan daha kendinden emin bir yalan olur.
+A non-finite value rests at the **floor**, not the ceiling. `NaN` or `infinity`
+arriving here means the reading is broken, not that the room is loud — a meter
+slammed against the ceiling would be a more confident lie than a flat one.
 
-`showsWaveform` yalnızca `.recording` durumunda doğru. Kayıt bittikten sonra
-oynayan bir dalga formu yalan söyler: o noktada ses çoktan yakalanmıştır.
+`showsWaveform` is true only in `.recording`. A waveform still animating after
+recording ends is lying: the audio has already been captured by then.
 
-### Pil — tıklamayı geçiren panel
+### The pill — a click-through panel
 
-Borderless, `nonactivatingPanel` bir `NSPanel`. Üç ayar taşıyıcı:
+A borderless, `nonactivatingPanel` `NSPanel`. Three settings carry it:
 
-- `ignoresMouseEvents` — tıklamalar altındaki uygulamaya geçiyor.
-- `orderFrontRegardless`, `makeKeyAndOrderFront` değil — panel dikte edilen
-  alandan **asla** key durumunu almamalı. Alsaydı ürünün kendisi bozulurdu,
-  çünkü metin imlecin bulunduğu yere yapıştırılıyor.
-- `canJoinAllSpaces` + `fullScreenAuxiliary` — tam ekran uygulamada da görünür.
+- `ignoresMouseEvents` — clicks pass through to the app underneath.
+- `orderFrontRegardless`, not `makeKeyAndOrderFront` — the panel must **never**
+  take key state from the field being dictated into. If it did, the product
+  itself would break, because the text is pasted wherever the cursor is.
+- `canJoinAllSpaces` + `fullScreenAuxiliary` — visible over a full-screen app.
 
-Konum, farenin bulunduğu ekranın alt ortası: çok monitörlü masada pil
-kullanıcıyı takip ediyor, dizüstünde kalmıyor.
+It is positioned at the bottom centre of whichever screen holds the pointer: on
+a multi-monitor desk the pill follows the user rather than staying on the
+laptop.
 
-### Menü barı
+### The menu bar
 
-yaz dock ikonu ve penceresi olmayan bir `.accessory` süreç. Terminalden
-çalıştırıldığında log yeterli; **login'de başlayan bir LaunchAgent için
-değil** — kullanıcının daemon'ın orada olduğunu görecek ve onu kapatacak bir
-yolu olmalı.
+yaz is an `.accessory` process with no dock icon and no window. Run from a
+terminal the log is enough; **for a LaunchAgent that starts at login it is
+not** — the user needs a way to see the daemon is there and to quit it.
 
-SF Symbols kullanılıyor, ama çizilmiş bir yedek var: yüklenemeyen bir görsel
-sıfır genişlikte bir status item bırakır, bu da tam olarak "daemon başlamadı"
-gibi görünür.
+SF Symbols are used, with a drawn fallback: an image that fails to load leaves a
+zero-width status item, which looks exactly like "the daemon did not start".
 
-### UI kodu derlenmekle kalmadı, çalıştırıldı
+### The UI code was not just compiled, it was run
 
-Overlay ve menü barı testten erişilemeyen tek parça: run loop, ekran ve
-daemon üzerinden erişilebilirlik izni istiyorlar. `yaz preview` bunları
-doğrudan sürüyor — mikrofon ve kısayol olmadan, durumlar arasında gezerek ve
-dalga formunu gerçekçi değerlerle besleyerek.
+The overlay and the menu bar are the one piece the tests cannot reach: they need
+a run loop, a screen, and Accessibility permission via the daemon. `yaz preview`
+drives them directly — no microphone, no hotkey — walking through the states and
+feeding the waveform realistic values.
 
 ```
 $ yaz preview
-gösterge önizlemesi — ekranın altına bak, menü barını kontrol et
-  dinliyor
-  çeviriyor
-  düzeltiyor
-önizleme bitti
+indicator preview — look at the bottom of the screen and at the menu bar
+  listening
+  transcribing
+  refining
+preview done
 ```
 
-Böylece AppKit/SwiftUI yolu "derleniyor" seviyesinden "çalışıyor" seviyesine
-çıkıyor.
+That moves the AppKit/SwiftUI path from "it compiles" to "it runs".
 
 ### Config
 
-`overlay` ve `menu_bar` ayrı ayrı kapatılabiliyor. Ön planda terminal
-çalıştırması için ikisi de gereksiz olabilir; log zaten her şeyi söylüyor.
+`overlay` and `menu_bar` can be switched off independently. For a foreground
+terminal run both may be redundant; the log already says everything.
 
 
-## M7 — kurulum ve girişte başlatma
+## M7 — installation and starting at login
 
-### Gömülü Info.plist — parrot'un eksiği
+### The embedded Info.plist — parrot's omission
 
-yaz `.app` paketi olmayan tek bir ikili. TCC'nin mikrofon istemini **yaz'a**
-atfetmesinin ve kullanıcı için yazılmış bir açıklama metni göstermesinin tek
-yolu, plist'i ikilinin `__TEXT,__info_plist` bölümüne linker ile gömmek.
+yaz is a single binary with no `.app` bundle. The only way for TCC to attribute
+the microphone prompt to **yaz** and to show an explanation written for the user
+is to embed the plist into the binary's `__TEXT,__info_plist` section with the
+linker.
 
-quill bunu yapıyor, parrot yapmıyor — ve parrot'un kendi dokümanı kod
-imzalamayı "açık soru" olarak bırakmış durumda. launchd altında bu fark, izin
-isteminin kime ait olduğu demek.
+quill does this; parrot does not — and parrot's own document leaves code signing
+as an "open question". Under launchd that difference decides whose permission
+prompt it is.
 
-Doğrulandı:
+Verified:
 
 ```
 $ launchctl plist __TEXT,__info_plist .build/release/yaz
 {
     "CFBundleIdentifier" = "com.mikeowski.yaz";
-    "NSMicrophoneUsageDescription" = "yaz, kısayola basılı tuttuğunuz sürece...";
+    "NSMicrophoneUsageDescription" = "yaz listens to the microphone while you hold…";
     "LSBackgroundOnly" = true;
 };
 ```
 
-`CFBundleIdentifier` ile LaunchAgent etiketi kasıtlı olarak aynı: launchd işi
-ve TCC kimliği aynı şeye işaret etmeli. Test bunu doğruluyor.
+`CFBundleIdentifier` and the LaunchAgent label are deliberately identical: the
+launchd job and the TCC identity must point at the same thing. A test asserts
+it.
 
-### launchd iş tanımı
+### The launchd job definition
 
-`SMAppService` değil — o gerçek bir `.app` paketi istiyor, yaz ise
-`/usr/local/bin` altında tek bir ikili. Düz bir launchd plist'i bunun dürüst
-karşılığı.
+Not `SMAppService` — that wants a real `.app` bundle, and yaz is a single binary
+under `/usr/local/bin`. A plain launchd plist is the honest equivalent.
 
-Plist üretimi dosya sistemi ve `launchctl` çağrılarından ayrı tutuldu, çünkü
-**girişte başlamayan bir daemon kullanıcıya hata ayıklayacak hiçbir şey
-vermiyor.** İki karar test edilmiş durumda:
+Plist generation is kept separate from the filesystem and the `launchctl` calls,
+because **a daemon that fails to start at login gives the user nothing to
+debug.** Two decisions are tested:
 
-- `KeepAlive` yalnızca **başarısız** çıkışta yeniden başlatıyor. Menü barından
-  "Çık" temiz bir çıkış ve kapalı kalmalı; koşulsuz `KeepAlive` o menü öğesini
-  yalancı yapardı.
-- `EnvironmentVariables.PATH` tanımlı. launchd giriş ajanlarına çıplak bir
-  ortam veriyor; PATH olmadan `on_transcript` kancası hiçbir komutu bulamaz.
+- `KeepAlive` restarts only on a **failed** exit. "Quit" from the menu bar is a
+  clean exit and must stay quit; an unconditional `KeepAlive` would make that
+  menu item a lie.
+- `EnvironmentVariables.PATH` is set. launchd hands login agents a bare
+  environment, and without PATH the `on_transcript` hook cannot find any
+  command.
 
-### Bayat kayıt — sessiz arızanın kaynağı
+### A stale record — the source of a silent failure
 
-En kötü senaryo: plist duruyor ama ikili taşınmış. launchd denemeye devam
-eder, kullanıcı hiçbir şey görmez. `LaunchAgent.status()` bunu ayrı bir durum
-olarak raporluyor ve `doctor` sert hata veriyor.
+The worst case: the plist is still there but the binary has moved. launchd keeps
+retrying and the user sees nothing. `LaunchAgent.status()` reports this as its
+own state and `doctor` fails hard on it.
 
-Gerçekten denendi: ikili geçici olarak gizlendi, `doctor` doğru şekilde
-`✗ kayıtlı ikili dosya yok` dedi.
+Actually tried: the binary was temporarily hidden, and `doctor` correctly said
+`✗ registered binary is missing`.
 
-### launchd altında çalıştırınca çıkan iki gerçek hata
+### Two real bugs that only appeared under launchd
 
-Bu ikisi kodu okuyarak değil, LaunchAgent'ı gerçekten kurup log'a bakarak
-bulundu.
+These two were not found by reading code, but by actually installing the
+LaunchAgent and reading the log.
 
-**1. Bölünmüş çıktı.** Bir LaunchAgent'ın stdout ve stderr'i *farklı
-dosyalara* gidiyor. Başlangıç hatası stderr'e "kontroller başarısız" yazıp
-sebepleri stdout'a listeleyince, kullanıcı `/tmp/yaz.err.log` dosyasında
-altı boş bir başlıkla kalıyordu. `DoctorReport.render` artık hedef akışı
-parametre alıyor.
+**1. Split output.** A LaunchAgent's stdout and stderr go to *different files*.
+With the startup failure writing "checks failed" to stderr and listing the
+reasons on stdout, the user was left with a heading and nothing under it in
+`/tmp/yaz.err.log`. `DoctorReport.render` now takes the target stream as a
+parameter.
 
-**2. "launchd etkinleştir".** Erişilebilirlik mesajı ebeveyn süreci
-adlandırıyor — kabuktan çalışınca doğru davranış, çünkü macOS izni terminale
-atfediyor. launchd altında ebeveyn `launchd` ve kullanıcıya "launchd'ı
-etkinleştir" demek işe yaramaz olmanın ötesinde yanlış: orada izin, gömülü
-Info.plist sayesinde kendi kimliği olan yaz'a ait. `accessibilityOwner`
-ayrıştırıldı ve test edildi.
+**2. "Enable launchd".** The Accessibility message names the parent process —
+correct behaviour from a shell, because macOS attributes the grant to the
+terminal. Under launchd the parent is `launchd`, and telling the user to "enable
+launchd" is worse than useless, it is wrong: there the grant belongs to yaz,
+which has its own identity thanks to the embedded Info.plist. `accessibilityOwner`
+was factored out and tested.
 
-### Kurulum betiği
+### The install script
 
-`curl | sh` **değil**, bilerek: bu betik sudo istiyor ve TCC izinleri talep
-eden bir daemon kuruyor, okunmadan çalıştırılmamalı.
+Deliberately **not** `curl | sh`: this script asks for sudo and installs a daemon
+that requests TCC permissions. It should not run unread.
 
-Ön koşullar sert: macOS, arm64, macOS 26+. Whisper ve Parakeet ANE üzerinde
-çalışıyor; Intel'de model yüklense bile kullanılabilir gecikme alınamaz.
+The preconditions are hard: macOS, arm64, macOS 26+. Whisper and Parakeet run on
+the ANE; on Intel the model may load but the latency is not usable.
 
-sudo yalnızca gerçekten gerekliyse isteniyor. İlk sürüm `~/bin` gibi bir
-hedefe kurarken de parola soruyordu, çünkü henüz var olmayan bir dizini
-"yazılamaz" sayıyordu — dizin yoksa karar ebeveyninin yazılabilirliğine bağlı.
-Aynı hata kaldırma yolunda da vardı, ikisi de ortak bir `writable` yardımcısına
-bağlandı.
+sudo is requested only when genuinely needed. The first version asked for a
+password even when installing to a target like `~/bin`, because it treated a
+directory that did not exist yet as "not writable" — when a directory is absent
+the decision belongs to its parent's writability. The uninstall path had the
+same bug, and both were wired to a shared `writable` helper.
 
-Ad-hoc imza atılıyor (`codesign -s -`). Bu bir dağıtım imzası değil; imzasız
-bir ikilinin her derlemede TCC kimliğini kaybetmesini bir nebze yavaşlatıyor.
-Gerçek çözüm Developer ID ile imzalamak — bu proje için açık bir konu.
+An ad-hoc signature is applied (`codesign -s -`). It is not a distribution
+signature; it merely slows down the rate at which an unsigned binary loses its
+TCC identity on every build. The real fix is signing with a Developer ID — an
+open item for this project at the time.
 
-### Doğrulama
+### Verification
 
-Kurulum ve kaldırma gerçekten çalıştırıldı, makinede net etki sıfır:
+Install and uninstall were actually run, with zero net effect on the machine:
 
-- `yaz install --launch-at-login` → plist yazıldı, `launchctl print` işi
-  `state = running` olarak gösterdi
-- daemon launchd altında doğru şekilde erişilebilirlik hatası verdi
-- ikili gizlendi → `doctor` bayat kaydı yakaladı
-- `yaz install --uninstall` → plist silindi, launchd artık tanımıyor
-- `scripts/install.sh` izole bir `PREFIX` ile derledi, kurdu, imzaladı,
-  `doctor` çalıştırdı; `--uninstall` temiz kaldırdı
+- `yaz install --launch-at-login` → the plist was written, `launchctl print`
+  showed the job as `state = running`
+- the daemon correctly reported an Accessibility failure under launchd
+- the binary was hidden → `doctor` caught the stale record
+- `yaz install --uninstall` → the plist was removed, launchd no longer knows it
+- `scripts/install.sh` built, installed, signed and ran `doctor` against an
+  isolated `PREFIX`; `--uninstall` removed it cleanly
 
 
-## M8–M11 — uygulama paketi, geçmiş, ayarlar arayüzü, DMG
+## M8–M11 — the app bundle, history, settings UI, DMG
 
-### İzin sorununun asıl sebebi
+### The real cause of the permission problem
 
-Kullanıcı `yaz doctor` çalıştırdığında izin penceresi **"cmux.app"** dedi ve
-izni verdikten sonra da çalışmadı. Sebep tahmin değil, ölçüldü:
+When the user ran `yaz doctor`, the permission dialog said **"cmux.app"**, and
+granting it did not help. The reason was measured, not guessed:
 
 ```
 cmux.app → login → fish → claude → zsh → yaz
 ```
 
-macOS erişilebilirlik iznini **sorumlu sürece** atfediyor; terminalden
-çalıştırılan bir CLI'da bu en üstteki uygulamadır. Pencerenin cmux.app demesi
-doğruydu. Verilen izin de işe yaramadı, çünkü zaten çalışan kabuklar eski
-reddi taşıyordu.
+macOS attributes the Accessibility grant to the **responsible process**, which
+for a CLI run in a terminal is the topmost app. The dialog naming cmux.app was
+correct. The grant did not work either, because shells that were already running
+carried the old denial.
 
-Bu, CLI'nın içinden düzeltilebilecek bir şey değil. **Çözüm bir `.app`
-paketi:** yaz'ın kendi TCC kimliği olur, pencere "yaz" der, izin hangi
-terminalin açık olduğundan bağımsız kalır. Yani kullanıcının yaşadığı sorun ve
-istediği özellik aynı şeydi.
+This is not fixable from inside the CLI. **The fix is a `.app` bundle:** yaz
+gets its own TCC identity, the dialog says "yaz", and the grant is independent
+of which terminal happens to be open. So the problem the user hit and the
+feature they asked for were the same thing.
 
-### Paket
+### The bundle
 
-`Resources/AppInfo.plist` + `scripts/bundle.sh` → `dist/yaz.app`.
-`LSUIElement` ile dock ikonu yok, yalnızca menü barı. Bundle kimliği ikilinin
-gömülü `__TEXT,__info_plist` bölümüyle aynı (`com.mikeowski.yaz`), böylece
-CLI ve uygulama tek bir kimliğe işaret ediyor.
+`Resources/AppInfo.plist` + `scripts/bundle.sh` → `dist/yaz.app`. `LSUIElement`
+means no dock icon, only the menu bar. The bundle identifier matches the
+binary's embedded `__TEXT,__info_plist` section (`com.mikeowski.yaz`), so the
+CLI and the app point at a single identity.
 
-`scripts/bundle.sh --dmg` sürükle-bırak kurulumlu bir DMG üretiyor (4.8 MB;
-modeller ilk çalıştırmada iniyor).
+`scripts/bundle.sh --dmg` produces a DMG with drag-and-drop installation (4.8
+MB; the models download on first run).
 
-### Paket olarak izin akışı
+### The permission flow as a bundle
 
-Çift tıklanan bir uygulamada eksik izin **ölümcül olmamalı** — sessizce
-çıkmak, uygulama bozukmuş gibi görünür. Paket olarak çalışırken:
+For a double-clicked app a missing permission **must not be fatal** — exiting
+quietly looks like a broken app. Running as a bundle:
 
-1. Menü barı öğesi hemen görünür.
-2. `AXIsProcessTrustedWithOptions` istemi *yaz adına* çıkar.
-3. Saniyede bir yoklayan bir zamanlayıcı izni bekler — kullanıcı kutuyu
-   işaretlediği anda dinlemeye başlar, **uygulamayı yeniden başlatmak
-   gerekmez.**
+1. The menu bar item appears immediately.
+2. The `AXIsProcessTrustedWithOptions` prompt appears *as yaz*.
+3. A timer polling once a second waits for the grant — the moment the user
+   ticks the box it starts listening, with **no need to restart the app.**
 
-Açıklayıcı uyarı penceresi `app.run()` sonrasına ertelendi. Başlangıçta modal
-çalıştırılınca model yüklemesini de bloke ediyordu: uygulama kendi diyaloğunun
-arkasında hiçbir şey yapmadan bekliyordu. Bu, paketi çalıştırıp gözlemleyince
-çıktı.
+The explanatory alert was deferred until after `app.run()`. Run modally at
+startup it also blocked the model load: the app sat behind its own dialog doing
+nothing. That surfaced by running the bundle and watching it.
 
-### Geçmiş — metin, ses değil
+### History — text, not audio
 
-`~/Library/Application Support/yaz/history.jsonl`. Her dikte için: zaman,
-metin, **hangi uygulamaya** yazıldığı, süre, motor/model ve sözlüğün onardığı
-terimler.
+`~/Library/Application Support/yaz/history.jsonl`. Per dictation: the time, the
+text, **which app** it was written into, the duration, the engine/model, and the
+terms the vocabulary repaired.
 
-**Ses saklanmıyor.** Kayıtları tutmak yaz'ı kazara bir gözetim aracına
-çevirirdi: sahibinin söylediği her şeyin süresiz duran bir klasörü. Sonradan
-işe yarayan şey metin, ve sızması çok daha küçük bir şey. Bir test bunu
-biçimsel olarak da zorluyor — kayıtta `audio`, `wav`, `pcm` gibi alanların
-geçmediği doğrulanıyor.
+**No audio is stored.** Keeping recordings would turn yaz into a surveillance
+tool by accident: a folder holding everything its owner said, indefinitely. What
+is useful later is the text, and it is a far smaller thing to leak. A test
+enforces this structurally — it verifies no `audio`, `wav` or `pcm` field
+appears in a record.
 
-JSONL, veritabanı değil: satır başına bir dikte, `tail` ile okunabilir, ve
-çökme sırasında yarım kalan son satır dosyanın tamamına değil tek bir kayda
-mal oluyor — bu da test edilmiş durumda.
+JSONL, not a database: one dictation per line, readable with `tail`, and a last
+line left half-written by a crash costs a single entry rather than the whole
+file — which is also tested.
 
-Hangi uygulamaya yazıldığı, **yapıştırmadan önce** okunuyor. Overlay
-odak almayan bir panel olduğu için o an hâlâ imlecin bulunduğu pencere
-öndedir; cevabın doğru olduğu tek an orası.
+Which app it went into is read **before** the paste. The overlay is a
+non-activating panel, so at that moment the window holding the cursor is still
+frontmost; that is the only instant when the answer is correct.
 
 `yaz history [--limit] [--search] [--json] [--clear]`.
 
-### Ayarlar arayüzü
+### The settings UI
 
-SwiftUI, menü barından açılıyor: kısayol seçici, motor/model, dil, yerleştirme
-modu, son işleme modu, sözlük düzenleyici, gösterge ve geçmiş anahtarları.
+SwiftUI, opened from the menu bar: hotkey picker, engine/model, language,
+insertion mode, post-processing mode, vocabulary editor, indicator and history
+switches.
 
-**Config dosyası kaynak olmaya devam ediyor.** Pencere aynı
-`~/.config/yaz/config.json` dosyasını okuyup yazıyor. Kendi deposu olan bir
-arayüz, uygulamayı yapılandırmanın sessizce birbiriyle çelişen iki yolu
-demekti. `Config.save()` `apply()`'ın okuduğu anahtar adlarını üretiyor ve
-gidiş-dönüş testleri her alanı doğruluyor — sade terimler düz metin olarak
-yazılıyor ki dosya elle düzenlenebilir kalsın.
+**The config file remains the source.** The window reads and writes the same
+`~/.config/yaz/config.json`. A UI with its own store would have meant two
+quietly conflicting ways to configure the app. `Config.save()` produces the key
+names `apply()` reads, and round-trip tests verify every field — plain terms are
+written as plain strings so the file stays hand-editable.
 
-`yaz settings` ve `yaz settings --history` pencereleri doğrudan açıyor. Bu
-yalnızca kolaylık değil: menüden tıklamayı otomatikleştiremediğim için
-SwiftUI yollarının derlenmekle kalmayıp **çalıştığını** doğrulamanın tek yolu.
+`yaz settings` and `yaz settings --history` open the windows directly. That is
+not just convenience: since clicking through the menu cannot be automated here,
+it is the only way to verify the SwiftUI paths **run** rather than merely
+compile.
 
 
-## Kullanılamayan uygulama — üç hata
+## An unusable app — three bugs
 
-Kullanıcı `.app`'i çalıştırdı ve "basınca bir şey olmuyor" dedi. Üç ayrı hata
-vardı ve yalnızca biri kod okunarak bulunabilirdi.
+The user ran the `.app` and said "nothing happens when I press it". There were
+three separate bugs, and only one of them was findable by reading code.
 
-### 1. Model hiç yüklenmiyordu (asıl sebep)
+### 1. The model never loaded (the root cause)
 
 ```swift
-Task { [weak self] in await self?.loadModel() }   // ← hiç çalışmıyor
+Task { [weak self] in await self?.loadModel() }   // ← never runs
 ```
 
-`Daemon` bir `@MainActor` tipi, dolayısıyla içindeki `Task { }` ana aktörü
-miras alıyor. Ana aktör ise bir sonraki satırda `NSApplication.run()` ile
-sürecin ömrü boyunca meşgul oluyor. Task sıraya giriyor ve **sırası hiç
-gelmiyor.**
+`Daemon` is a `@MainActor` type, so a `Task { }` inside it inherits the main
+actor. The main actor is then busy for the life of the process on the next line,
+in `NSApplication.run()`. The task queues and **its turn never comes.**
 
-Sonuç: uygulama "dinleniyor" yazıyor, menü barı görünüyor, ama arkasında motor
-yok — `ready` hep `false`. İzin verilmiş olsaydı bile kısayola basmak hiçbir
-şey yapmayacaktı.
+The result: the app says "listening", the menu bar appears, but there is no
+engine behind it — `ready` stays `false` forever. Even with permission granted,
+pressing the hotkey would have done nothing.
 
-`Task.detached` kooperatif havuzda çalışıyor ve UI'ya dokunmak için ana aktöre
-geri dönüyor. Kanıt, stderr'de artık görünen iki satır:
+`Task.detached` runs on the cooperative pool and hops back to the main actor to
+touch the UI. The proof is two lines that now appear on stderr:
 
 ```
-dinleniyor · fn (🌐) basılı tut · pano (⌘V) · ^C ile çık
-model yükleniyor…
-✓ large-v3-turbo hazır — 7.0 sn
+listening · hold fn (🌐) · clipboard (⌘V) · ^C to quit
+loading model…
+✓ large-v3-turbo ready — 7.0 s
 ```
 
-### 2. Daemon çalışırken yok ediliyordu
+### 2. The daemon was destroyed while running
 
 ```swift
 try await Daemon(config: config, verbose: verbose).run()
 ```
 
-ARC bir geçici nesneyi **son kullanımından sonra** serbest bırakabiliyor ve
-`app.run()` içinde `self` bir daha kullanılmıyor. Daemon run loop başlar
-başlamaz yok ediliyordu; `deinit` status item'ı menü barından söküyor,
-`[weak self]` task'ler nil buluyordu.
+ARC may release a temporary **after its last use**, and `self` is never touched
+again inside `app.run()`. The daemon was being destroyed the moment the run loop
+began; `deinit` pulled the status item out of the menu bar and `[weak self]`
+tasks found nil.
 
-Süreç ömrü boyunca güçlü bir referans tutuluyor artık. `deinit` içindeki
-`MainActor.assumeIsolated` de kaldırıldı: deinit ana aktörde çalışmayabilir ve
-orada temizlik yapmak bu hatayı gizliyordu.
+A strong reference is held for the life of the process now. The
+`MainActor.assumeIsolated` inside `deinit` was removed too: deinit may not run on
+the main actor, and cleaning up there was hiding this bug.
 
-### 3. Run loop model bitene kadar başlamıyordu
+### 3. The run loop did not start until the model finished
 
-`app.run()` en sondaydı, yani menü barı model yüklenene kadar tıklamaya yanıt
-vermiyordu. İlk kurulumda Core ML derlemesi dakikalar sürüyor — o süre boyunca
-uygulama bozuk görünüyor. Yükleme artık run loop içinde.
+`app.run()` was last, so the menu bar did not respond to clicks until the model
+had loaded. On a first install the Core ML compile takes minutes — and for all
+that time the app looks broken. Loading now happens inside the run loop.
 
-### Yanlış alarm: "menü barı ikonu yok"
+### A false alarm: "there is no menu bar icon"
 
-`CGWindowListCopyWindowInfo` ile status item aranıp bulunamayınca ikonun hiç
-oluşmadığı sanıldı. Yanlıştı — status item'lar uygulamanın sahip olduğu bir
-pencere olarak listelenmiyor. Doğrudan ölçüm gerçeği gösterdi:
-
-```
-[tanı] status item kuruldu · button=true · length=-1.0 · visible=true · image=(18.0, 18.0)
-```
-
-İkon baştan beri oradaydı. Doğrulama yöntemi hatalıydı, kod değil.
-
-### İzin artık menüden çözülüyor
-
-"İzin bekleniyor" deyip hiçbir eylem sunmayan bir menü, kullanıcıyı kısayola
-basıp uygulamanın bozuk olduğu sonucuna varmaya bırakıyor. Menüde artık izin
-eksikken görünen tıklanabilir bir madde var:
+Searching for the status item with `CGWindowListCopyWindowInfo` and not finding
+it led to the belief that the icon was never created. That was wrong — status
+items are not listed as a window owned by the app. Direct measurement showed the
+truth:
 
 ```
-⚠︎  Erişilebilirlik izni ver…
+[diag] status item installed · button=true · length=-1.0 · visible=true · image=(18.0, 18.0)
 ```
 
-## Menü barı ikonu
+The icon had been there all along. The verification method was faulty, not the
+code.
 
-Üç aday çizilip **gerçek boyutta** basılarak karşılaştırıldı; 18 pt'lik bir
-işareti kaynak koddan değerlendirmek tahmin yürütmektir.
+### Permission is now resolvable from the menu
 
-- Gövdesi sinüs dalgası olan imleç — 8×'te çarpıcı, 18 pt'te okunmaz lapa.
-- Yuvarlak çubuklardan dalga formu — okunaklı ama tamamen jenerik; makinedeki
-  her ses uygulamasında var ve diğer uçtan metin çıktığını hiç söylemiyor.
-- **Kazanan:** sola doğru açılan iki yay, sağda kalın bir I-beam imleç.
-  Tek şekilde "ses → metin".
+A menu that says "waiting for permission" and offers no action leaves the user
+to press the hotkey and conclude the app is broken. The menu now carries a
+clickable item while permission is missing:
 
-Durumlar aynı iskeleti paylaşıyor: imleç hiç kıpırdamıyor, yalnızca solundaki
-değişiyor. Boşta bir yay (hiç yay reads "bozuk"), kayıtta iki yay, çalışırken
-üç nokta. Noktalar ilk denemede imleç gövdesine değiyordu; imlece göre sağa
-hizalanıp gerçek boşluk verildi.
+```
+⚠︎  Grant Accessibility permission…
+```
 
-`NSBezierPath` ile çiziliyor, varlık dosyası değil: her ölçekte net, durumlar
-tek geometriyi paylaşıyor, ve CLI ikilisinin kaynak paketi olmadığı için bir
-asset catalog `.app` içinde çalışıp dışında sessizce başarısız olurdu.
+## The menu bar icon
+
+Three candidates were drawn and compared **printed at actual size**; judging an
+18 pt mark from source code is guesswork.
+
+- A cursor whose stem is a sine wave — striking at 8×, illegible mush at 18 pt.
+- A waveform of rounded bars — legible but entirely generic; every audio app on
+  the machine has one, and it says nothing about text coming out the other end.
+- **The winner:** two arcs opening to the left, with a heavy I-beam cursor on
+  the right. "Sound → text" in a single shape.
+
+The states share that skeleton: the cursor never moves, only what sits to its
+left changes. One arc when idle (no arc reads as "broken"), two while recording,
+three dots while working. The dots touched the cursor stem on the first attempt;
+they were right-aligned against the cursor and given real clearance.
+
+It is drawn with `NSBezierPath` rather than shipped as an asset: crisp at every
+scale, the states share one geometry, and since the CLI binary has no resource
+bundle an asset catalog would work inside the `.app` and fail silently outside
+it.
 
 
-## Neden hiçbir şey olmuyordu — dört ayrı sebep
+## Why nothing was happening — four separate causes
 
-Tek bir semptom ("uygulama açık, izinler verili, tuşa basınca hiçbir şey
-olmuyor") dört ayrı hatanın üstünü örtüyordu. Hiçbiri hata mesajı üretmedi.
+A single symptom ("the app is open, permissions are granted, pressing the key
+does nothing") was covering four separate bugs. None of them produced an error
+message.
 
-### 0. Kanıt yoktu
+### 0. There was no evidence
 
-Finder'dan açılan bir `.app`'in stderr'i hiçbir yere gitmiyor. İlk iş bunu
-düzeltmek oldu: `Log` her satırı hem stderr'e hem `~/Library/Logs/yaz.log`'a
-yazıyor, `yaz logs --follow` okuyor. Aşağıdakilerin hepsi o dosyayı okuyarak
-bulundu.
+The stderr of an `.app` launched from Finder goes nowhere. Fixing that came
+first: `Log` writes every line to both stderr and `~/Library/Logs/yaz.log`, and
+`yaz logs --follow` reads it. Everything below was found by reading that file.
 
 ### 1. Input Monitoring
 
-Erişilebilirlik izni klavye **dinlemek** için yetmiyor. Klavye olaylarını
-dinleyen bir `CGEventTap` ayrıca `kTCCServiceListenEvent` istiyor — ayrı
-listede, ayrı anahtar. Yokken tap kuruluyor, run loop kaynağı bağlanıyor,
-`tapEnable` başarılı dönüyor ve **tek olay teslim edilmiyor.**
+Accessibility permission is not enough to **listen** to the keyboard. A
+`CGEventTap` watching keyboard events also needs `kTCCServiceListenEvent` — a
+separate list, a separate key. Without it the tap is created, the run loop
+source attaches, `tapEnable` returns success, and **not one event is
+delivered.**
 
-parrot yalnızca Erişilebilirliği kontrol ediyor; aynı duvara toslar.
+parrot checks only Accessibility, and hits the same wall.
 
-### 2. macOS fn tuşunu sahipleniyor
+### 2. macOS claims the fn key
 
-Globe tuşu, ikinci bir klavye düzeni tanımlıysa giriş kaynağı değiştirmeye,
-Dikte açıksa dikteye bağlanıyor. Bu makinede ikisi de vardı (Türkçe-QWERTY +
-U.S., `AppleDictationAutoEnable=1`). Sistem tuşu session tap'in **altında**
-yutuyor.
+The globe key is bound to switching input source when a second keyboard layout
+is defined, and to Dictation when Dictation is on. This machine had both
+(Turkish-QWERTY + U.S., `AppleDictationAutoEnable=1`). The system consumes the
+key **below** the session tap.
 
-`AppleFnUsageType`'ın **ayarlanmamış** olması güvenli değil, tehlikeli durumun
-ta kendisi — "okunamadı"yı uyarı saymak tam da bu yapılandırmayı geçiriyordu.
-Artık sert hata, ve menü barı tek tıkla sağ option'a geçiriyor.
+`AppleFnUsageType` being **unset** is not the safe state, it is the dangerous one
+— treating "could not read" as a warning was letting exactly this configuration
+through. It fails hard now, and the menu bar switches to right option in one
+click.
 
-### 3. Bayat TCC kayıtları
+### 3. Stale TCC records
 
-Paket defalarca değiştirildiğinde macOS artık ikiliye uymayan bir izin kaydı
-tutabiliyor. Sistem izni "verilmiş" bildiriyor, uygulama inanıyor, olaylar
-sessizce teslim edilmiyor. Ölçüldü: `accessibility=true
-inputMonitoring=granted`, tap canlı, sıfır olay — `tccutil reset` sonrası aynı
-uygulama `accessibility=false inputMonitoring=notDetermined` dedi.
+When a bundle is replaced repeatedly, macOS can hold a permission record that no
+longer matches the binary. The system reports the permission as granted, the app
+believes it, and events are silently never delivered. Measured:
+`accessibility=true inputMonitoring=granted`, a live tap, zero events — and
+after `tccutil reset` the same app said `accessibility=false
+inputMonitoring=notDetermined`.
 
-Bunu bildiren hiçbir API yok, dolayısıyla **sessizlik sinyal**: dinleyici 75
-saniye boyunca hiç olay görmezse kendini ihbar ediyor ve menü `yaz
-reset-permissions`'ı gösteriyor. İlk gerçek olay gözcüyü iptal ediyor.
+No API reports this, so **silence is the signal**: if the listener sees no event
+for 75 seconds it reports itself, and the menu points at `yaz
+reset-permissions`. The first real event cancels the watchdog.
 
-### 4. MainActor kilidi — asıl hata
+### 4. The MainActor lock — the root cause
 
-`NSApplication.run()` hiç dönmüyor. Bir `AsyncParsableCommand` içinden
-çağrıldığında, MainActor'ı sahiplenen bir Swift task'ini kalıcı olarak bloke
-ediyor — ve cooperative executor o task bitene kadar **başka hiçbir MainActor
-işini çalıştırmıyor.**
+`NSApplication.run()` never returns. Called from inside an
+`AsyncParsableCommand` it permanently blocks a Swift task that owns the
+MainActor — and the cooperative executor runs **no other MainActor work** until
+that task finishes.
 
-Ayırt eden ölçüm şuydu: CFRunLoop timer'ları düzgün ateşliyordu, ama GCD ana
-kuyruğu bir kez bile boşalmadı. İki farklı mekanizmanın biri çalışıp diğerinin
-çalışmaması teşhisi verdi.
+The measurement that pinned it down: CFRunLoop timers were firing normally,
+while the GCD main queue was never drained once. Two different mechanisms, one
+working and one not, gave the diagnosis.
 
-Sonuçları: `engineBecameReady()` hiç çalışmadı, yani `ready` kalıcı olarak
-`false` kaldı — tap düzelseydi bile tuşa basmak hiçbir şey yapmayacaktı.
+The consequences: `engineBecameReady()` never ran, so `ready` stayed `false`
+permanently — even with the tap fixed, pressing the key would have done nothing.
 
-Çözüm: tüm komut ağacı senkron `ParsableCommand`. Ana thread'i AppKit'e, onu
-sahiplenen bir task olmadan devrediyor. Async alt komutlar `runBlocking` ile
-köprüleniyor.
+The fix: the whole command tree is a synchronous `ParsableCommand`. It hands the
+main thread to AppKit with no task owning it. Async subcommands are bridged with
+`runBlocking`.
 
-**Köprünün kendi tuzağı:** `runBlocking`'i MainActor gerektiren bir komutta
-kullanmak kilitlenme demek — ana thread semaforda beklerken iş, beklediği
-aktöre atlamaya çalışıyor. `preview --write-iconset` tam böyle asıldı.
-`preview` ve `settings` artık `MainActor.assumeIsolated` kullanıyor, çünkü
-senkron komut zaten ana thread'de çalışıyor.
+**The bridge has its own trap:** using `runBlocking` in a command that needs the
+MainActor is a deadlock — the main thread waits on a semaphore while the work
+tries to hop to the actor it is blocking. `preview --write-iconset` hung exactly
+that way. `preview` and `settings` use `MainActor.assumeIsolated` now, since a
+synchronous command already runs on the main thread.
 
-### Sonuç
+### The result
 
 ```
 17:06:49  modifier event: flags=80140 keycode=61 wanted=80000 match=true
@@ -1052,44 +1077,126 @@ senkron komut zaten ana thread'de çalışıyor.
 17:06:52  → 0.45 s · Bugün Slack'tan seni arayacağım.
 ```
 
-## Durum
 
-- **M1 — tamam.** Motor katmanı, `Transcriber` protokolü, Whisper + Parakeet
-  conformance'ları, `yaz transcribe` ölçüm koşum takımı, sabit Türkçe fixture'lar.
-- **M1.5 — tamam.** Sağlamlaştırma turu 1: `SpeechGate`, `TranscriptionQuality`,
-  `YazError`, zaman aşımı, dil doğrulaması, pencereli `AudioLoader`.
-- **M1.6 — tamam.** Sağlamlaştırma turu 2: actor reentrancy düzeltmesi
-  (`SingleFlight`), çıkarım serileştirme (`SerialGate`), veri yarışı kapatma,
-  `Signals?` ayrımı, vDSP ölçüm, çok formatlı ses testleri. 57 test.
-- **M2 — tamam.** `AudioCapture`, yapılandırılabilir `Hotkey`, kendi kendini
-  onaran event tap.
-- **M3 — tamam.** Pano ile yerleştirme (+ grafem güvenli yazma yedeği),
-  `Config`, `doctor`, `models`, `Daemon`. 87 test.
-- **M4 — tamam.** Sözlük katmanı: fonetik iskelet eşleştirme, Türkçe kelime
-  vetosu, ek koruması, `vocab test`/`vocab explain`. 126 test.
-- **M5 — tamam.** Son işleme: `FillerFilter` (deterministik),
-  `Refiner` + FoundationModels (opsiyonel), `RefinementGuard`,
-  `TranscriptPipeline`. 156 test.
-- **M6 — tamam.** `LevelMeter`, `IndicatorState`, tıklama geçiren overlay
-  pili, `MenuBarController`, `yaz preview`. 176 test.
-- **M7 — tamam.** Gömülü Info.plist, `LaunchAgent`, `yaz install`,
-  `scripts/install.sh`. 197 test.
+## Signing and notarisation
 
-- **M8 — tamam.** `yaz.app` paketi, `LSUIElement`, paket içi izin akışı.
-- **M9 — tamam.** `TranscriptHistory`, `yaz history`.
-- **M10 — tamam.** Ayarlar ve geçmiş pencereleri, `Config.save()`, `yaz settings`.
-- **M11 — tamam.** `scripts/bundle.sh --dmg`. 221 test.
+An ad-hoc signature has no identity beyond the binary's own hash, so every
+rebuild invalidates the TCC grant the user just gave. That is the difference
+between granting permission once and granting it every single build.
 
-Kalan tek eksik canlı dikte turu: mikrofon izni kullanıcı onayı gerektiriyor.
+`scripts/bundle.sh` picks the best identity available, in order: a Developer ID
+Application certificate, then a local self-signed certificate, then ad-hoc.
+Releases take the first path — signed with the Hardened Runtime, notarised by
+Apple through `scripts/notarize.sh`, and stapled.
 
-## Ölçüm disiplini
+Stapling happens **twice on purpose**: to the `.app` first, then to the DMG
+built from the already-stapled app. Stapling only the DMG leaves the copy the
+user drags to Applications without its own ticket, which then needs a network
+round trip on first launch and fails closed offline.
 
-`yaz transcribe` daemon'dan önce yazıldı, bilerek. Her değişiklik (motor sürümü,
-sözlük, son işleme) mikrofona o an ne söylendiğine göre değil, `fixtures/`
-altındaki sabit seslerle ölçülür. Doğruluk iddiası ancak bu şekilde
-karşılaştırılabilir olur.
+The only entitlement requested is `com.apple.security.device.audio-input`.
+Deliberately absent: the App Sandbox (it would break the global event tap and
+cut off `~/Documents`, where the model weights live),
+`allow-unsigned-executable-memory` and `allow-jit` (Core ML loads `.mlmodelc` as
+data), `disable-library-validation`, and Apple Events. Hotkey watching and
+pasting need no entitlement at all — TCC governs them.
 
-Fixture'lar macOS `say -v Yelda` ile üretildi — sentetik. Gerçek konuşma
-farklılık gösterir; özellikle İngilizce alıntı kelimelerde sentetik ses
-Türkçe fonetikle okuduğu için gerçekte biraz daha iyi sonuç beklenebilir.
-Hata *türü* yine de gerçek.
+Two failures worth recording, because both read as something they were not:
+
+**`bundle.sh` silently fell back to ad-hoc.** The signing step was written as
+`cmd && note ... || { fallback }` with stderr sent to `/dev/null`, so codesign's
+actual error was discarded and the only visible symptom was permissions
+resetting on every rebuild. The error is captured and printed now, and the exit
+status is read from codesign rather than from a pipeline's last stage — `if cmd
+| sed` takes sed's status, which is always 0, and would have reintroduced the
+same bug.
+
+**Stapling failed immediately after a successful notarisation.** notarytool
+reporting `Accepted` means Apple finished scanning, not that the ticket has
+reached the servers stapler pulls from. The first attempt failed with error 73,
+which reads like a rejected build; the identical command succeeded 15 seconds
+later. `notarize.sh` retries six times over 90 seconds.
+
+
+## The language boundary
+
+Transcription is fully multilingual — the engine is Whisper and `language` can
+be set to anything it supports. The layers on top are not, and this is a safety
+boundary rather than a missing feature.
+
+Vocabulary repair is Turkish-only because its guard against replacing a word the
+user really said is a list of ordinary Turkish words. Point it at another
+language and nothing is protected. Measured on English before the boundary was
+enforced:
+
+```
+"into main"       → "Notion"
+"merged"          → "merge"
+"the CI pipeline" → "CI pipeline"
+```
+
+Post-processing is Turkish-only for the same kind of reason: `FillerFilter`'s
+hesitation set is Turkish and contains bare vowels that are ordinary English
+words, and the model instructions open with "Sen bir Türkçe dikte temizleme
+asistanısın" — handing that English asks a Turkish-primed model to tidy text it
+was never described.
+
+**A bug found here:** `FillerFilter.isSupported` existed and was never called.
+`Refiner` had no language at all, so both cleanup tiers ran on every transcript
+regardless of language — while the README claimed they were skipped. The
+documentation described a boundary the code did not have. The gate now lives in
+`Refiner`, which takes the language; for a non-Turkish transcript the model is
+not called at all rather than called and second-guessed, and the CLI says it
+skipped instead of returning identical text that looks like a broken cleanup.
+
+Supporting another language means writing its common-word list and phonetic
+normalisation. It is not a flag.
+
+
+## Status
+
+- **M1 — done.** The engine layer, the `Transcriber` protocol, the Whisper and
+  Parakeet conformances, the `yaz transcribe` measurement harness, fixed Turkish
+  fixtures.
+- **M1.5 — done.** Hardening round 1: `SpeechGate`, `TranscriptionQuality`,
+  `YazError`, the timeout, language validation, the windowed `AudioLoader`.
+- **M1.6 — done.** Hardening round 2: the actor reentrancy fix (`SingleFlight`),
+  inference serialisation (`SerialGate`), closing the data races, the `Signals?`
+  distinction, vDSP measurement, multi-format audio tests. 57 tests.
+- **M2 — done.** `AudioCapture`, a configurable `Hotkey`, a self-healing event
+  tap.
+- **M3 — done.** Clipboard insertion (plus a grapheme-safe typing fallback),
+  `Config`, `doctor`, `models`, `Daemon`. 87 tests.
+- **M4 — done.** The vocabulary layer: phonetic skeleton matching, the Turkish
+  word veto, suffix preservation, `vocab test` / `vocab explain`. 126 tests.
+- **M5 — done.** Post-processing: `FillerFilter` (deterministic), `Refiner` +
+  FoundationModels (optional), `RefinementGuard`, `TranscriptPipeline`. 156
+  tests.
+- **M6 — done.** `LevelMeter`, `IndicatorState`, the click-through overlay pill,
+  `MenuBarController`, `yaz preview`. 176 tests.
+- **M7 — done.** The embedded Info.plist, `LaunchAgent`, `yaz install`,
+  `scripts/install.sh`. 197 tests.
+- **M8 — done.** The `yaz.app` bundle, `LSUIElement`, the in-bundle permission
+  flow.
+- **M9 — done.** `TranscriptHistory`, `yaz history`.
+- **M10 — done.** The settings and history windows, `Config.save()`, `yaz
+  settings`.
+- **M11 — done.** `scripts/bundle.sh --dmg`. 221 tests.
+- **M12 — done.** Developer ID signing, notarisation and stapling
+  (`scripts/notarize.sh`), the entitlements file, the language boundary fix.
+  262 tests.
+
+The one thing still outstanding is a live dictation round: microphone permission
+needs the user's approval.
+
+## Measurement discipline
+
+`yaz transcribe` was written before the daemon, deliberately. Every change —
+engine version, vocabulary, post-processing — is measured against the fixed
+audio under `fixtures/`, not against whatever was said into the microphone at
+the time. That is the only way an accuracy claim becomes comparable.
+
+The fixtures were produced with macOS `say -v Yelda`, so they are synthetic.
+Real speech differs; in particular, results in practice can be expected to be
+slightly better on English loanwords, since the synthetic voice reads them with
+Turkish phonetics. The *kind* of error is real regardless.
