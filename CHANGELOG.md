@@ -6,24 +6,9 @@ Notable changes to yaz. Format loosely follows
 
 ## [Unreleased]
 
-### Added
+Nothing yet.
 
-- **Developer ID signing and notarisation.** `scripts/bundle.sh` now picks the
-  best signing identity available — Developer ID Application, then a local
-  self-signed certificate, then ad-hoc — and signs with the Hardened Runtime
-  and an explicit entitlements file. `scripts/notarize.sh` submits the build to
-  Apple, staples the ticket to the app, rebuilds the DMG from the stapled app
-  and staples that too, so the download opens with no Gatekeeper warning.
-- `Resources/yaz.entitlements` — microphone only, with the entitlements that
-  are deliberately *not* requested written down alongside the reasons.
-
-### Fixed
-
-- `scripts/bundle.sh` could silently fall back to an ad-hoc signature and
-  discard the reason, whose only visible symptom was macOS permissions resetting
-  on every rebuild. The error is now shown.
-
-## [0.1.0] — 2026-08-02
+## [0.1.0] — 2026-08-05
 
 First working version. Push-to-talk dictation, on-device, nothing leaves the
 machine.
@@ -51,15 +36,21 @@ machine.
   No audio is ever stored.
 - **`yaz` CLI** — `doctor`, `logs`, `history`, `models`, `transcribe`, `vocab`,
   `settings`, `preview`, `install`, `reset-permissions`.
-- **Packaging** — `.app` bundle and DMG, launch-at-login, and a stable
-  self-signed identity so macOS permissions survive rebuilds.
+- **Packaging** — `.app` bundle and DMG, launch-at-login, and a stable signing
+  identity so macOS permissions survive rebuilds.
+- **Signed and notarised releases.** The DMG is signed with a Developer ID
+  Application certificate under the Hardened Runtime, notarised by Apple, and
+  stapled twice on purpose — the app first, then the DMG built from the stapled
+  app — so the copy dragged to Applications carries its own ticket and opens
+  offline. The only entitlement requested is microphone access.
+  `scripts/bundle.sh` falls back to a local self-signed certificate, then
+  ad-hoc, for builds made without a Developer ID.
 
 ### Known limitations
 
 - Term repair and hesitation removal are Turkish-only, and are skipped for
   other languages rather than applied. The guard against overwriting a real
   word is a Turkish word list; elsewhere it corrupts text.
-- Not notarised. Gatekeeper treats the app as unidentified.
 - Model weights (~1.6 GB) download on first use into `~/Documents/huggingface`,
   which iCloud may sync.
 - macOS can claim the fn key when a second keyboard layout or Dictation is
