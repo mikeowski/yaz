@@ -47,6 +47,29 @@ PROFILE="${YAZ_NOTARY_PROFILE:-yaz}"
 die() { printf '✗ %s\n' "$*" >&2; exit 1; }
 note() { printf '  %s\n' "$*"; }
 
+# Staple, retrying on the gap between "Accepted" and the ticket being fetchable.
+#
+# notarytool returning Accepted means Apple finished scanning, not that the
+# ticket has reached the servers stapler downloads it from. Stapling
+# immediately afterwards fails with error 73 — "could not validate ticket" —
+# which reads like a rejected build and is not one. Observed here: the first
+# attempt failed, the second succeeded 15 seconds later.
+staple_with_retry() {
+    target="$1"
+    attempt=1
+    while [ "$attempt" -le 6 ]; do
+        if xcrun stapler staple "$target" >/dev/null 2>&1; then
+            note "stapled: $(basename "$target")"
+            return 0
+        fi
+        [ "$attempt" -eq 1 ] && note "ticket not published yet, retrying…"
+        attempt=$((attempt + 1))
+        sleep 15
+    done
+    die "stapling $(basename "$target") failed after 6 attempts over 90 s.
+   'xcrun stapler staple -v $target' shows the underlying error."
+}
+
 [ -d "$APP" ] || die "no bundle at $APP — run ./scripts/bundle.sh first"
 
 # --- preflight --------------------------------------------------------------
@@ -96,8 +119,7 @@ xcrun notarytool submit "$ZIP" --keychain-profile "$PROFILE" --wait \
     || die "notarisation failed — 'xcrun notarytool log <id> --keychain-profile $PROFILE' shows why"
 rm -f "$ZIP"
 
-xcrun stapler staple "$APP" || die "stapling the app failed"
-note "app stapled"
+staple_with_retry "$APP"
 
 # The real test: this is what Gatekeeper does on someone else's Mac.
 spctl --assess --type execute --verbose "$APP" 2>&1 | sed 's/^/  /'
@@ -129,7 +151,7 @@ codesign --force --sign "$AUTHORITY" --timestamp "$DMG" || die "signing the DMG 
 printf 'notarising the DMG…\n'
 xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --wait \
     || die "notarising the DMG failed"
-xcrun stapler staple "$DMG" || die "stapling the DMG failed"
+staple_with_retry "$DMG"
 
 printf '✓ %s (%s) — notarised and stapled\n' "$DMG" "$(du -h "$DMG" | cut -f1)"
 note "this opens on any Mac with no Gatekeeper warning and no right-click → Open"
