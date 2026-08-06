@@ -2,26 +2,31 @@
 
 [![CI](https://github.com/mikeowski/yaz/actions/workflows/ci.yml/badge.svg)](https://github.com/mikeowski/yaz/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![macOS 26+](https://img.shields.io/badge/macOS-26%2B%20Apple%20Silicon-black.svg)](#install)
+[![macOS 26+](https://img.shields.io/badge/macOS-26%2B%20Apple%20Silicon-black.svg)](#install-the-application)
 
-Push-to-talk dictation for macOS. Hold a key, speak, release — the text appears
-at your cursor. Nothing leaves the machine.
+yaz is a dictation tool for macOS. Hold the hotkey. Speak. Release the hotkey.
+yaz then writes the text at your cursor. No data goes out of your computer.
 
-Built on the skeleton of [parrot](https://github.com/digimata/parrot), aimed at
-the three things it deliberately refuses: a **multilingual default**,
-**reliable text insertion**, and **post-processing**.
+yaz uses the structure of [parrot](https://github.com/digimata/parrot). It adds
+the three functions that parrot does not have: a default that operates in many
+languages, reliable text insertion, and post-processing.
 
-**Requires:** macOS 26+ on Apple Silicon.
+**Requirements:** macOS 26 or a later version, on an Apple Silicon computer.
 
-## Install
+## Install the application
 
-**Download the DMG** from
-[Releases](https://github.com/mikeowski/yaz/releases/latest), open it, drag
-`yaz.app` to Applications. It lives in the menu bar.
+1. Download the DMG file from the
+   [releases page](https://github.com/mikeowski/yaz/releases/latest).
+2. Open the DMG file.
+3. Move `yaz.app` into the Applications folder.
 
-The build is signed with a Developer ID certificate and notarised by Apple, so
-it opens normally — no right-click → Open, no Gatekeeper warning. To check the
-download before opening it:
+yaz operates from the menu bar. It has no dock icon and no window.
+
+The maintainer signs each release with a Developer ID certificate. Apple then
+notarises it. Therefore the application opens correctly. Gatekeeper does not
+show a warning, and you do not have to use right-click → Open.
+
+To examine the file before you open it, obey these steps:
 
 ```sh
 shasum -a 256 -c SHA256SUMS.txt
@@ -29,43 +34,45 @@ spctl --assess --type execute --verbose /Applications/yaz.app
 # accepted · source=Notarized Developer ID
 ```
 
-**Or build it yourself:**
+The application bundle also prevents a permission problem. macOS gives an
+Accessibility permission to the *responsible process*. For a CLI in a terminal,
+the responsible process is the terminal. Thus the prompt shows the name of the
+terminal, and shells that already operate do not get the permission. An
+application bundle has its own identity. The prompt then shows the name `yaz`,
+and the permission stays correct.
+
+### Build the application
 
 ```sh
-./scripts/bundle.sh --dmg     # produces dist/yaz-0.1.0.dmg
+./scripts/bundle.sh --dmg     # makes dist/yaz-0.1.0.dmg
 ```
 
-Your own build is signed with a local certificate rather than a Developer ID,
-so Gatekeeper calls it unidentified — expected, and it changes nothing about
-how the app behaves.
+A build that you make yourself has a local certificate, not a Developer ID
+certificate. Gatekeeper thus reports an unidentified developer. This is
+correct, and it does not change the operation of the application.
 
-Installing as an app also solves a permissions problem. macOS attributes an
-Accessibility grant to the *responsible process*, and for a CLI run in a
-terminal that is the terminal — the prompt asks about "Terminal", and the grant
-does not reach shells that are already running. As a `.app`, yaz has its own
-identity: the prompt says "yaz", and the grant sticks.
-
-**As a CLI:**
+### Install the CLI
 
 ```sh
 ./scripts/install.sh              # build and install into /usr/local/bin
 ./scripts/install.sh --login      # also start at login
 ./scripts/install.sh --uninstall
 
-yaz doctor --request              # request permissions
-yaz models download               # pre-fetch the model (~1.6 GB)
+yaz doctor --request              # ask for the permissions
+yaz models download               # download the model (approximately 1.6 GB)
 yaz                               # start the daemon
 ```
 
-The script is deliberately not a `curl | sh` one-liner: it asks for sudo and
-installs a daemon that requests TCC permissions. Read it first.
+The script is not a `curl | sh` command, because the script asks for sudo. It
+also installs a daemon that asks for TCC permissions. Read the script first.
 
-## Which languages does this work for?
+## Which languages does yaz support?
 
-Two different answers, and the difference matters.
+There are two different answers. The difference is important.
 
-**Transcription is fully multilingual.** The engine is Whisper; set `language`
-to anything it supports. Measured, English, untouched by any Turkish logic:
+**Transcription operates in many languages.** The engine is Whisper. Set
+`language` to a code that Whisper supports. This is a measurement in English.
+No Turkish function changed the text:
 
 ```
 $ yaz transcribe --language en sample.wav
@@ -73,11 +80,12 @@ $ yaz transcribe --language en sample.wav
   Today I reviewed the pull request and merged it into main after the CI pipeline turned green.
 ```
 
-**Term repair is Turkish-only** — and that is a safety boundary, not a
-limitation waiting to be lifted. The guard that stops the layer replacing a
-word you actually said is a list of ordinary Turkish words. Point it at another
-language and nothing is protected. Measured on English before the boundary was
-enforced:
+**Term repair operates only in Turkish.** This is a safety limit, not a
+temporary condition.
+
+The guard that prevents an incorrect replacement is a list of usual Turkish
+words. In a different language, the guard protects nothing. These are
+measurements in English, from before the limit was in the code:
 
 ```
 "into main"       → "Notion"
@@ -85,14 +93,15 @@ enforced:
 "the CI pipeline" → "CI pipeline"
 ```
 
-So the pipeline skips it outside Turkish and says so. Supporting another
-language means writing its common-word list and phonetic normalisation — not
-flipping a flag.
+Therefore yaz does not apply term repair to a different language. It reports
+this in the log. Support for a different language needs a list of its usual
+words and its phonetic rules. A flag is not sufficient.
 
 ## Term repair
 
-Whisper transcribes plain Turkish well. What it mangles is English technical
-terms inside Turkish speech — which is most of what a developer dictates:
+Whisper transcribes usual Turkish text correctly. But Whisper makes errors in
+the English technical terms in Turkish speech. A developer dictates many such
+terms:
 
 ```
 $ yaz transcribe --vocabulary fixtures/t2.wav
@@ -103,24 +112,27 @@ $ yaz transcribe --vocabulary fixtures/t2.wav
   pull request'de merge etmem lazım. CI pipeline yeşile döndüğünde deploy ederiz.
 ```
 
-Turkish suffixes survive (`Puhrıkı Esti'de` → `pull request'de`), and 30
-ordinary Turkish sentences come through untouched — that corpus is what set
-every threshold in the matcher.
+Turkish suffixes stay correct: `Puhrıkı Esti'de` becomes `pull request'de`. A
+test corpus of 30 usual Turkish sentences stays fully unchanged. This corpus
+set each threshold in the matcher.
 
-Two standard approaches were tried first and both failed here: Whisper's
-`promptTokens` biasing returns empty output on `large-v3-turbo`, and Apple's
-on-device model could not repair `Sılacık` even when handed the target list.
-So repair is deterministic, and can only ever produce words you put in the
-vocabulary yourself.
+Two usual methods failed here. The `promptTokens` function of Whisper gives
+empty output on `large-v3-turbo`. The on-device model of Apple did not repair
+`Sılacık`, although it received the list of terms. Thus term repair is
+deterministic. It can only make words that you put in the vocabulary.
 
 ## Quality gates
 
-The output goes straight to your cursor, so wrong text costs more than no text.
+yaz writes the transcript directly at your cursor. Therefore incorrect text is
+worse than no text.
 
-Before inference, recordings shorter than 0.35 s or below a silence threshold
-are dropped — Whisper returns nothing for the first and invents sentences for
-the second. After inference, the decoder's own confidence signals catch
-hallucinations:
+Before inference, yaz rejects a recording that is shorter than 0.35 s. It also
+rejects a recording that is below the silence threshold. Whisper gives no
+output for the first condition. Whisper invents sentences for the second
+condition.
+
+After inference, yaz uses the confidence signals of the decoder. These signals
+find invented text:
 
 ```
 $ yaz transcribe --strict fixtures/t1.wav fixtures/silence-3s.wav fixtures/tiny-100ms.wav
@@ -138,145 +150,163 @@ $ yaz transcribe --strict fixtures/t1.wav fixtures/silence-3s.wav fixtures/tiny-
 
 ## Post-processing
 
-Two tiers. The deterministic one is the default and free:
+There are two levels. The deterministic level is the default. It has no cost:
 
 ```
 $ yaz vocab refine --mode fillers "ıı yarın ee saat ikide mmm toplantımız var"
 after : yarın saat ikide toplantımız var        (1 ms)
 ```
 
-The language model (Apple FoundationModels, already on macOS 26) also handles
-contextual filler words and punctuation, at 0.3–1.4 s per utterance — so it is
-opt-in:
+The language model is Apple FoundationModels. macOS 26 includes it. This model
+also removes filler words that need context, and it corrects the punctuation.
+It needs 0.3 s to 1.4 s for each utterance. Therefore you must select it:
 
 ```
 $ yaz vocab refine --mode llm "ıı yarın şey saat ikide yani toplantımız var hani o proje için ee hazırlık lazım"
 after : Yarın saat ikide toplantımız var. O proje için hazırlık lazım.
 ```
 
-Model output has to earn its way in: summarising, adding, answering a question,
-or losing content is rejected and the deterministic result is kept. A cleanup
-step must never cost you the dictation.
+yaz examines the output of the model. yaz rejects output that summarises the
+text, adds new text, answers a question, or removes content. yaz then keeps the
+deterministic result. Post-processing must not cause a loss of your dictation.
+
+**Note:** post-processing operates only in Turkish. The list of filler sounds
+is Turkish, and the instructions to the model are Turkish. For a different
+language, yaz does not call the model.
 
 ## History
 
-What you dictated, **which app it went into**, when, and how long it took —
+yaz records what you dictated, the application that received the text, the
+time, and the duration. The file is
 `~/Library/Application Support/yaz/history.jsonl`.
 
-**No audio is stored**, only text. Keeping recordings would make this a
-surveillance tool by accident.
+**yaz does not record audio.** It records only text. A collection of audio
+records is a risk to your privacy. Text is sufficient for a history.
 
 ```sh
-yaz history                    # last 20 entries
-yaz history --search slack     # search text or app name
+yaz history                    # the last 20 entries
+yaz history --search slack     # find text or an application name
 yaz history --clear
 ```
 
-Also available from the menu bar, with search and copy. Turn it off with
-`"history": false`.
+The menu bar also shows the history, with a search function and a copy
+function. To stop the history, set `"history": false`.
 
-## Permissions — there are two, and a third thing that isn't one
+## Permissions
 
-**Accessibility** lets yaz paste text at your cursor.
-**Input Monitoring** lets yaz *see* the push-to-talk key. Different list, same
-Settings pane. Granting only the first produces a tap that installs cleanly and
-never fires — measured here as: permission granted, tap created, zero events,
-no error anywhere.
+yaz needs two permissions. A third condition is not a permission.
 
-Then there is the **fn key itself**. macOS claims the globe key as soon as a
-second keyboard layout exists or Dictation is on, and consumes the press before
-any app sees it. Two ways out:
+**Accessibility** lets yaz write text at your cursor.
+
+**Input Monitoring** lets yaz read the hotkey. This is a different list in the
+same Settings pane. If you give only the Accessibility permission, the keyboard
+listener starts correctly but receives no events. The measurement shows this
+condition: the permission is correct, the listener exists, there are zero
+events, and there is no error.
+
+The third condition is the **fn key**. macOS takes the globe key if a second
+keyboard layout exists, or if Dictation is on. macOS then receives the keypress
+before an application can read it. There are two solutions.
+
+To keep the fn key, change this setting:
 
 ```
 System Settings → Keyboard → "Press 🌐 key to" → Do Nothing
 ```
 
-or click **"⚠︎ fn is claimed by macOS — use right option"** in the menu bar,
-which switches the hotkey and saves it.
+Or click this item in the menu bar. yaz then changes the hotkey and saves it:
 
-```sh
-yaz doctor          # reports all three
-yaz logs --follow   # the app writes the same to ~/Library/Logs/yaz.log
+```
+⚠︎ fn is claimed by macOS — use right option
 ```
 
-### "It says granted, and still nothing happens"
-
-Replacing an app bundle can leave macOS holding a permission record that no
-longer matches the binary. The system then reports the permission as granted,
-the app believes it, and events are **silently never delivered**.
-
-Nothing in macOS reports this, so silence is the signal: if the keyboard
-listener sees no events for 75 seconds, yaz says so in the log and in the menu.
-
 ```sh
-yaz reset-permissions     # clears the records
-# quit and reopen yaz — macOS will ask again
+yaz doctor          # reports all three conditions
+yaz logs --follow   # the application also writes to ~/Library/Logs/yaz.log
 ```
 
-### Grant it once, not every build
+### The permission is correct, but yaz does not operate
 
-macOS keys a permission to the **code signing identity**. An ad-hoc signature
-has no identity beyond the binary's own hash, so every rebuild invalidates what
-you granted. `scripts/bundle.sh` picks the best identity available, in order:
+If you replace an application bundle, macOS can keep a permission record that
+does not agree with the new binary. macOS then reports that the permission is
+correct. The application accepts this report. But macOS does not send the
+events, and it gives no error.
 
-| | Gatekeeper | Permissions survive a rebuild |
+No macOS function reports this condition. Therefore silence is the signal. If
+the keyboard listener receives no event for 75 seconds, yaz writes a message in
+the log and in the menu.
+
+To correct this condition, obey these steps:
+
+1. Run `yaz reset-permissions` to remove the records.
+2. Quit yaz.
+3. Start yaz again. macOS then asks for the permissions again.
+
+### Give the permission one time, not for each build
+
+macOS connects a permission to the **code signing identity**. An ad-hoc
+signature has no identity. Thus each new build removes the permission that you
+gave. `scripts/bundle.sh` uses the best available identity:
+
+| Identity | Gatekeeper | The permission stays after a build |
 |---|---|---|
-| **Developer ID Application** | opens anywhere, once notarised | yes |
-| **Self-signed local certificate** | unidentified developer | yes |
-| **Ad-hoc** | unidentified developer | **no** |
+| Developer ID Application | opens correctly, if notarised | yes |
+| Local self-signed certificate | unidentified developer | yes |
+| Ad-hoc | unidentified developer | **no** |
 
-Contributors want the middle one, created once:
+A contributor needs the second identity. Make it one time:
 
 ```sh
-./scripts/signing-identity.sh    # one-time; asks for your login password
+./scripts/signing-identity.sh    # asks for your login password
 ```
 
-That is the difference between granting permission once and granting it on
-every build.
+### Signed and notarised releases
 
-### Releases: signed, notarised, stapled
+The maintainer signs the builds on the
+[releases page](https://github.com/mikeowski/yaz/releases) with a Developer ID
+Application certificate and the Hardened Runtime. Apple notarises them, and the
+maintainer staples the ticket. yaz asks for one entitlement only: access to the
+microphone.
 
-Builds on the [releases page](https://github.com/mikeowski/yaz/releases) are
-signed with a Developer ID Application certificate under the Hardened Runtime,
-notarised by Apple and stapled — so the DMG opens with no warning and no
-right-click → Open. The only entitlement requested is microphone access.
-
-Releases are cut by the maintainer, and only by the maintainer: it takes a
-private signing key and notarisation credentials that exist in a Keychain and
-never in this repository. A build produced by anyone else carries a different
-signing identity, which is exactly what the check below detects.
+Only the maintainer can make a release. A release needs a private signing key
+and notarisation credentials. These are in a Keychain, and they are not in this
+repository. A build from a different person has a different signing identity.
+This command finds that condition:
 
 ```sh
 codesign -dvv /Applications/yaz.app 2>&1 | grep Authority
 # Authority=Developer ID Application: BURAK MIKE (XMCHPUCJS2)
 ```
 
-[SECURITY.md](SECURITY.md) has the full verification steps and what is
-deliberately *not* requested. The release procedure itself lives in
-[CONTRIBUTING.md](CONTRIBUTING.md#releasing).
+[SECURITY.md](SECURITY.md) gives the full examination steps. It also lists the
+entitlements that yaz does not request. [CONTRIBUTING.md](CONTRIBUTING.md#releasing)
+gives the release procedure.
 
-## Models — downloaded, not bundled
+## Models
 
-`yaz.app` is 14 MB; `whisper large-v3-turbo` is 1.6 GB. Bundling the weights
-would make the app a hundred times larger and pin everyone to one checkpoint,
-so the first run fetches them **automatically, with progress** — the menu bar
-shows `downloading — 412 MB of 1.6 GB (26%)`.
+`yaz.app` is 14 MB. The `whisper large-v3-turbo` model is 1.6 GB. yaz does not
+include the model, for two reasons. A model in the bundle makes the application
+100 times larger. It also keeps all users on one version of the model.
+
+Therefore yaz downloads the model at the first use. The menu bar shows the
+progress, for example `downloading — 412 MB of 1.6 GB (26%)`.
 
 ```sh
-yaz models download          # fetch and compile ahead of time
-yaz models list              # what is on disk
+yaz models download          # download and compile the model first
+yaz models list              # show the models on the disk
 ```
 
-Weights land in `~/Documents/huggingface` (WhisperKit's choice, not ours). If
-iCloud Documents sync is on they will be uploaded — `yaz doctor` says so.
+WhisperKit puts the model in `~/Documents/huggingface`. If iCloud Documents
+sync is on, iCloud uploads the model. `yaz doctor` reports this condition.
 
-Models carry their own licences; see
+Each model has its own licence. Refer to
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Configuration
 
-`~/.config/yaz/config.json` — optional, and CLI flags win over it. The settings
-window writes this same file, so it stays hand-editable.
+The configuration file is `~/.config/yaz/config.json`. The file is optional. A
+CLI flag has a higher priority than the file. The settings window writes the
+same file. Therefore you can also edit the file manually.
 
 ```json
 {
@@ -299,12 +329,13 @@ window writes this same file, so it stays hand-editable.
 }
 ```
 
-`on_transcript` runs a shell command with the transcript as its only argument.
+`on_transcript` runs a shell command. The command receives the transcript as
+its only argument.
 
 ## CLI
 
 ```sh
-yaz                                    # daemon (default)
+yaz                                    # the daemon (the default command)
   --hotkey fn|right-option|right-command|right-control|right-shift
   --inject-mode paste|type
   --language tr
@@ -312,60 +343,61 @@ yaz                                    # daemon (default)
 
 yaz doctor [--request]                 # permissions, model, settings
 yaz logs [--follow]                    # ~/Library/Logs/yaz.log
-yaz reset-permissions                  # clear stale permission records
+yaz reset-permissions                  # remove the old permission records
 yaz history [--search <text>] [--json] [--clear]
-yaz settings [--history]               # settings or history window
-yaz preview                            # try the recording indicator, no mic needed
+yaz settings [--history]               # the settings window or the history window
+yaz preview                            # show the indicator, without a microphone
 yaz models list
 yaz models download [--force]
 yaz install --launch-at-login | --uninstall | --status
 
-yaz vocab test "<text>"                # try term repair, see the scores
-yaz vocab refine --mode llm "<text>"   # try post-processing
-yaz vocab explain "<term>" "<heard>"   # compare phonetic keys
+yaz vocab test "<text>"                # test term repair and show the scores
+yaz vocab refine --mode llm "<text>"   # test post-processing
+yaz vocab explain "<term>" "<heard>"   # compare the phonetic keys
 
-yaz transcribe <file...>               # audio → text, with latency
+yaz transcribe <file...>               # audio to text, with the latency
   --engine-name whisper|parakeet
   --whisper-model large-v3-turbo|large-v3
   --language tr
   --vocabulary --refine off|fillers|llm
-  --strict                             # enforce the quality gates
+  --strict                             # apply the quality gates
   --repeat-count 3 --max-seconds 3600
 ```
 
-## Measured on an M4 Pro (24 GB, macOS 26.5)
+## Measurements on an M4 Pro (24 GB, macOS 26.5)
 
-Reproducible against the fixed audio in `fixtures/`.
+These measurements are repeatable. Use the audio files in `fixtures/`.
 
 | | whisper large-v3-turbo |
 |---|---|
-| First model load (Core ML compile) | ~115–210 s, once |
-| Every later launch | ~6.5–7 s |
-| 5.6 s of speech → text | **506 ms** (RTF 0.091) |
-| 12.1 s of speech → text | **855 ms** (RTF 0.071) |
-| Resident memory | ~210–260 MB |
+| First model load (Core ML compile) | 115 s to 210 s, one time |
+| Each subsequent start | 6.5 s to 7 s |
+| 5.6 s of speech to text | **506 ms** (RTF 0.091) |
+| 12.1 s of speech to text | **855 ms** (RTF 0.071) |
+| Resident memory | 210 MB to 260 MB |
 
 ## Development
 
 ```sh
 swift build
-swift test              # ~1 s, offline, no microphone
-./scripts/bundle.sh     # dist/yaz.app
+swift test              # 262 tests, approximately 1 s, no microphone
+./scripts/bundle.sh     # makes dist/yaz.app
 ```
 
-262 tests. See [CONTRIBUTING.md](CONTRIBUTING.md) for the parts that are easy
-to break, and [docs/architecture.md](docs/architecture.md) for why things are
-the way they are — including the failures that shaped them.
+Refer to [CONTRIBUTING.md](CONTRIBUTING.md) for the parts that break easily.
+Refer to [docs/architecture.md](docs/architecture.md) for the reasons for each
+decision, and for the failures that caused them.
 
 ## Stack
 
-- **Swift 6.2** — one SPM executable target, no `.app` bundle required
-- **WhisperKit** — Whisper on Core ML / ANE (default engine)
-- **FluidAudio** — Parakeet TDT on Core ML / ANE (optional, no Turkish)
-- **FoundationModels** — macOS 26 on-device LLM for cleanup (no download)
+- **Swift 6.2** — one SPM executable target
+- **WhisperKit** — Whisper on Core ML and the ANE (the default engine)
+- **FluidAudio** — Parakeet TDT on Core ML and the ANE (optional, no Turkish)
+- **FoundationModels** — the on-device model of macOS 26 (no download)
 - **AVAudioEngine**, **CGEventTap**, **AppKit**, **SwiftUI**
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). Dependencies and model weights carry their own
-terms: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+MIT. Refer to [LICENSE](LICENSE). The dependencies and the model files have
+their own conditions. Refer to
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
