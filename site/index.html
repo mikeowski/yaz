@@ -53,6 +53,7 @@
       </a>
       <nav aria-label="Primary">
         <a href="#features">Features</a>
+        <a href="#learns">Learns</a>
         <a href="#developers">For developers</a>
         <a href="#questions">Questions</a>
         <a class="nav-download" href="#download">Download</a>
@@ -142,9 +143,49 @@
         </article>
 
         <article class="feature">
+          <h3>Hold, or tap twice</h3>
+          <p>Hold the key for a sentence. For a long thought, tap it twice: yaz keeps listening with the key up until the next press. Live text shows the words in the pill as you speak.</p>
+        </article>
+
+        <article class="feature">
+          <h3>Your microphone, your last words</h3>
+          <p>Pick the microphone from the menu, or follow the system's. Pasted into the wrong window? <b>Paste Last Dictation</b> puts it where the cursor is now.</p>
+        </article>
+
+        <article class="feature">
+          <h3>Turkish and German</h3>
+          <p>Term repair runs on Turkish and German, each guarded by its own list of everyday words. Without the German list, 6 of 30 ordinary sentences changed (<i>Morgen</i> became <i>merge</i>); with it, none, and none of 38 held-out sentences either.</p>
+        </article>
+
+        <article class="feature">
           <h3>On your Mac</h3>
           <p>Whisper large-v3-turbo on the Neural Engine. The history keeps text only, never audio. No account, no analytics.</p>
         </article>
+      </div>
+    </section>
+
+    <section class="section section-learns" id="learns" aria-labelledby="learns-title">
+      <div class="section-head">
+        <h2 id="learns-title">Gets better as you use it</h2>
+        <p>When you fix a word after a dictation, yaz notices. A fix you make twice becomes a rule, but only if a fixed test set says it does no harm. The idea comes from Karpathy's <a href="https://github.com/karpathy/autoresearch">autoresearch</a>: one number, keep or revert, and nothing being tuned may touch the test.</p>
+      </div>
+
+      <div class="learns-grid">
+        <ol class="loop" aria-label="How a fix becomes a rule">
+          <li><b>You fix it.</b> About 12&nbsp;s after a paste, yaz reads the field back, if you are still in it. Secure fields never.</li>
+          <li><b>It is noted.</b> The replaced words must sound alike and must not be ordinary Turkish: an edit of meaning is not a mishearing.</li>
+          <li><b>Twice, it is tested.</b> 7 measured manglings and 60 everyday sentences, scored as false matches&nbsp;×&nbsp;3 + misses. The rule stays only if the score does not rise.</li>
+          <li><b>Undo is instant.</b> Put back a word yaz changed, and that replacement is blocked at once.</li>
+        </ol>
+
+        <div class="ledger" role="table" aria-label="Example of yaz learned">
+          <div class="ledger-head" role="row"><span role="columnheader">yaz learned</span></div>
+          <div class="ledger-row is-kept" role="row"><span role="cell">Vörsel → Vercel</span><span role="cell" class="badge">kept · score 0</span></div>
+          <div class="ledger-row is-blocked" role="row"><span role="cell">doktor ↛ Docker</span><span role="cell" class="badge">blocked · you undid it</span></div>
+          <div class="ledger-row is-rejected" role="row"><span role="cell">doktor → Docker</span><span role="cell" class="badge">rejected · failed the test</span></div>
+          <div class="ledger-row" role="row"><span role="cell">Körsır → Cursor</span><span role="cell" class="badge">seen once</span></div>
+          <p class="ledger-foot"><code>yaz learned</code> lists them, <code>--forget</code> removes one. Rules live in <code>learned.json</code>, never in the cloud.</p>
+        </div>
       </div>
     </section>
 
@@ -190,8 +231,23 @@
           <p>The matcher is deterministic, so every correction can be explained.</p>
           <pre class="code" tabindex="0" aria-label="Example commands"><code>yaz vocab test "Sılacık üzerinden yaz"
 yaz vocab explain "Slack" "Sılacık"
-yaz transcribe --strict --vocabulary fixtures/t2.wav
+<span class="c"># score 0 (false matches 0/120, misses 0/7)</span>
+yaz eval
+yaz projects --test "camel case user name"
 yaz doctor</code></pre>
+        </div>
+
+        <div class="dev-block dev-block-wide">
+          <h3>Code mode</h3>
+          <p>In a terminal, an editor or a coding agent, yaz knows your project's names and speaks code. Point <code>projects</code> at your folders; nothing else changes in Slack or Mail.</p>
+          <table class="repairs repairs-code">
+            <thead><tr><th scope="col">You say</th><th scope="col">yaz writes</th></tr></thead>
+            <tbody>
+              <tr><td>get user by id dönüyor</td><td>getUserById dönüyor</td></tr>
+              <tr><td>snake case retry count</td><td>retry_count</td></tr>
+              <tr><td>auth service dosyasına bak</td><td>@Sources/AuthService.swift dosyasına bak</td></tr>
+            </tbody>
+          </table>
         </div>
 
         <div class="dev-block">
@@ -201,7 +257,7 @@ yaz doctor</code></pre>
 
         <div class="dev-block">
           <h3>Any language Whisper speaks</h3>
-          <p>Set <code>language</code> to <code>en</code>, <code>de</code> or any Whisper code. Term repair and filler removal stay Turkish only: their guards are Turkish word lists, and in another language they would protect nothing.</p>
+          <p>Set <code>language</code> to <code>en</code>, <code>de</code> or any Whisper code. Term repair runs where a word list guards it, Turkish and German; filler removal is Turkish only. Without a list the guard would protect nothing.</p>
         </div>
       </div>
     </section>
@@ -269,7 +325,11 @@ curl -s https://yaz.mike4.dev/downloads/latest.json</code></pre>
         </details>
         <details>
           <summary>Does it work in English?</summary>
-          <p>Yes: set <code>language</code> to <code>en</code>. Transcription works in every language Whisper supports. Term repair and filler removal only run on Turkish, by design.</p>
+          <p>Yes: set <code>language</code> to <code>en</code>. Transcription works in every language Whisper supports. Term repair runs on Turkish and German, filler removal on Turkish, by design.</p>
+        </details>
+        <details>
+          <summary>What does learning read, and can I turn it off?</summary>
+          <p>Once, about 12&nbsp;seconds after a paste, the text of the field you dictated into, through Accessibility, and only if that app is still in front. Password fields are never read. Nothing is sent anywhere; only the learned word pairs are saved. Set <code>"learn": false</code> to turn it off, <code>yaz learned --clear</code> to forget everything.</p>
         </details>
         <details>
           <summary>How do I uninstall it?</summary>
