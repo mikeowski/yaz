@@ -39,14 +39,15 @@ struct ProjectIndexTests {
     func identifiers() {
         let source = """
             final class UserService { func getUserById(_ id: Int) {} }
-            let user_id = 3; let isOk = true; var session = Session()
+            let user_id = 3; let a_b = 1; let isOk = true; var session = Session()
             """
         let found = Set(ProjectIndex.identifiers(in: source))
         #expect(found.contains("UserService"))
         #expect(found.contains("getUserById"))
         #expect(!found.contains("Session"))   // a single word
         #expect(!found.contains("isOk"))      // too short
-        #expect(!found.contains("user_id"))   // too short
+        #expect(found.contains("user_id"))    // snake case counts too
+        #expect(!found.contains("a_b"))
     }
 
     @Test("scans a folder, skips build output, ranks by frequency")
