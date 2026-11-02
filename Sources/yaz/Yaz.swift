@@ -9,7 +9,7 @@ struct Yaz: ParsableCommand {
         commandName: "yaz",
         abstract: "On-device dictation for macOS. Hold the key, speak, release — the text lands at your cursor.",
         version: AppEnvironment.version,
-        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self, Microphones.self, Projects.self, Eval.self, Learned.self, Numbers.self, Mcp.self],
+        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self, Microphones.self, Projects.self, Eval.self, Learned.self, Numbers.self, Mcp.self, Apps.self],
         defaultSubcommand: Run.self
     )
 }

@@ -78,6 +78,9 @@ struct TranscribeOptions: Sendable {
     /// Abandon a transcription that hangs. A wedged Core ML call must not take
     /// the daemon with it.
     var timeout: Duration = .seconds(120)
+    /// The language for this recording, over the engine's own: a per-app
+    /// profile (`AppProfile.language`). Whisper only.
+    var language: String? = nil
 
     /// Show whatever the model produced, however bad.
     static let raw = TranscribeOptions(

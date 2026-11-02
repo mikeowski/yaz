@@ -261,6 +261,26 @@ private struct SettingsView: View {
                 }
             }
 
+            Section("Apps") {
+                if model.config.apps.isEmpty {
+                    Text("Settings can differ per app: add them under \"apps\" in config.json. Run yaz apps --running for bundle ids.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.config.apps.keys.sorted(), id: \.self) { id in
+                        HStack {
+                            Text(id)
+                            Spacer()
+                            Text(model.config.apps[id].map { profile in
+                                profile.json.keys.sorted().joined(separator: ", ")
+                            } ?? "")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
             Section("Indicator and history") {
                 Toggle("Show the pill while recording", isOn: $model.config.overlay)
                 Toggle("Show in the menu bar", isOn: $model.config.menuBar)

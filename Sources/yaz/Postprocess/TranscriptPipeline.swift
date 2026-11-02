@@ -32,6 +32,8 @@ struct TranscriptPipeline: Sendable {
     /// Line breaks may be inserted: false when text is typed key by key,
     /// where a line break is a Return.
     let lineBreaks: Bool
+    /// How text is finished (`TextStyle`), outside code.
+    let style: TextStyle
 
     struct Output: Sendable {
         let text: String
@@ -58,6 +60,7 @@ struct TranscriptPipeline: Sendable {
         self.numbers = config.numbers
         self.voiceCommands = config.voiceCommands
         self.lineBreaks = config.injectMode == .paste
+        self.style = config.style
         self.codeVocabulary = Vocabulary(
             terms: terms + project.vocabularyTerms(), blocked: learned.blocks,
             language: config.language)
@@ -76,6 +79,7 @@ struct TranscriptPipeline: Sendable {
         self.numbers = numbers
         self.voiceCommands = voiceCommands
         self.lineBreaks = true
+        self.style = .standard
         self.vocabulary = vocabulary
         self.refiner = refiner
         self.language = language
@@ -109,7 +113,7 @@ struct TranscriptPipeline: Sendable {
             let digits = writeNumbers(formatted.text)
             let commanded = runCommands(digits.text, code: code)
             return Output(
-                text: commanded.text,
+                text: code ? commanded.text : style.apply(commanded.text),
                 corrections: corrected.corrections,
                 codeChanges: formatted.changes,
                 numberChanges: digits.changes,
@@ -123,7 +127,7 @@ struct TranscriptPipeline: Sendable {
         let digits = writeNumbers(result.text)
         let commanded = runCommands(digits.text, code: code)
         return Output(
-            text: commanded.text,
+            text: code ? commanded.text : style.apply(commanded.text),
             corrections: corrected.corrections,
             codeChanges: formatted.changes,
             numberChanges: digits.changes,

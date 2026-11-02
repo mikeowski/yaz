@@ -10,6 +10,11 @@ Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
 
 ### Added
 
+- **Per-app settings.** Under `apps` in the config, by bundle id: `language`,
+  `refine`, `numbers`, `voice_commands`, `screen_context`, `code` and the new
+  `style` (`chat` drops a one-sentence message's full stop). Turkish in
+  Slack, English in GitHub, the language model only in Mail. `yaz apps`
+  lists them and the running apps' ids.
 - **`yaz mcp`, for coding agents.** A Model Context Protocol server over
   stdio. `wait_for_dictation` lets Claude Code, Cursor or Codex ask you
   something you answer by voice: the dictation goes to the agent instead of

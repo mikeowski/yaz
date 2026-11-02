@@ -532,6 +532,26 @@ same file. Therefore you can also edit the file manually.
 `on_transcript` runs a shell command. The command receives the transcript as
 its only argument.
 
+### Per-app settings
+
+Slack is not Mail. Settings can differ per app, by bundle identifier, under
+`apps`:
+
+```json
+"apps": {
+  "com.tinyspeck.slackmacgap": { "style": "chat", "refine": "off" },
+  "com.apple.mail":            { "refine": "llm" },
+  "com.github.GitHubClient":   { "language": "en", "code": true }
+}
+```
+
+Keys: `language` (Whisper decodes that recording in it), `refine`,
+`numbers`, `voice_commands`, `screen_context`, `code` (force code mode on or
+off) and `style`. `chat` drops the final full stop of a one-sentence
+message; questions and exclamations keep theirs. Absent keys come from the
+main settings. `yaz apps --running` lists the bundle ids of running apps.
+`yaz apps --app <id> "<text>"` shows how a sentence comes out there.
+
 ## CLI
 
 ```sh
@@ -558,6 +578,8 @@ yaz eval [--language de] [--learned] [--quiet]   # score term repair over the fi
 yaz eval --personal [--threshold 0.8]  # the same score over your own fixes and kept dictations
 yaz learned [--forget <term>] [--clear]
 yaz numbers "<text>"                   # spoken Turkish numbers as digits
+yaz apps [--running] [--app <id> "<text>"]   # per-app settings
+yaz mcp [--print-config]               # the MCP server for coding agents
 
 yaz transcribe <file...>               # audio to text, with the latency
   --engine-name whisper|parakeet
