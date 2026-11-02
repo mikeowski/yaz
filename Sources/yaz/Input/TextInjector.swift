@@ -37,7 +37,9 @@ enum TextInjector {
     /// Insert `text` at the current cursor position.
     @MainActor
     static func inject(_ text: String, mode: Mode = .paste) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Spaces only: a line break at either end is a "yeni paragraf"
+        // (`VoiceCommands`); Whisper's own output never has one.
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
 
         switch mode {

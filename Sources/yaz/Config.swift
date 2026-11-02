@@ -69,6 +69,9 @@ struct Config: Sendable, Equatable {
     /// Add the names visible in the front window to the vocabulary for each
     /// dictation (`ScreenContext`). Read through Accessibility, never saved.
     var screenContext: Bool = true
+    /// Spoken commands: "yeni satır", "soru işareti", "geri al"
+    /// (`VoiceCommands`).
+    var voiceCommands: Bool = true
 
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/yaz/config.json")
@@ -144,6 +147,7 @@ struct Config: Sendable, Equatable {
         if let value = json["learn"] as? Bool { learn = value }
         if let value = json["numbers"] as? Bool { numbers = value }
         if let value = json["screen_context"] as? Bool { screenContext = value }
+        if let value = json["voice_commands"] as? Bool { voiceCommands = value }
         if let raw = json["microphone"] {
             if let uid = raw as? String, !uid.isEmpty { microphone = uid }
             else if raw is NSNull { microphone = nil }
@@ -233,6 +237,7 @@ struct Config: Sendable, Equatable {
             "learn": learn,
             "numbers": numbers,
             "screen_context": screenContext,
+            "voice_commands": voiceCommands,
         ]
         if let microphone { json["microphone"] = microphone }
         if !projects.isEmpty { json["projects"] = projects }
@@ -285,7 +290,8 @@ struct Config: Sendable, Equatable {
           "live_text": false,
           "learn": true,
           "numbers": true,
-          "screen_context": true
+          "screen_context": true,
+          "voice_commands": true
         }
 
         """

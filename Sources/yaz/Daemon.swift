@@ -95,6 +95,7 @@ final class Daemon {
         menuBar?.onFixPermission = { [weak self] in self?.presentPermissionAlert() }
         menuBar?.onUseFallbackHotkey = { [weak self] in self?.switchToFallbackHotkey() }
         menuBar?.onPasteLast = { [weak self] in self?.pasteLast() }
+        menuBar?.onUndoLast = { [weak self] in self?.undoLast() }
 
         // Sparkle runs only in the signed .app; `Updates` decides.
         if Updates.canUpdate {
@@ -256,6 +257,23 @@ final class Daemon {
             let lexicon = Lexicon.forLanguage(language) ?? .turkish
             let candidates = ScreenContext.terms(in: text, lexicon: lexicon, excluding: known)
             return ScreenContext.vetted(candidates, language: language)
+        }
+    }
+
+    /// Remove the last dictation from the focused field, through
+    /// Accessibility, only if it still ends right at the cursor.
+    private func undoLast() {
+        guard let lastText else {
+            menuBar?.note("nothing to remove")
+            return
+        }
+        if FieldReader.deleteBeforeCaret(lastText) {
+            log("↶ removed the last dictation")
+            menuBar?.note("last dictation removed")
+            self.lastText = nil
+        } else {
+            log("○ the last dictation is no longer right before the cursor, nothing removed")
+            menuBar?.note("nothing removed: the text has changed")
         }
     }
 
@@ -619,6 +637,17 @@ final class Daemon {
             // Into an editor, a terminal or a coding agent: project names,
             // casing commands and file mentions apply. Read now — the cursor
             // is still in that app, the pill never takes focus.
+            // "geri al" on its own is an instruction to yaz, not text.
+            if config.voiceCommands, VoiceCommands.isSupported(language: config.language),
+               let control = VoiceCommands.control(output.text) {
+                screenTerms?.cancel()
+                screenTerms = nil
+                switch control {
+                case .undoLast: undoLast()
+                }
+                return
+            }
+
             let code = CodeContext.isCode(
                 bundleID: AppEnvironment.frontmostApp()?.bundleID, extra: config.codeApps)
             if config.refine == .llm && !code { setIndicator(.refining) }
@@ -633,6 +662,9 @@ final class Daemon {
             }
             for change in processed.numberChanges {
                 log("  number: \(change.from) → \(change.to)")
+            }
+            for command in processed.commands {
+                log("  command: \(command)")
             }
             for correction in processed.corrections {
                 log("  vocabulary: \(correction.from) → \(correction.to)")
