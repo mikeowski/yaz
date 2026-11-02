@@ -24,14 +24,14 @@ enum FillerFilter {
     /// Inert in the common case, wrong in principle, and never the job the
     /// caller thinks it is doing.
     static func isSupported(language: String) -> Bool {
-        language.lowercased().hasPrefix(lexiconLanguage)
+        !(LanguagePack.forLanguage(language)?.hesitations.isEmpty ?? true)
     }
 
     /// Pure hesitation sounds. Every entry is a vowel or nasal run that
     /// carries no lexical meaning in Turkish.
     ///
     /// `ya` and `ha` are excluded on purpose: both are ordinary words.
-    private static let hesitations: Set<String> = [
+    static let turkishHesitations: Set<String> = [
         "ı", "ıı", "ııı", "ıııı",
         "e", "ee", "eee", "eeee",
         "a", "aa", "aaa", "aaaa",
@@ -51,6 +51,13 @@ enum FillerFilter {
     /// like `o` the pronoun, so it is kept whenever anything suggests it is
     /// being used as a word.
     static func strip(_ text: String) -> String {
+        strip(text, hesitations: turkishHesitations, fold: PhoneticKey.lowercasedTurkish)
+    }
+
+    /// The same, with another language's hesitations (`LanguagePack`).
+    static func strip(
+        _ text: String, hesitations: Set<String>, fold: (String) -> String
+    ) -> String {
         guard !text.isEmpty else { return text }
 
         let tokens = Tokenizer.tokenize(text)
@@ -61,13 +68,16 @@ enum FillerFilter {
         var removals: [Range<String.Index>] = []
         for (index, token) in tokens.enumerated() {
             guard token.suffix.isEmpty else { continue }
-            let folded = PhoneticKey.lowercasedTurkish(token.stem)
+            let folded = fold(token.stem)
             guard hesitations.contains(folded) else { continue }
 
             // A one-letter vowel is far more likely to be the pronoun `o` or
             // the conjunction `a` than a hesitation, unless it repeats or the
             // surrounding text marks it off.
-            if folded.count == 1 && !isClearlyHesitation(at: index, in: tokens) { continue }
+            if folded.count == 1
+                && !isClearlyHesitation(at: index, in: tokens, hesitations: hesitations, fold: fold) {
+                continue
+            }
 
             removals.append(token.range)
         }
@@ -83,10 +93,12 @@ enum FillerFilter {
 
     /// True when a one-letter token sits next to another hesitation, which is
     /// what a stumble actually looks like: "ı ı yarın".
-    private static func isClearlyHesitation(at index: Int, in tokens: [Tokenizer.Token]) -> Bool {
+    private static func isClearlyHesitation(
+        at index: Int, in tokens: [Tokenizer.Token], hesitations: Set<String>, fold: (String) -> String
+    ) -> Bool {
         let neighbours = [index - 1, index + 1].filter { $0 >= 0 && $0 < tokens.count }
         return neighbours.contains { neighbour in
-            let folded = PhoneticKey.lowercasedTurkish(tokens[neighbour].stem)
+            let folded = fold(tokens[neighbour].stem)
             return hesitations.contains(folded) && tokens[neighbour].suffix.isEmpty
         }
     }

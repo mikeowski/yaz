@@ -140,14 +140,17 @@ struct TranscriptPipeline: Sendable {
         guard voiceCommands, VoiceCommands.isSupported(language: language) else {
             return VoiceCommands.Result(text: text, commands: [])
         }
-        return VoiceCommands.apply(text, code: code || !lineBreaks)
+        guard let set = LanguagePack.forLanguage(language)?.commands else {
+            return VoiceCommands.Result(text: text, commands: [])
+        }
+        return VoiceCommands.apply(text, set: set, code: code || !lineBreaks)
     }
 
     private func writeNumbers(_ text: String) -> TurkishNumbers.Result {
-        guard numbers, TurkishNumbers.isSupported(language: language) else {
+        guard numbers, let write = LanguagePack.forLanguage(language)?.numbers else {
             return TurkishNumbers.Result(text: text, changes: [])
         }
-        return TurkishNumbers.format(text)
+        return write(text)
     }
 
     /// The first canonical term that the vocabulary inserted but the refined
