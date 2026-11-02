@@ -75,6 +75,11 @@ case "$AUTHORITY" in
     *) die "signed with '$AUTHORITY' — a release needs Developer ID (see CONTRIBUTING.md)" ;;
 esac
 
+# The icon must be the compiled Icon Composer asset: the drawn fallback has
+# no Dark, Clear or Tinted appearance.
+[ -f "$APP/Contents/Resources/Assets.car" ] \
+    || die "the bundle has no Assets.car — actool did not compile Resources/AppIcon.icon (Xcode 26 needed)"
+
 # A release that cannot update itself strands everyone who installs it.
 "$APP/Contents/MacOS/yaz" updates --require | sed 's/^/  /' \
     || die "this build cannot update itself — see the lines above"
