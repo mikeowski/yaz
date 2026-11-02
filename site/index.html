@@ -2,19 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>yaz: push-to-talk dictation for the Mac that speaks Turkish</title>
-  <meta name="description" content="Hold a key, speak, let go: yaz writes the text at your cursor. Whisper on the Neural Engine, Turkish by default, with the English technical terms in your speech repaired. On your Mac, nothing uploaded. macOS 26, Apple silicon.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>yaz: say it in Turkish, it's written right</title>
+  <meta name="description" content="Push-to-talk dictation for the Mac that hears Turkish. English terms spelled right, numbers written as digits, code in your editor, and it learns from every fix. On-device, nothing uploaded. macOS 26, Apple silicon.">
   <link rel="canonical" href="https://yaz.mike4.dev/">
-  <meta name="theme-color" content="#FAF6F2" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#110D0B" media="(prefers-color-scheme: dark)">
-  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0B0807">
+  <meta name="color-scheme" content="dark">
 
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="yaz">
   <meta property="og:url" content="https://yaz.mike4.dev/">
-  <meta property="og:title" content="yaz: hold the key, speak, it's written">
-  <meta property="og:description" content="Push-to-talk dictation for the Mac. Turkish by default, English terms repaired, nothing uploaded.">
+  <meta property="og:title" content="yaz: say it in Turkish, it's written right">
+  <meta property="og:description" content="Push-to-talk dictation for the Mac. Turkish by default, English terms and numbers right, learns from your fixes, nothing uploaded.">
   <meta property="og:image" content="https://yaz.mike4.dev/img/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -25,6 +24,7 @@
   <link rel="icon" href="favicon.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="preload" href="fonts/archivo-latin-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/instrument-serif-italic-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
 
   <script type="application/ld+json">
@@ -38,350 +38,266 @@
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "macOS 26 or later",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    "description": "Push-to-talk dictation for the Mac. Whisper on the Neural Engine, Turkish by default, with English technical terms repaired from your own vocabulary. Runs on your Mac."
+    "description": "Push-to-talk dictation for the Mac. Whisper on the Neural Engine, Turkish by default, English terms and numbers written right, and it learns from your fixes. Runs on your Mac."
   }
   </script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
+  <div class="grain" aria-hidden="true"></div>
 
-  <header class="nav">
-    <div class="nav-inner">
-      <a class="brand" href="#top" aria-label="yaz, back to top">
-        <picture><source srcset="img/icon-64-dark.webp" media="(prefers-color-scheme: dark)"><img class="brand-icon" src="img/icon-64.webp" width="30" height="30" alt=""></picture>
-        yaz
-      </a>
-      <nav aria-label="Primary">
-        <a href="#features">Features</a>
-        <a href="#learns">Learns</a>
-        <a href="#developers">For developers</a>
-        <a href="#questions">Questions</a>
-        <a class="nav-download" href="#download">Download</a>
-      </nav>
-    </div>
+  <header class="nav appear appear--drop d0">
+    <a class="brand" href="#top" aria-label="yaz, back to top">
+      <img class="brand-icon" src="img/icon-64-dark.webp" width="28" height="28" alt="">
+      <span>yaz</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#fixes">What it fixes</a>
+      <a href="#learns">Learns</a>
+      <a href="#agents">Agents</a>
+      <a href="#questions">FAQ</a>
+    </nav>
+    <a class="pill pill--solid pill--small" data-download href="/download">Download</a>
   </header>
 
   <main id="main">
+    <!-- 1 · Hero: the voice becomes text -->
     <section class="hero" id="top" aria-labelledby="hero-title">
-      <div class="hero-copy">
-        <p class="eyebrow">Dictation for macOS</p>
-        <h1 id="hero-title" class="hero-title"><span class="line">Hold the key.</span> <span class="line">Speak.</span> <span class="line accent">It's written.</span></h1>
-        <p class="hero-lede">yaz turns your speech into text at the cursor, in any app. Turkish by default, with the English terms a developer says in it spelled right. Whisper runs on your Mac's Neural Engine. Nothing is uploaded.</p>
-        <div class="hero-actions">
-          <a class="button-download" data-download href="/download">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Download for Mac
-          </a>
-          <ul class="facts" aria-label="Release">
+      <canvas class="voice" id="voice" aria-hidden="true"></canvas>
+      <div class="hero-glow" aria-hidden="true"></div>
+
+      <figure class="stage" aria-labelledby="stage-caption">
+        <p class="eyebrow appear appear--soft d1"><span class="dot" aria-hidden="true"></span>Push-to-talk dictation for macOS</p>
+        <p class="transcript appear appear--soft d2" id="transcript" aria-live="polite"><span class="transcript-hint">Hold <kbd>⌥</kbd> and watch what Whisper hears, then what yaz writes.</span></p>
+        <p class="stage-meta" id="stage-meta" aria-hidden="true">&nbsp;</p>
+        <button type="button" class="holdkey appear appear--pop d3" id="holdkey">
+          <span class="holdkey-dot" aria-hidden="true"></span>
+          <span class="holdkey-label" id="holdkey-label">Hold to speak</span>
+          <kbd>⌥</kbd>
+        </button>
+        <figcaption class="sr-only" id="stage-caption">A replay of a dictation: the raw transcript, then the same sentence after yaz repairs the terms and numbers.</figcaption>
+      </figure>
+
+      <div class="hero-foot">
+        <h1 class="hero-title" id="hero-title">
+          <span class="line"><span class="appear appear--mask d4">Say it in Turkish.</span></span>
+          <span class="line"><span class="appear appear--mask d5">It's <em>written</em> right.</span></span>
+        </h1>
+        <div class="hero-side">
+          <p class="lede appear appear--soft d6">yaz turns your speech into text at the cursor, in any app. English terms spelled right, numbers as digits, code in your editor, and it learns from every fix. Whisper runs on your Mac; nothing is uploaded.</p>
+          <div class="cta-row appear appear--btn d7">
+            <a class="pill pill--solid" data-download href="/download">
+              Download for Mac
+              <span class="pill-chip" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg></span>
+            </a>
+            <a class="link-arrow" href="#fixes">See what it fixes</a>
+          </div>
+          <ul class="facts appear appear--soft d8" aria-label="Release">
             <li data-version>Free and open source</li>
-            <li>macOS 26 or later</li>
+            <li>macOS 26</li>
             <li>Apple silicon</li>
           </ul>
         </div>
       </div>
-
-      <figure class="demo" id="demo" aria-labelledby="demo-caption">
-        <div class="window" aria-hidden="true">
-          <div class="window-bar"><i></i><i></i><i></i><span>#backend · Slack</span></div>
-          <div class="window-body">
-            <div class="msg"><b class="avatar">A</b><div><p class="msg-name">Ahmet <span>14:02</span></p><p>Deploy ne zaman? Pipeline kırmızı görünüyor.</p></div></div>
-            <div class="compose">
-              <p class="field" id="field"><span id="field-text"></span><span class="caret"></span></p>
-            </div>
-          </div>
-          <div class="pill" id="pill">
-            <span class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-            <span class="pill-label" id="pill-label">listening</span>
-          </div>
-        </div>
-
-        <div class="demo-controls">
-          <button type="button" class="holdkey" id="holdkey" aria-describedby="demo-caption">
-            <kbd>fn</kbd>
-            <span>Hold to dictate</span>
-          </button>
-          <figcaption id="demo-caption">A replay of a measured run: <code>fixtures/t2.wav</code>, transcribed in 506&nbsp;ms on an M4 Pro. Hold the key (or Option) to play it. A tap shorter than 0.35&nbsp;s is dropped, as in the app.</figcaption>
-        </div>
-        <ol class="log" id="log" aria-live="polite" aria-label="yaz log"></ol>
-      </figure>
     </section>
 
-    <section class="section" id="features" aria-labelledby="features-title">
-      <div class="section-head">
-        <h2 id="features-title">What it does</h2>
-        <p>yaz started from <a href="https://github.com/digimata/parrot">parrot</a>'s skeleton and grew into dictation built around how a Turkish-speaking developer talks: Turkish with English terms in it, numbers, code, and fixes that teach it.</p>
-      </div>
+    <!-- 2 · Manifesto, read at scroll pace -->
+    <section class="manifesto" aria-label="Why yaz">
+      <p class="label">01 — Why</p>
+      <p class="scroll-reveal" id="manifesto">Whisper hears Turkish well. What comes out wrong is everything around it: the <span class="hl">English terms</span>, the <span class="hl">numbers</span>, the <span class="hl">names on your screen</span>. yaz fixes those as you speak, and <span class="hl">learns from every fix</span> you make.</p>
+    </section>
 
-      <div class="features">
-        <article class="feature feature-wide">
-          <h3>English terms, spelled right</h3>
-          <p>Whisper writes plain Turkish well, but the English inside it comes out as Turkish phonetics. yaz repairs those words from your own vocabulary, deterministically, and keeps the Turkish suffix on them.</p>
-          <table class="repairs">
-            <thead><tr><th scope="col">Whisper heard</th><th scope="col">yaz writes</th><th scope="col">Score</th></tr></thead>
-            <tbody>
-              <tr><td>Sılacık</td><td>Slack</td><td>0.749</td></tr>
-              <tr><td>Puhrıkı Esti'de</td><td>pull request'de</td><td>0.832</td></tr>
-              <tr><td>C.I.P. eline</td><td>CI pipeline</td><td>0.799</td></tr>
-            </tbody>
-          </table>
-          <p class="note">It can only write words you put in the list, and a corpus of 30 ordinary Turkish sentences sets every threshold: none of them changes.</p>
+    <!-- 3 · What it fixes -->
+    <section class="section" id="fixes" aria-labelledby="fixes-title">
+      <header class="section-head reveal">
+        <p class="label">02 — What it fixes</p>
+        <h2 id="fixes-title">Four kinds of wrong, <em>made right</em>.</h2>
+      </header>
+
+      <div class="bento">
+        <article class="card card--7 reveal">
+          <p class="card-index">Terms</p>
+          <h3>English inside Turkish</h3>
+          <div class="diff">
+            <p class="diff-raw">Ahmet'e Sılacık üzerinden yaz, Puhrıkı Esti'de bekliyor.</p>
+            <p class="diff-fix">Ahmet'e <mark>Slack</mark> üzerinden yaz, <mark>pull request</mark>'de bekliyor.</p>
+          </div>
+          <p class="card-note">From your own vocabulary, with the Turkish suffix kept. It never writes a word you did not list.</p>
         </article>
 
-        <article class="feature feature-wide">
-          <h3>Numbers, the Turkish way</h3>
-          <p>Whisper spells a number out about as often as it writes digits. yaz writes them as Turkish text does: the suffix after an apostrophe, a dot for thousands, a comma for the decimal, 15.30 for the time.</p>
-          <table class="repairs repairs-code">
-            <thead><tr><th scope="col">Whisper heard</th><th scope="col">yaz writes</th></tr></thead>
-            <tbody>
-              <tr><td>saat on beş otuzda</td><td>saat 15.30'da</td></tr>
-              <tr><td>on beş bin dolar</td><td>15.000 dolar</td></tr>
-              <tr><td>yüzde elli</td><td>%50</td></tr>
-              <tr><td>iki buçukta</td><td>2,5'te</td></tr>
-            </tbody>
-          </table>
-          <p class="note"><i>Onu</i>, <i>altında</i>, <i>yedi</i>, <i>bin</i>, <i>yüzünü</i> and the article <i>bir</i> only look like numbers, so they stay words: 23 such sentences and 29 conversions are part of the test score.</p>
+        <article class="card card--5 reveal">
+          <p class="card-index">Numbers</p>
+          <h3>The Turkish way</h3>
+          <div class="diff">
+            <p class="diff-raw">saat on beş otuzda, yüzde elli</p>
+            <p class="diff-fix">saat <mark>15.30'da</mark>, <mark>%50</mark></p>
+          </div>
+          <p class="card-note"><i>Onu</i>, <i>altında</i>, <i>yedi</i> only look like numbers. They stay words.</p>
         </article>
 
-        <article class="feature">
-          <h3>Slack is not Mail</h3>
-          <p>Settings can differ per app: Turkish in Slack, English in GitHub, the language model only in Mail. A <code>chat</code> style drops the full stop at the end of a one-line message, as people write it. <code>yaz apps --running</code> finds the ids.</p>
+        <article class="card card--5 reveal">
+          <p class="card-index">Code</p>
+          <h3>In your editor</h3>
+          <div class="diff">
+            <p class="diff-raw">camel case user name, auth service dosyası</p>
+            <p class="diff-fix"><mark>userName</mark>, <mark>@Sources/AuthService.swift</mark> dosyası</p>
+          </div>
+          <p class="card-note">Your project's names and files, in terminals, editors and coding agents only.</p>
         </article>
 
-        <article class="feature">
-          <h3>Say it, or take it back</h3>
-          <p>End a sentence with <i>yeni satır</i>, <i>yeni paragraf</i> or <i>soru işareti</i> and yaz does it; <i>Yeni satır ekledim</i> stays a sentence. Say just <i>geri al</i> and the last dictation goes, but only if it still ends at your cursor.</p>
-        </article>
-
-        <article class="feature">
-          <h3>Knows what you are looking at</h3>
-          <p>Press the key in a pull request or a Slack thread and yaz reads the names on screen, <code>PaymentGateway</code>, <code>CORS</code>, <i>Vercel</i>, for that one dictation. Your own list still comes first; a screen word needs a closer match and must leave every everyday test sentence alone. Nothing is saved.</p>
-        </article>
-
-        <article class="feature">
-          <h3>Wrong text is worse than none</h3>
-          <p>A tap shorter than 0.35&nbsp;s or a silent recording never reaches the model. After it, the decoder's own signals catch invented text and repeat loops. An optional voice detector drops a fan, typing or a cough.</p>
-        </article>
-
-        <article class="feature">
-          <h3>Lands at your cursor</h3>
-          <p>yaz pastes instead of typing key by key, so Slack, Notion, VS Code and Cursor get the whole sentence. Whatever was on your clipboard comes back, unless you copied something newer.</p>
-        </article>
-
-        <article class="feature">
-          <h3>Clean, if you want</h3>
-          <p>Turkish filler sounds go in 1&nbsp;ms. Apple's on-device model can also fix punctuation; yaz rejects its output if it summarises, adds or drops content.</p>
-        </article>
-
-        <article class="feature">
-          <h3>Hold, or tap twice</h3>
-          <p>Hold the key for a sentence. For a long thought, tap it twice: yaz keeps listening with the key up until the next press. Live text shows the words in the pill as you speak.</p>
-        </article>
-
-        <article class="feature">
-          <h3>Your microphone, your last words</h3>
-          <p>Pick the microphone from the menu, or follow the system's. Pasted into the wrong window? <b>Paste Last Dictation</b> puts it where the cursor is now.</p>
-        </article>
-
-        <article class="feature">
-          <h3>Turkish and German</h3>
-          <p>Term repair runs on Turkish and German, each guarded by its own list of everyday words. Without the German list, 6 of 30 ordinary sentences changed (<i>Morgen</i> became <i>merge</i>); with it, none, and none of 38 held-out sentences either.</p>
-        </article>
-
-        <article class="feature">
-          <h3>On your Mac</h3>
-          <p>Whisper large-v3-turbo on the Neural Engine. The history keeps text only, never audio. No account, no analytics.</p>
+        <article class="card card--7 reveal">
+          <p class="card-index">Commands</p>
+          <h3>Said, not typed</h3>
+          <div class="diff">
+            <p class="diff-raw">Geliyor musun soru işareti</p>
+            <p class="diff-fix">Geliyor musun<mark>?</mark></p>
+          </div>
+          <p class="card-note">"Yeni satır" at the end of a sentence; "Yeni satır ekledim" stays a sentence. Say just <i>geri al</i> and the last dictation goes.</p>
         </article>
       </div>
     </section>
 
-    <section class="section section-learns" id="learns" aria-labelledby="learns-title">
-      <div class="section-head">
-        <h2 id="learns-title">Gets better as you use it</h2>
-        <p>When you fix a word after a dictation, yaz notices. A fix you make twice becomes a rule, but only if a fixed test set says it does no harm. The idea comes from Karpathy's <a href="https://github.com/karpathy/autoresearch">autoresearch</a>: one number, keep or revert, and nothing being tuned may touch the test.</p>
-      </div>
-
+    <!-- 4 · Learning -->
+    <section class="section learns" id="learns" aria-labelledby="learns-title">
       <div class="learns-grid">
-        <ol class="loop" aria-label="How a fix becomes a rule">
-          <li><b>You fix it.</b> yaz follows the field for up to a minute while you edit, so a word you delete and retype counts, even if you press Return right after. Secure fields never.</li>
-          <li><b>It is noted.</b> The replaced words must sound alike and must not be ordinary Turkish: an edit of meaning is not a mishearing.</li>
-          <li><b>Twice, it is tested.</b> 7 measured manglings and 60 everyday sentences, scored as false matches&nbsp;×&nbsp;3 + misses. The rule stays only if the score does not rise.</li>
-          <li><b>Undo is instant.</b> Put back a word yaz changed, and that replacement is blocked at once.</li>
-          <li><b>Your sentences count.</b> Every fix you make and every dictation you leave alone becomes a private test case. A rule that would break one of your own sentences is rejected, even if the shared set allows it. <code>yaz eval --personal</code> shows how many of your fixes yaz now gets right.</li>
-        </ol>
+        <header class="learns-head">
+          <p class="label">03 — Learns</p>
+          <h2 id="learns-title">Fix it twice.<br><em>Never again.</em></h2>
+          <p class="section-lede">A fix becomes a rule only if a fixed test set, and your own past dictations, stay correct. One number, keep or revert: the loop from Karpathy's <a href="https://github.com/karpathy/autoresearch">autoresearch</a>.</p>
+        </header>
 
-        <div class="ledger" role="table" aria-label="Example of yaz learned">
-          <div class="ledger-head" role="row"><span role="columnheader">yaz learned</span></div>
-          <div class="ledger-row is-kept" role="row"><span role="cell">Vörsel → Vercel</span><span role="cell" class="badge">kept · score 0</span></div>
-          <div class="ledger-row is-blocked" role="row"><span role="cell">doktor ↛ Docker</span><span role="cell" class="badge">blocked · you undid it</span></div>
-          <div class="ledger-row is-rejected" role="row"><span role="cell">doktor → Docker</span><span role="cell" class="badge">rejected · failed the test</span></div>
-          <div class="ledger-row" role="row"><span role="cell">Körsır → Cursor</span><span role="cell" class="badge">seen once</span></div>
-          <p class="ledger-foot"><code>yaz learned</code> lists them, <code>--forget</code> removes one. Rules and your test cases live on your Mac, never in the cloud.</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="section section-measured" aria-labelledby="measured-title">
-      <div class="section-head">
-        <h2 id="measured-title">Measured, not claimed</h2>
-        <p>Every number comes from the audio in <code>fixtures/</code>, so you can run it again with <code>yaz transcribe</code>.</p>
-      </div>
-      <dl class="stats">
-        <div><dt>5.6&nbsp;s of speech</dt><dd>506<small>&nbsp;ms</small></dd></div>
-        <div><dt>12.1&nbsp;s of speech</dt><dd>855<small>&nbsp;ms</small></dd></div>
-        <div><dt>Resident memory</dt><dd>~250<small>&nbsp;MB</small></dd></div>
-        <div><dt>The app</dt><dd>14<small>&nbsp;MB</small></dd></div>
-      </dl>
-      <p class="note">M4 Pro, 24&nbsp;GB, macOS 26.5, whisper large-v3-turbo. The model (1.6&nbsp;GB) downloads on first use and compiles once for the Neural Engine.</p>
-    </section>
-
-    <section class="section section-dev" id="developers" aria-labelledby="dev-title">
-      <div class="section-head">
-        <h2 id="dev-title">For developers</h2>
-        <p>One JSON file, a CLI for everything the menu does, a hook for what comes after, and an MCP server for your coding agent.</p>
-      </div>
-
-      <div class="dev-grid">
-        <div class="dev-block">
-          <h3>Teach it your words</h3>
-          <p>Add the terms you say. A term can carry aliases and its own threshold.</p>
-          <pre class="code" tabindex="0" aria-label="Example configuration"><code><span class="c">// ~/.config/yaz/config.json</span>
-{
-  "language": "tr",
-  "hotkey": "fn",
-  "refine": "fillers",
-  "vocabulary": [
-    "Slack", "pull request", "CI pipeline",
-    { "term": "PostgreSQL", "aliases": ["postgres"] }
-  ],
-  "on_transcript": "my-hook"
-}</code></pre>
-        </div>
-
-        <div class="dev-block">
-          <h3>See why it matched</h3>
-          <p>The matcher is deterministic, so every correction can be explained.</p>
-          <pre class="code" tabindex="0" aria-label="Example commands"><code>yaz vocab test "Sılacık üzerinden yaz"
-yaz vocab explain "Slack" "Sılacık"
-<span class="c"># score 0 (false matches 0/173, misses 0/36)</span>
-yaz eval
-yaz projects --test "camel case user name"
-yaz doctor</code></pre>
-        </div>
-
-        <div class="dev-block dev-block-wide">
-          <h3>Code mode</h3>
-          <p>In a terminal, an editor or a coding agent, yaz knows your project's names and speaks code. Point <code>projects</code> at your folders; nothing else changes in Slack or Mail.</p>
-          <table class="repairs repairs-code">
-            <thead><tr><th scope="col">You say</th><th scope="col">yaz writes</th></tr></thead>
-            <tbody>
-              <tr><td>get user by id dönüyor</td><td>getUserById dönüyor</td></tr>
-              <tr><td>snake case retry count</td><td>retry_count</td></tr>
-              <tr><td>auth service dosyasına bak</td><td>@Sources/AuthService.swift dosyasına bak</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="dev-block dev-block-wide dev-block-agent">
-          <div>
-            <h3>Answer your agent by voice</h3>
-            <p><code>yaz mcp</code> plugs yaz into Claude Code, Cursor or Codex. The agent asks, you hold the key and answer, and your words go to the agent instead of into its input box. It can also read and search what you dictated. No socket, no port: the agent starts yaz over stdio.</p>
-          </div>
-          <pre class="code" tabindex="0" aria-label="Adding yaz to Claude Code"><code>claude mcp add yaz -- \
-  /Applications/yaz.app/Contents/MacOS/yaz mcp
-
-<span class="c"># tools the agent gets</span>
-wait_for_dictation  <span class="c"># you answer by voice</span>
-last_dictation
-recent_dictations
-search_dictations</code></pre>
-        </div>
-
-        <div class="dev-block">
-          <h3>Pipe it anywhere</h3>
-          <p><code>on_transcript</code> runs a command with the text as its only argument, after the paste. Send it to a log, a note or an agent.</p>
-        </div>
-
-        <div class="dev-block">
-          <h3>Any language Whisper speaks</h3>
-          <p>Set <code>language</code> to <code>en</code>, <code>de</code> or any Whisper code. Term repair runs where a word list guards it, Turkish and German; filler removal is Turkish only. Without a list the guard would protect nothing.</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="section section-download" id="download" aria-labelledby="download-title">
-      <div class="download-grid">
-        <div>
-          <img class="download-icon" src="img/icon-256-dark.webp" width="112" height="112" alt="">
-          <h2 id="download-title">Download yaz</h2>
-          <p class="download-lede">One disk image for Apple silicon Macs running macOS 26 or later.</p>
-          <a class="button-download button-download-light" data-download href="/download">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span data-download-label>Download yaz</span>
-          </a>
-          <p class="download-meta">Signed with Developer ID and notarised by Apple.</p>
-
-          <h3 class="install-title">Install</h3>
-          <ol class="install">
-            <li>Open the disk image and drag yaz to Applications.</li>
-            <li>Open yaz. It lives in the menu bar, with no Dock icon.</li>
-            <li>Allow <b>Accessibility</b> and <b>Input Monitoring</b>. yaz needs both: one to paste, one to see the key.</li>
-            <li>Hold <kbd>fn</kbd> and speak. The first time, the model downloads (1.6&nbsp;GB), with progress in the menu.</li>
+        <div class="learns-body">
+          <ol class="steps">
+            <li class="reveal"><span class="step-n">1</span><div><h3>You fix it</h3><p>yaz follows the field for up to a minute while you edit, so a word you delete and retype counts, even if you press Return right after.</p></div></li>
+            <li class="reveal"><span class="step-n">2</span><div><h3>It is noted</h3><p>The words must sound alike and must not be everyday Turkish: changing your mind is not a mishearing.</p></div></li>
+            <li class="reveal"><span class="step-n">3</span><div><h3>Twice, it is tested</h3><p>Measured manglings, 173 checks on everyday sentences and your own kept dictations. The rule stays only if the score does not rise.</p></div></li>
+            <li class="reveal"><span class="step-n">4</span><div><h3>Undo is instant</h3><p>Put back a word yaz changed, and that replacement is blocked at once.</p></div></li>
           </ol>
-          <p class="after">From version 0.2, yaz checks for updates once a day and asks before installing one.</p>
-        </div>
 
+          <div class="ledger reveal" role="table" aria-label="Example of what yaz learned">
+            <div class="ledger-row ledger-row--head" role="row"><span role="columnheader">$ yaz learned</span></div>
+            <div class="ledger-row is-kept" role="row"><span role="cell">Vörsel → Vercel</span><span role="cell" class="badge">kept · score 0</span></div>
+            <div class="ledger-row is-blocked" role="row"><span role="cell">doktor ↛ Docker</span><span role="cell" class="badge">blocked · you undid it</span></div>
+            <div class="ledger-row is-rejected" role="row"><span role="cell">doktor → Docker</span><span role="cell" class="badge">rejected · failed the test</span></div>
+            <div class="ledger-row" role="row"><span role="cell">Körsır → Cursor</span><span role="cell" class="badge">noted · once more</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 · Agents -->
+    <section class="section agents" id="agents" aria-labelledby="agents-title">
+      <div class="agents-grid">
+        <header class="agents-copy reveal">
+          <p class="label">04 — Agents</p>
+          <h2 id="agents-title">Your agent asks.<br><em>You answer out loud.</em></h2>
+          <p class="section-lede"><code>yaz mcp</code> plugs yaz into Claude Code, Cursor or Codex. Hold the key and reply: your words go to the agent, not into its input box. No socket, no port; the agent starts yaz over stdio.</p>
+          <pre class="code" tabindex="0" aria-label="Adding yaz to Claude Code"><code>claude mcp add yaz -- \
+  /Applications/yaz.app/Contents/MacOS/yaz mcp</code></pre>
+        </header>
+
+        <div class="terminal reveal" id="terminal" aria-label="A coding agent asking a question that is answered by voice">
+          <div class="terminal-bar" aria-hidden="true"><i></i><i></i><i></i><span>~/shop · claude</span></div>
+          <ol class="terminal-body">
+            <li class="t-line"><span class="t-dim">›</span> testleri çalıştır, geçerse merge et</li>
+            <li class="t-line"><span class="t-acc">⏺</span> 214 test geçti. Merge etmeden önce soruyorum: <b>main'e merge edeyim mi?</b></li>
+            <li class="t-line t-tool"><span class="t-dim">⎿</span> yaz · wait_for_dictation</li>
+            <li class="t-line t-voice"><span class="t-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span> "evet, merge et, sonra deploy"</li>
+            <li class="t-line"><span class="t-acc">⏺</span> Merged into main. Deploying…</li>
+            <li class="t-line"><span class="t-ok">✓</span> deploy finished in 42 s</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 · Measured -->
+    <section class="section stats-section" aria-labelledby="stats-title">
+      <h2 class="sr-only" id="stats-title">Measured</h2>
+      <dl class="stats">
+        <div class="reveal"><dt>5.6&nbsp;s of speech, written in</dt><dd>506<small>ms</small></dd></div>
+        <div class="reveal"><dt>wrong changes in 173 checks on everyday sentences</dt><dd>0<small>/173</small></dd></div>
+        <div class="reveal"><dt>of your audio or text uploaded</dt><dd>0<small>bytes</small></dd></div>
+        <div class="reveal"><dt>the whole app</dt><dd>14<small>MB</small></dd></div>
+      </dl>
+      <p class="note reveal">M4 Pro, macOS 26.5, whisper large-v3-turbo on the Neural Engine. Every number comes from <code>fixtures/</code> and <code>yaz eval</code>; run them yourself.</p>
+    </section>
+
+    <!-- 7 · Everything else -->
+    <section class="section" aria-labelledby="more-title">
+      <header class="section-head reveal">
+        <p class="label">05 — And</p>
+        <h2 id="more-title">The small things, <em>done</em>.</h2>
+      </header>
+      <ul class="more">
+        <li class="reveal"><h3>Hold, or tap twice</h3><p>Tap the key twice and keep talking hands-free; the next press stops.</p></li>
+        <li class="reveal"><h3>Names on screen</h3><p>The terms in the window you are looking at are spelled right for that dictation.</p></li>
+        <li class="reveal"><h3>Slack is not Mail</h3><p>Per-app language, clean-up and a chat style that drops a lone full stop.</p></li>
+        <li class="reveal"><h3>Live text</h3><p>The words appear in the pill while you speak.</p></li>
+        <li class="reveal"><h3>Turkish and German</h3><p>Each guarded by its own list of everyday words.</p></li>
+        <li class="reveal"><h3>Your clipboard, back</h3><p>yaz pastes, then puts your clipboard back as it was.</p></li>
+        <li class="reveal"><h3>Any microphone</h3><p>Pick one from the menu, or follow the system's.</p></li>
+        <li class="reveal"><h3>Wrong text is worse than none</h3><p>Taps, silence and invented text are dropped before they reach you.</p></li>
+      </ul>
+    </section>
+
+    <!-- 8 · Download -->
+    <section class="section download" id="download" aria-labelledby="download-title">
+      <div class="download-panel reveal">
+        <div class="download-main">
+          <img class="download-icon" src="img/icon-256-dark.webp" width="96" height="96" alt="">
+          <h2 id="download-title">Hold the key.<br><em>Try it.</em></h2>
+          <a class="pill pill--solid pill--large" data-download href="/download">
+            <span data-download-label>Download yaz</span>
+            <span class="pill-chip" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg></span>
+          </a>
+          <p class="download-meta">One disk image for Apple silicon, macOS 26 or later. Signed with Developer ID and notarised by Apple. Updates arrive in the menu bar.</p>
+          <ol class="install">
+            <li>Drag yaz to Applications and open it. It lives in the menu bar.</li>
+            <li>Allow <b>Accessibility</b> and <b>Input Monitoring</b>: one to paste, one to see the key.</li>
+            <li>Hold <kbd>fn</kbd> and speak. The first time, the model downloads (1.6&nbsp;GB).</li>
+          </ol>
+        </div>
         <div class="verify">
           <h3>Check the download</h3>
-          <p>Compare the checksum with this one:</p>
           <p class="checksum"><code id="sha256">loading…</code> <button type="button" class="copy" data-copy="#sha256" aria-label="Copy checksum">Copy</button></p>
-          <pre class="code code-dark" tabindex="0" aria-label="Commands to check the download"><code><span class="c"># checksum</span>
+          <pre class="code" tabindex="0" aria-label="Commands to check the download"><code><span class="c"># checksum</span>
 shasum -a 256 ~/Downloads/<span data-file>yaz.dmg</span>
 
 <span class="c"># who signed it</span>
-spctl --assess --type execute --verbose /Applications/yaz.app
-
-<span class="c"># the latest release, as JSON</span>
-curl -s https://yaz.mike4.dev/downloads/latest.json</code></pre>
-          <p class="note">Releases are signed with Developer ID <code>XMCHPUCJS2</code>. Updates are also signed with an update key, so a changed file is refused.</p>
-          <p class="note">Prefer the source? <a href="https://github.com/mikeowski/yaz">github.com/mikeowski/yaz</a> builds with <code>swift build</code>, and <code>scripts/install.sh</code> installs the CLI.</p>
+spctl --assess --type execute --verbose /Applications/yaz.app</code></pre>
+          <p class="note">Developer ID <code>XMCHPUCJS2</code>. Prefer the source? <a href="https://github.com/mikeowski/yaz">github.com/mikeowski/yaz</a> builds with <code>swift build</code>.</p>
         </div>
       </div>
     </section>
 
+    <!-- 9 · Questions -->
     <section class="section" id="questions" aria-labelledby="questions-title">
-      <div class="section-head">
-        <h2 id="questions-title">Questions</h2>
-      </div>
+      <header class="section-head reveal">
+        <p class="label">06 — Questions</p>
+        <h2 id="questions-title">Asked <em>often</em>.</h2>
+      </header>
       <div class="faq">
-        <details>
+        <details class="reveal">
           <summary>Does anything leave my Mac?</summary>
-          <p>Your audio and your text, never. yaz makes three kinds of request: the speech model download from Hugging Face on first use, the small voice-detector model if you turn it on, and a daily update check to yaz.mike4.dev. There is no account and no analytics.</p>
+          <p>Your audio and your text, never. yaz downloads the speech model from Hugging Face on first use, the small voice-detector model if you turn it on, and checks yaz.mike4.dev for updates once a day. No account, no analytics.</p>
         </details>
-        <details>
+        <details class="reveal">
+          <summary>What does yaz read on screen, and in the field?</summary>
+          <p>When you press the key, the visible text of the front window, for a quarter of a second, to spell its names right; nothing is saved. After a paste, the field you dictated into, about once a second for up to a minute, to learn from your fixes. All through Accessibility, never password fields. <code>"screen_context": false</code> and <code>"learn": false</code> turn them off.</p>
+        </details>
+        <details class="reveal">
           <summary>Why two permissions?</summary>
-          <p><b>Accessibility</b> lets yaz paste at your cursor. <b>Input Monitoring</b> lets it see the push-to-talk key. With only the first, the key listener starts and never receives a press, so yaz asks for both and <code>yaz doctor</code> reports both.</p>
+          <p><b>Accessibility</b> lets yaz paste at your cursor; <b>Input Monitoring</b> lets it see the push-to-talk key. <code>yaz doctor</code> checks both.</p>
         </details>
-        <details>
+        <details class="reveal">
           <summary>The fn key does nothing.</summary>
-          <p>macOS keeps the globe key for itself when a second keyboard layout or Dictation is on. Set System Settings → Keyboard → "Press 🌐 key to" → Do Nothing, or choose <b>use right option</b> in yaz's menu.</p>
+          <p>macOS keeps the globe key when a second keyboard layout or Dictation is on. Set System Settings → Keyboard → "Press 🌐 key to" → Do Nothing, or choose <b>right option</b> in yaz's menu.</p>
         </details>
-        <details>
-          <summary>Why is the model not in the app?</summary>
-          <p>It would make the app a hundred times larger and keep everyone on one model version. yaz downloads it once, shows the progress in the menu bar, and keeps it in <code>~/Documents/huggingface</code>.</p>
-        </details>
-        <details>
+        <details class="reveal">
           <summary>Does it work in English?</summary>
-          <p>Yes: set <code>language</code> to <code>en</code>. Transcription works in every language Whisper supports. Term repair runs on Turkish and German, filler removal on Turkish, by design.</p>
+          <p>Transcription works in every language Whisper speaks. Term repair runs on Turkish and German, numbers and voice commands on Turkish: their guards are word lists, and without one they would protect nothing.</p>
         </details>
-        <details>
-          <summary>What does yaz read on screen?</summary>
-          <p>When you press the key, the visible text of the front window, through Accessibility, for at most a quarter of a second. It keeps only the words that look like names, uses them for that dictation, and saves nothing. Password fields are never read. Set <code>"screen_context": false</code> to turn it off.</p>
-        </details>
-        <details>
-          <summary>What does learning read, and can I turn it off?</summary>
-          <p>After a paste, the text of the field you dictated into, about once a second for up to a minute, through Accessibility, and only while that app is in front. Password fields are never read. Nothing is sent anywhere. The learned word pairs are saved, and, while history is on, your fixed and kept dictations as private test cases. Set <code>"learn": false</code> to turn it off, <code>yaz learned --clear</code> to forget everything.</p>
-        </details>
-        <details>
+        <details class="reveal">
           <summary>How do I uninstall it?</summary>
           <p>Quit yaz from its menu and move it to the Trash. To remove everything, also delete <code>~/.config/yaz</code>, <code>~/Library/Application Support/yaz</code> and the model in <code>~/Documents/huggingface</code>.</p>
         </details>
@@ -390,12 +306,15 @@ curl -s https://yaz.mike4.dev/downloads/latest.json</code></pre>
   </main>
 
   <footer class="footer">
-    <p><picture><source srcset="img/icon-64-dark.webp" media="(prefers-color-scheme: dark)"><img class="footer-icon" src="img/icon-64.webp" width="20" height="20" alt=""></picture><span><b>yaz</b> means "write" in Turkish. Made on a Mac, for the Mac, by <a href="https://mike4.dev">Burak</a>.</span></p>
-    <ul class="footer-meta">
-      <li>MIT licence</li>
-      <li><a href="https://github.com/mikeowski/yaz">Source</a></li>
-      <li><a href="downloads/latest.json">Release manifest (JSON)</a></li>
-    </ul>
+    <p class="footer-mark">yaz</p>
+    <div class="footer-row">
+      <p><b>yaz</b> means "write" in Turkish. Made on a Mac, for the Mac, by <a href="https://mike4.dev">Burak</a>.</p>
+      <ul class="footer-meta">
+        <li>MIT licence</li>
+        <li><a href="https://github.com/mikeowski/yaz">Source</a></li>
+        <li><a href="downloads/latest.json">Release manifest</a></li>
+      </ul>
+    </div>
   </footer>
 
   <script src="app.js" defer></script>
