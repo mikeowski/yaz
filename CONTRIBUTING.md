@@ -126,10 +126,19 @@ key is one that every installed copy rejects, and nobody updates again. It also
 runs `yaz updates --require` on the finished bundle, so a build whose updater
 does not work is never published.
 
-`--deploy` publishes `site/` to Cloudflare (`wrangler.jsonc`, the Worker `yaz`
-with the custom domain `yaz.mike4.dev`). Run `npx wrangler login` once. DMGs
-are not committed; commit `site/downloads/appcast.xml`, `latest.json` and
-`site/_redirects` after a release.
+The site is published two ways, to the same Worker (`wrangler.jsonc`: the
+Worker `yaz`, custom domain `yaz.mike4.dev`):
+
+- **From CI** (`.github/workflows/site.yml`): every push to `main` that touches
+  `site/` deploys it. It needs the repository secrets `CLOUDFLARE_API_TOKEN`
+  (template "Edit Cloudflare Workers", with the mike4.dev zone) and
+  `CLOUDFLARE_ACCOUNT_ID`. DMGs are not committed, so the job fetches the one
+  `latest.json` names from the GitHub release and checks its SHA-256 — release
+  with `--github` before you push the new manifest.
+- **From your Mac**: `--deploy`, after `npx wrangler login` once.
+
+After a release, commit `site/downloads/appcast.xml`, `latest.json` and
+`site/_redirects`.
 
 The steps inside `release.sh`, for when one of them fails:
 

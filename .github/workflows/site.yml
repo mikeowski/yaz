@@ -1,0 +1,83 @@
+name: Site
+
+# Publishes site/ (yaz.mike4.dev: the landing page and the Sparkle update
+# feed) to Cloudflare. wrangler.jsonc binds the custom domain; Cloudflare
+# creates its DNS record in the mike4.dev zone on the first deploy.
+#
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   — a token from the "Edit Cloudflare Workers"
+#                            template, with the mike4.dev zone included
+#   CLOUDFLARE_ACCOUNT_ID  — the account that owns mike4.dev
+# Without them the job says so and stops, rather than failing every push.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "wrangler.jsonc"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: site-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check for Cloudflare credentials
+        id: creds
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is not set — not deploying."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # DMGs are not committed. When the manifest serves the DMG from the site
+      # itself, fetch it from the GitHub release of that version, and check it
+      # against the manifest, so a deploy from CI never removes the download
+      # (or the file every Sparkle update points at).
+      - name: Fetch the release DMG
+        if: steps.creds.outputs.ok == 'true'
+        run: |
+          url=$(jq -r .url site/downloads/latest.json)
+          case "$url" in
+            /downloads/*) ;;
+            *) echo "the download is served from $url — nothing to fetch"; exit 0 ;;
+          esac
+          version=$(jq -r .version site/downloads/latest.json)
+          file=$(jq -r .file site/downloads/latest.json)
+          sha=$(jq -r .sha256 site/downloads/latest.json)
+          curl -fsSL -o "site/downloads/$file" \
+            "https://github.com/${{ github.repository }}/releases/download/v$version/$file"
+          echo "$sha  site/downloads/$file" | sha256sum -c -
+          cp "site/downloads/$file" site/downloads/yaz-latest.dmg
+
+      - name: Deploy
+        if: steps.creds.outputs.ok == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx -y wrangler@4 deploy
+
+      - name: Check the live site
+        if: steps.creds.outputs.ok == 'true'
+        run: |
+          # A new custom domain can take a minute to get its certificate.
+          for i in $(seq 1 12); do
+            if curl -fsS -o /dev/null https://yaz.mike4.dev/ \
+               && curl -fsS https://yaz.mike4.dev/downloads/latest.json | jq -e .version >/dev/null; then
+              echo "✓ https://yaz.mike4.dev is live"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::yaz.mike4.dev did not answer yet — the certificate may still be issuing"
