@@ -697,8 +697,9 @@ final class Daemon {
             // casing commands and file mentions apply. Read now — the cursor
             // is still in that app, the pill never takes focus.
             // "geri al" on its own is an instruction to yaz, not text.
-            if appConfig.voiceCommands, VoiceCommands.isSupported(language: appConfig.language),
-               let control = VoiceCommands.control(output.text) {
+            if appConfig.voiceCommands,
+               let set = LanguagePack.forLanguage(appConfig.language)?.commands,
+               let control = VoiceCommands.control(output.text, set: set) {
                 screenTerms?.cancel()
                 screenTerms = nil
                 switch control {

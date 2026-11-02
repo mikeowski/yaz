@@ -14,6 +14,9 @@ import FoundationModels
 /// sometimes be ignored anyway.
 struct FoundationModelsBackend: RefinerBackend {
 
+    /// The main language's instructions (`LanguagePack.refineInstructions`).
+    var instructions: String = Self.instructions
+
     /// Kept deliberately blunt. The measured failure mode when asked to do more
     /// — repair garbled technical terms against a supplied list — was that the
     /// model returned the input unchanged after 1.4 s. Asking only for removal
@@ -69,7 +72,7 @@ struct FoundationModelsBackend: RefinerBackend {
         // A fresh session per utterance: dictation turns are unrelated, and
         // carrying context between them invites the model to "continue" the
         // previous sentence instead of cleaning this one.
-        let session = LanguageModelSession(instructions: Self.instructions)
+        let session = LanguageModelSession(instructions: instructions)
         let response = try await session.respond(
             to: text,
             options: GenerationOptions(temperature: 0)

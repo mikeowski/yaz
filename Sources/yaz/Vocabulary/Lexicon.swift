@@ -28,7 +28,8 @@ struct Lexicon: Sendable {
         language: "de", protectedWordThreshold: GermanLexicon.protectedWordThreshold,
         isCommonWord: { GermanLexicon.isCommon($0) })
 
-    static let all: [Lexicon] = [.turkish, .german]
+    /// One per `LanguagePack`: adding a pack adds its lexicon.
+    static var all: [Lexicon] { LanguagePack.all.map(\.lexicon) }
 
     static func forLanguage(_ language: String) -> Lexicon? {
         let code = language.lowercased()

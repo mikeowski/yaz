@@ -1,6 +1,7 @@
 import Foundation
 
-/// Spoken Turkish commands: "yeni satır", "soru işareti", "geri al".
+/// Spoken commands in the main language: "yeni satır", "soru işareti",
+/// "geri al" in Turkish; each `LanguagePack` brings its own `CommandSet`.
 ///
 /// The same caution as everywhere else in yaz: a command taken for words is
 /// a nuisance, words taken for a command lose what the user said. So an
@@ -12,8 +13,9 @@ enum VoiceCommands {
 
     static let language = "tr"
 
+    /// True when the language's pack has commands.
     static func isSupported(language: String) -> Bool {
-        language.lowercased().hasPrefix(Self.language)
+        LanguagePack.forLanguage(language)?.commands != nil
     }
 
     /// A dictation that is a command for yaz, not text.
@@ -22,34 +24,17 @@ enum VoiceCommands {
         case undoLast
     }
 
-    private static let controls: [String: Control] = [
-        "geri al": .undoLast,
-        "bunu sil": .undoLast,
-        "son yazdığımı sil": .undoLast,
-        "sonuncuyu sil": .undoLast,
-        "son yazılanı sil": .undoLast,
-    ]
-
     /// The control command a whole dictation is, if any.
-    static func control(_ text: String) -> Control? {
+    static func control(_ text: String, set: CommandSet = .turkish) -> Control? {
         let words = text.split(whereSeparator: { $0.isWhitespace })
-            .map { PhoneticKey.lowercasedTurkish(String($0)).trimmingCharacters(in: .punctuationCharacters) }
+            .map { set.fold(String($0)).trimmingCharacters(in: .punctuationCharacters) }
             .filter { !$0.isEmpty }
-        return controls[words.joined(separator: " ")]
+        return set.controls[words.joined(separator: " ")]
     }
 
     // MARK: - Inline
 
-    private enum Insert { case newline, paragraph, mark(Character) }
-
-    private static let phrases: [(words: [String], insert: Insert, inCode: Bool)] = [
-        (["yeni", "paragraf"], .paragraph, false),
-        (["yeni", "satır"], .newline, false),
-        (["alt", "satır"], .newline, false),
-        (["soru", "işareti"], .mark("?"), true),
-        (["ünlem", "işareti"], .mark("!"), true),
-        (["iki", "nokta", "üst", "üste"], .mark(":"), true),
-    ]
+    enum Insert: Sendable { case newline, paragraph, mark(Character) }
 
     struct Result: Sendable, Equatable {
         let text: String
@@ -61,7 +46,6 @@ enum VoiceCommands {
         let leading: String
         let core: String
         let trailing: String
-        var key: String { PhoneticKey.lowercasedTurkish(core) }
     }
 
     private static let edgePunctuation = CharacterSet(charactersIn: ".,!?;:…\"'()«»“”‘’")
@@ -87,7 +71,7 @@ enum VoiceCommands {
     /// the punctuation commands. Set for a terminal or an editor, where a
     /// line break can run a command, and when text is typed key by key,
     /// where it is a Return that sends the message.
-    static func apply(_ text: String, code: Bool = false) -> Result {
+    static func apply(_ text: String, set: CommandSet = .turkish, code: Bool = false) -> Result {
         let tokens = tokenize(text)
         var out = ""
         var commands: [String] = []
@@ -96,7 +80,7 @@ enum VoiceCommands {
         var i = 0
 
         while i < tokens.count {
-            if let found = match(tokens, at: i, code: code) {
+            if let found = match(tokens, at: i, set: set, code: code) {
                 let (phrase, insert) = found
                 let said = tokens[i..<(i + phrase)].map(\.core).joined(separator: " ")
                 commands.append(said)
@@ -118,7 +102,7 @@ enum VoiceCommands {
                 continue
             }
             var word = tokens[i].leading + tokens[i].core + tokens[i].trailing
-            if capitalizeNext { word = capitalized(word) }
+            if capitalizeNext { word = capitalized(word, turkish: set.turkishCase) }
             if !out.isEmpty && !glued { out += " " }
             out += word
             capitalizeNext = false
@@ -132,12 +116,12 @@ enum VoiceCommands {
     /// A command phrase at `i` that ends a sentence: its last word carries
     /// sentence punctuation or ends the dictation, and the words inside it
     /// carry none.
-    private static func match(_ tokens: [Token], at i: Int, code: Bool) -> (Int, Insert)? {
-        for phrase in phrases where !code || phrase.inCode {
+    private static func match(_ tokens: [Token], at i: Int, set: CommandSet, code: Bool) -> (Int, Insert)? {
+        for phrase in set.phrases where !code || phrase.inCode {
             let n = phrase.words.count
             guard i + n <= tokens.count else { continue }
             let span = tokens[i..<(i + n)]
-            guard zip(span, phrase.words).allSatisfy({ $0.key == $1 }) else { continue }
+            guard zip(span, phrase.words).allSatisfy({ set.fold($0.core) == $1 }) else { continue }
             guard span.dropLast().allSatisfy({ $0.trailing.isEmpty }),
                   span.dropFirst().allSatisfy({ $0.leading.isEmpty })
             else { continue }
@@ -154,10 +138,11 @@ enum VoiceCommands {
         while let last = out.last, last == " " || last == "," { out.removeLast() }
     }
 
-    private static func capitalized(_ word: String) -> String {
+    private static func capitalized(_ word: String, turkish: Bool) -> String {
         guard let index = word.firstIndex(where: \.isLetter) else { return word }
         let first = word[index]
-        let upper: String = first == "i" ? "İ" : (first == "ı" ? "I" : String(first).uppercased())
+        let upper: String = turkish && first == "i" ? "İ"
+            : (turkish && first == "ı" ? "I" : String(first).uppercased())
         return String(word[..<index]) + upper + String(word[word.index(after: index)...])
     }
 }
@@ -177,4 +162,43 @@ enum UndoDictation {
         guard let before = String(utf16[start..<end]), before == pasted else { return nil }
         return NSRange(location: caret - length, length: length)
     }
+}
+
+/// One language's spoken commands.
+struct CommandSet: Sendable {
+
+    struct Phrase: Sendable {
+        /// Lowercase, as `fold` leaves a word.
+        let words: [String]
+        let insert: VoiceCommands.Insert
+        /// Also in code apps: punctuation yes, line breaks never.
+        let inCode: Bool
+    }
+
+    let phrases: [Phrase]
+    /// Whole dictations that are instructions to yaz.
+    let controls: [String: VoiceCommands.Control]
+    /// Turkish capitalisation (i → İ) after a command.
+    var turkishCase = false
+    /// Lowercasing for matching: Turkish needs its own (I → ı).
+    var fold: @Sendable (String) -> String = { $0.lowercased() }
+
+    static let turkish = CommandSet(
+        phrases: [
+            Phrase(words: ["yeni", "paragraf"], insert: .paragraph, inCode: false),
+            Phrase(words: ["yeni", "satır"], insert: .newline, inCode: false),
+            Phrase(words: ["alt", "satır"], insert: .newline, inCode: false),
+            Phrase(words: ["soru", "işareti"], insert: .mark("?"), inCode: true),
+            Phrase(words: ["ünlem", "işareti"], insert: .mark("!"), inCode: true),
+            Phrase(words: ["iki", "nokta", "üst", "üste"], insert: .mark(":"), inCode: true),
+        ],
+        controls: [
+            "geri al": .undoLast,
+            "bunu sil": .undoLast,
+            "son yazdığımı sil": .undoLast,
+            "sonuncuyu sil": .undoLast,
+            "son yazılanı sil": .undoLast,
+        ],
+        turkishCase: true,
+        fold: { PhoneticKey.lowercasedTurkish($0) })
 }

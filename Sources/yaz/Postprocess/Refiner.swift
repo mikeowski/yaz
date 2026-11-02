@@ -70,7 +70,9 @@ actor Refiner {
         self.mode = mode
         self.language = language
         self.timeout = timeout
-        self.backend = backend ?? (mode == .llm ? FoundationModelsBackend() : nil)
+        let instructions = LanguagePack.forLanguage(language)?.refineInstructions
+        self.backend = backend ?? (mode == .llm && instructions != nil
+            ? FoundationModelsBackend(instructions: instructions!) : nil)
     }
 
     /// Whether the configured mode can actually run right now.
@@ -85,19 +87,21 @@ actor Refiner {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, mode != .off else { return .unchanged(text) }
 
-        // Both tiers are Turkish-specific, so both are skipped rather than
-        // applied elsewhere — the same rule the vocabulary layer follows.
-        //
-        // `FillerFilter`'s hesitation set is Turkish ("ıı", "ee", "yani"), and
-        // includes bare vowels that are ordinary English words. The model
-        // instructions open with "Sen bir Türkçe dikte temizleme asistanısın",
-        // so handing them English asks a Turkish-primed model to tidy text it
-        // was not described. Neither is a cleanup at that point.
-        guard FillerFilter.isSupported(language: language) else {
+        // Both tiers belong to a language: the hesitation list and the model's
+        // instructions come from the main language's `LanguagePack`. A
+        // language without them is left alone, the same rule the vocabulary
+        // layer follows: Turkish hesitations include bare vowels that are
+        // ordinary English words, and a model told in Turkish to tidy Turkish
+        // has not been told what to do with anything else.
+        guard let pack = LanguagePack.forLanguage(language),
+              !pack.hesitations.isEmpty || pack.refineInstructions != nil
+        else {
             return .unchanged(text)
         }
 
-        let stripped = FillerFilter.strip(trimmed)
+        let stripped = pack.hesitations.isEmpty
+            ? trimmed
+            : FillerFilter.strip(trimmed, hesitations: pack.hesitations, fold: pack.fold)
         guard mode == .llm, let backend else {
             return RefineResult(text: stripped, changed: stripped != text, rejection: nil)
         }
