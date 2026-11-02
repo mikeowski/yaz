@@ -421,3 +421,90 @@ extension EvalCorpus {
         ]
     }
 }
+
+extension EvalCorpus {
+
+    /// French as the main language. Precision only for term repair: no French
+    /// manglings have been measured yet.
+    enum French {
+
+        static let language = "fr"
+
+        /// Terms near French words: "docteur", "cours", "rideaux", "sont".
+        static let riskyTerms: [VocabularyTerm] = [
+            VocabularyTerm(canonical: "Docker"),
+            VocabularyTerm(canonical: "Redis"),
+            VocabularyTerm(canonical: "Vercel"),
+            VocabularyTerm(canonical: "Figma"),
+            VocabularyTerm(canonical: "Jira"),
+            VocabularyTerm(canonical: "Kafka"),
+            VocabularyTerm(canonical: "Sentry"),
+        ]
+
+        static let recall: [(heard: String, expected: String)] = []
+
+        static let precision: [String] = [
+            "Ce matin je me suis levé tôt et j'ai préparé le petit déjeuner.",
+            "Le livreur a appelé, le colis arrive aujourd'hui.",
+            "Mes nouvelles chaussures sont un peu serrées.",
+            "Ce week-end on va voir mes grands-parents à la campagne.",
+            "Mon téléphone n'a plus de batterie et j'ai oublié le chargeur.",
+            "À midi il y avait de la soupe et du riz, pas mal du tout.",
+            "J'ai payé le loyer mais j'ai encore oublié le reçu.",
+            "Tu as vu le match hier soir ? Ils ont marqué à la dernière minute.",
+            "Mon ordinateur est devenu très lent, il faut le nettoyer.",
+            "J'ai emmené le chat chez le vétérinaire pour ses vaccins.",
+            "Je me suis inscrit à un cours mais j'y vais rarement.",
+            "La facture d'électricité est très chère ce mois-ci.",
+            "Ma fille joue un rôle dans la pièce de l'école.",
+            "N'oublie pas d'arroser les plantes du balcon, s'il te plaît.",
+            "J'ai demandé un prêt à la banque et j'attends la réponse.",
+            "Il y avait beaucoup de circulation, je suis arrivé presque une heure en retard.",
+            "Le docteur m'a dit de prendre les médicaments chaque matin.",
+            "Les voisins ont encore fait du bruit cette nuit.",
+            "On a annulé le voyage parce qu'il y a trop de travail.",
+            "J'ai ajouté du lait, du pain et du fromage à la liste de courses.",
+            "Mon frère a réussi l'examen et on était tous ravis.",
+            "J'ai lavé les rideaux et maintenant je dois les repasser.",
+            "On s'est disputés mais ensuite on s'est réconciliés.",
+            "Quand j'aurai fini ce livre je te le prêterai.",
+            "La réunion du matin a été déplacée à l'après-midi.",
+            "J'ai faim, on commande quelque chose ?",
+            "Je me suis fait couper les cheveux mais c'est trop court.",
+            "Il faut tailler les arbres du jardin.",
+            "Il pleut, n'oublie pas ton parapluie.",
+            "Le parcours était dur, j'ai abandonné la course à mi-chemin.",
+        ]
+
+        static let numbersConvert: [(heard: String, expected: String)] = [
+            ("Il y avait vingt-cinq personnes au lancement.", "Il y avait 25 personnes au lancement."),
+            ("Le budget est de quinze mille euros.", "Le budget est de 15\u{202F}000 euros."),
+            ("Les ventes ont augmenté de cinquante pour cent.", "Les ventes ont augmenté de 50\u{202F}%."),
+            ("Il y a eu trois cent douze tests.", "Il y a eu 312 tests."),
+            ("Deux millions d'utilisateurs se sont inscrits.", "2\u{202F}000\u{202F}000 d'utilisateurs se sont inscrits."),
+            ("Attends quarante-cinq minutes.", "Attends 45 minutes."),
+            ("Le projet se termine en deux mille vingt-six.", "Le projet se termine en 2026."),
+            ("On a corrigé soixante-dix-huit bugs.", "On a corrigé 78 bugs."),
+            ("Il a quatre-vingt-dix ans.", "Il a 90 ans."),
+            ("Quatre-vingts personnes sont venues.", "80 personnes sont venues."),
+            ("Vingt et un jours plus tard.", "21 jours plus tard."),
+            ("Mets le délai à trente secondes.", "Mets le délai à 30 secondes."),
+            ("Ça coûte mille euros.", "Ça coûte 1000 euros."),
+        ]
+
+        /// The article "un/une", small counts, "mille fois", "neuf fois sur dix".
+        static let numbersUnchanged: [String] = [
+            "J'ai une question.",
+            "C'est un bon plan.",
+            "Donne-moi cinq minutes.",
+            "On a deux enfants.",
+            "Elle est arrivée la première.",
+            "L'un d'eux a accepté.",
+            "Sept d'entre eux sont venus.",
+            "Vingt, ce n'est pas beaucoup.",
+            "On s'est vus à huit heures.",
+            "Je te l'ai dit mille fois.",
+            "Neuf fois sur dix.",
+        ]
+    }
+}
