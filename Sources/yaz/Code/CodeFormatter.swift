@@ -10,7 +10,8 @@ import Foundation
 ///   the clause or a Turkish word ("camel case user name olsun" keeps
 ///   "olsun").
 /// - **File mentions.** "app delegate dosyasına bak" → "@App/AppDelegate.swift
-///   dosyasına bak". Before the Turkish word *dosya* (with any suffix) or the
+///   dosyasına bak". Before the Turkish word *dosya* (with any suffix), German
+///   *Datei*, or the
 ///   English *file*, the one to three words are matched against the project's
 ///   file names, and the best match above the threshold becomes an `@` path,
 ///   the form Claude Code, Cursor and Codex read as a file reference.
@@ -19,6 +20,9 @@ struct CodeFormatter: Sendable {
     var files: [ProjectIndex.File] = []
     /// How close the spoken words must be to a file name.
     var fileThreshold: Double = 0.82
+    /// Ordinary words of the dictation language end a casing command:
+    /// "camel case user name olsun" stops before "olsun".
+    var lexicon: Lexicon = .turkish
 
     struct Change: Sendable, Equatable {
         let from: String
@@ -54,7 +58,7 @@ struct CodeFormatter: Sendable {
                 var j = i + 2
                 var trailing = ""
                 while j < tokens.count, words.count < Self.maxCasedWords,
-                      Self.isIdentifierWord(tokens[j].stem) {
+                      isIdentifierWord(tokens[j].stem) {
                     words.append(contentsOf: Identifier.words(tokens[j].stem))
                     trailing = tokens[j].trailing
                     j += 1
@@ -77,11 +81,11 @@ struct CodeFormatter: Sendable {
     }
 
     /// A word that can be part of an identifier: ASCII letters and digits,
-    /// and not an ordinary Turkish word.
-    private static func isIdentifierWord(_ word: String) -> Bool {
+    /// and not an ordinary word of the dictation language.
+    private func isIdentifierWord(_ word: String) -> Bool {
         !word.isEmpty
             && word.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") }
-            && !TurkishLexicon.isCommon(word)
+            && !lexicon.isCommon(word)
     }
 
     /// The style two tokens name, if they are a casing command. Compared on
@@ -161,10 +165,11 @@ struct CodeFormatter: Sendable {
         return best
     }
 
-    /// "dosya" with any Turkish suffix (dosyası, dosyasına, dosyadaki…), or
-    /// English "file".
+    /// "dosya" with any Turkish suffix (dosyası, dosyasına, dosyadaki…),
+    /// German "Datei" (Dateien), or English "file".
     static func isFileWord(_ stem: String) -> Bool {
         let word = PhoneticKey.lowercasedTurkish(stem)
-        return word.hasPrefix("dosya") || word == "file" || word == "files"
+        return word.hasPrefix("dosya") || word.hasPrefix("datei")
+            || word == "file" || word == "files"
     }
 }

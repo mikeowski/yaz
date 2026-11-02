@@ -977,7 +977,7 @@ struct Transcribe: ParsableCommand {
 
             if vocabulary, !Vocabulary.isSupported(language: language) {
                 print("  vocabulary skipped — the correction layer only supports"
-                    + " \(Vocabulary.lexiconLanguage), not \(language)")
+                    + " \(Lexicon.supportedList), not \(language)")
             }
 
             let started = Date()
@@ -1100,6 +1100,9 @@ struct Eval: ParsableCommand {
     @Option(help: "Consonant-skeleton threshold to try.")
     var skeletonThreshold: Double?
 
+    @Option(help: "Score one language's set (tr, de); all of them by default.")
+    var language: String?
+
     @Flag(help: "Include the rules yaz has learned on this Mac.")
     var learned = false
 
@@ -1109,7 +1112,7 @@ struct Eval: ParsableCommand {
     func run() throws {
         let rules = learned ? LearnedRules.load() : LearnedRules()
         let score = Evaluator.score(
-            extra: rules.terms, blocked: rules.blocks,
+            language: language, extra: rules.terms, blocked: rules.blocks,
             threshold: threshold ?? Vocabulary.defaultThreshold,
             skeletonThreshold: skeletonThreshold ?? Vocabulary.defaultSkeletonThreshold)
         if quiet {

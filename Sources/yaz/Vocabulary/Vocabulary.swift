@@ -39,21 +39,22 @@ struct VocabularyTerm: Sendable, Equatable {
 /// So correction runs on rules, not on a guess: it can only ever produce words
 /// the user themselves put in the list.
 ///
-/// **This layer is Turkish-only, and not merely tuned for it.** The guard that
-/// stops a false replacement is `TurkishLexicon` — a list of ordinary Turkish
-/// words that may not be overwritten on skeleton evidence. Point it at another
-/// language and that guard protects nothing: measured on English, `into main`
-/// became `Notion` and `merged` became `merge`. Running it outside Turkish is
-/// worse than not running it, so `isSupported(language:)` exists and callers
-/// must honour it.
+/// **This layer runs only for a language with a lexicon** (`Lexicon`: Turkish
+/// and German). The guard that stops a false replacement is a list of ordinary
+/// words that may not be overwritten on skeleton evidence. Point it at a
+/// language without one and that guard protects nothing: measured on English,
+/// `into main` became `Notion` and `merged` became `merge`. Running it there
+/// is worse than not running it, so `isSupported(language:)` exists and
+/// callers must honour it.
 struct Vocabulary: Sendable {
 
-    /// The language whose lexicon backs the safety veto.
+    /// The default dictation language, and the one whose lexicon is used
+    /// when none is given.
     static let lexiconLanguage = "tr"
 
     /// Whether correction can run safely for `language`.
     static func isSupported(language: String) -> Bool {
-        language.lowercased().hasPrefix(lexiconLanguage)
+        Lexicon.forLanguage(language) != nil
     }
 
     /// Default match threshold. Deliberately conservative — replacing a word
@@ -81,6 +82,9 @@ struct Vocabulary: Sendable {
     }
 
     private let entries: [Entry]
+    /// The ordinary words of the dictation language, protected from
+    /// skeleton matches.
+    private let lexicon: Lexicon
     /// Blocks keyed by normalized heard text and lowercased term.
     private let blockedKeys: Set<String>
 
@@ -102,9 +106,11 @@ struct Vocabulary: Sendable {
         terms: [VocabularyTerm],
         threshold: Double = Vocabulary.defaultThreshold,
         skeletonThreshold: Double = Vocabulary.defaultSkeletonThreshold,
-        blocked: [Block] = []
+        blocked: [Block] = [],
+        language: String = Vocabulary.lexiconLanguage
     ) {
         self.terms = terms
+        self.lexicon = Lexicon.forLanguage(language) ?? .turkish
         self.threshold = threshold
         self.skeletonThreshold = skeletonThreshold
         self.blockedKeys = Set(blocked.map { Self.blockKey(heard: $0.heard, term: $0.term) })
@@ -220,15 +226,15 @@ struct Vocabulary: Sendable {
             return nil
         }
 
-        // A window holding an ordinary Turkish word is something the user
-        // plainly said. It may still be replaced, but only on near-exact
+        // A window holding an ordinary word of the language is something the
+        // user plainly said. It may still be replaced, but only on near-exact
         // evidence — never on a skeleton guess, which is what turned "Doktor"
         // into "Docker" and "sonra" into "Sentry".
-        let isProtected = TurkishLexicon.containsCommonWord(window.map(\.stem))
+        let isProtected = lexicon.containsCommonWord(window.map(\.stem))
 
         let limit = max(
             entry.minSimilarity ?? threshold,
-            isProtected ? TurkishLexicon.protectedWordThreshold : 0)
+            isProtected ? lexicon.protectedWordThreshold : 0)
 
         let full = EditDistance.similarity(normalizedWindow, entry.normalized)
         if full >= limit {

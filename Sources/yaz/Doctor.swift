@@ -183,10 +183,10 @@ enum DoctorReport {
             return Check(
                 name: "vocabulary",
                 status: .warn("\(config.vocabulary.count) terms configured, but term repair"
-                    + " only supports \(Vocabulary.lexiconLanguage) — skipped for"
+                    + " only supports \(Lexicon.supportedList) — skipped for"
                     + " \(config.language)"),
-                remedy: "the safety check that prevents wrong replacements is a Turkish"
-                    + " word list; running it on another language corrupts text")
+                remedy: "the safety check that prevents wrong replacements is a word list"
+                    + " per language; running it on another language corrupts text")
         }
         return Check(
             name: "vocabulary",

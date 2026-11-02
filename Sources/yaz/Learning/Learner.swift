@@ -25,6 +25,9 @@ struct Learner: Sendable {
     static let maxWords = 3
 
     var rules: LearnedRules
+    /// The dictation language: its lexicon decides what is an ordinary word,
+    /// its evaluation set decides what is kept.
+    var language: String = Vocabulary.lexiconLanguage
 
     enum Event: Sendable, Equatable {
         case noted(heard: String, meant: String, count: Int)
@@ -63,7 +66,8 @@ struct Learner: Sendable {
                 continue
             }
 
-            guard Self.isMishearing(heard: heard, meant: meant) else { continue }
+            let lexicon = Lexicon.forLanguage(language) ?? .turkish
+            guard Self.isMishearing(heard: heard, meant: meant, lexicon: lexicon) else { continue }
             guard !rules.isKnown(heard: heard, meant: meant) else { continue }
 
             let count = rules.note(heard: heard, meant: meant, at: now)
@@ -74,7 +78,7 @@ struct Learner: Sendable {
 
             let candidate = VocabularyTerm(canonical: meant, aliases: [heard])
             let verdict = Evaluator.gate(
-                candidate, heard: heard, existing: userTerms + rules.terms)
+                candidate, heard: heard, existing: userTerms + rules.terms, language: language)
             if verdict.accepted {
                 rules.learn(heard: heard, meant: meant, at: now)
                 events.append(.learned(heard: heard, meant: meant))
@@ -87,16 +91,18 @@ struct Learner: Sendable {
     }
 
     /// A replacement that looks like a mishearing of a term: short, sounds
-    /// alike, and the new words are not ordinary Turkish (that is an edit of
-    /// meaning, not of spelling).
-    static func isMishearing(heard: String, meant: String) -> Bool {
+    /// alike, and the new words are not ordinary words of the language (that
+    /// is an edit of meaning, not of spelling).
+    static func isMishearing(
+        heard: String, meant: String, lexicon: Lexicon = .turkish
+    ) -> Bool {
         let heardWords = heard.split(separator: " ").map(String.init)
         let meantWords = meant.split(separator: " ").map(String.init)
         guard (1...maxWords).contains(heardWords.count),
               (1...maxWords).contains(meantWords.count),
               meant.count >= Vocabulary.minimumTermLength
         else { return false }
-        guard !TurkishLexicon.containsCommonWord(meantWords) else { return false }
+        guard !lexicon.containsCommonWord(meantWords) else { return false }
         let full = EditDistance.similarity(PhoneticKey.normalize(heard), PhoneticKey.normalize(meant))
         let skeleton = EditDistance.similarity(PhoneticKey.skeleton(heard), PhoneticKey.skeleton(meant))
         return max(full, skeleton) >= minimumSimilarity

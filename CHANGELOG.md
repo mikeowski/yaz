@@ -10,6 +10,12 @@ Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
 
 ### Added
 
+- **German term repair.** Set `"language": "de"` and the vocabulary repairs
+  English terms in German dictation, guarded by a German lexicon. Without the
+  lexicon, 6 of 30 ordinary sentences changed (`Morgen` → merge, `Doktor` →
+  Docker). With it, none of them change, and neither do 38 sentences held out
+  from making the list. `Släck` → Slack. Casing commands stop at German words, and "Datei" triggers a
+  file mention. `yaz eval --language de` scores the German set.
 - **Learning from your fixes.** yaz reads the field back after a paste and
   learns a term you fix twice. A rule is kept only if the fixed evaluation
   (`EvalCorpus`: false matches × 3 + misses) does not get worse, so it can

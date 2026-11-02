@@ -132,6 +132,9 @@ enum PhoneticKey {
     private static let diacritics: [Character: Character] = [
         "ç": "c", "ğ": "g", "ı": "i", "ö": "o", "ş": "s", "ü": "u",
         "â": "a", "î": "i", "û": "u",
+        // German: Whisper writes an English `a` as `ä` ("Släck"), and `ß` is
+        // one `s` sound (runs collapse anyway).
+        "ä": "a", "ß": "s",
     ]
 
     /// English spellings rewritten to the Turkish letter carrying that sound.

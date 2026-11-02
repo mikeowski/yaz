@@ -256,7 +256,7 @@ final class Daemon {
             let edits = CorrectionDiff.edits(pasted: pasted, field: field)
             guard !edits.isEmpty else { return }
 
-            var learner = Learner(rules: self.learned)
+            var learner = Learner(rules: self.learned, language: self.config.language)
             let events = learner.observe(
                 edits: edits, corrections: corrections, userTerms: self.config.vocabulary)
             guard learner.rules != self.learned else { return }
@@ -591,7 +591,8 @@ final class Daemon {
             TextInjector.inject(processed.text, mode: config.injectMode)
             lastText = processed.text
             runHook(with: processed.text)
-            if config.learn, let bundleID = target?.bundleID {
+            if config.learn, Vocabulary.isSupported(language: config.language),
+               let bundleID = target?.bundleID {
                 scheduleReadBack(
                     pasted: processed.text, corrections: processed.corrections, in: bundleID)
             }
