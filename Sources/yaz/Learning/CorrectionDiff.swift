@@ -45,15 +45,20 @@ enum CorrectionDiff {
     /// close enough to be the same text.
     private static func locate(_ pasted: [String], in field: [String]) -> [String]? {
         let n = pasted.count
-        var best: (score: Double, window: [String])?
+        var best: (score: Double, distance: Int, window: [String])?
         let sizes = max(1, n - 3)...(n + 3)
         for size in sizes where size <= field.count {
             for start in 0...(field.count - size) {
                 let window = Array(field[start..<(start + size)])
                 let common = lcs(pasted.map(key), window.map(key)).count
                 let score = Double(common) / Double(max(n, size))
-                if best == nil || score > best!.score {
-                    best = (score, window)
+                // On a tie, the window closest in length to the dictation:
+                // a shorter one scores the same by leaving the changed
+                // words out, which is exactly what must be found.
+                let distance = abs(size - n)
+                if best == nil || score > best!.score
+                    || (score == best!.score && distance < best!.distance) {
+                    best = (score, distance, window)
                 }
             }
         }
