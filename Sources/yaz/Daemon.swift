@@ -13,7 +13,8 @@ final class Daemon {
     private var monitor: HotkeyMonitor
     private var activeHotkey: Hotkey
     private let capture = AudioCapture()
-    private let pipeline: TranscriptPipeline
+    /// Rebuilt once the project index is ready (`projects`).
+    private var pipeline: TranscriptPipeline
     private let history: TranscriptHistory
     private let overlay: RecordingOverlay?
     /// Created in `run()`, not in `init`.
@@ -147,6 +148,7 @@ final class Daemon {
         // what it is doing.
         menuBar?.note("loading model…")
         startModelLoad()
+        startProjectIndex()
 
         if awaitingPermission {
             DispatchQueue.main.async { [weak self] in self?.presentPermissionAlert() }
@@ -223,6 +225,27 @@ final class Daemon {
             let elapsed = Date().timeIntervalSince(started)
             log(String(format: "✓ %@ ready — %.1f s", engine.model, elapsed))
             await MainActor.run { DaemonHolder.live?.engineBecameReady() }
+        }
+    }
+
+    /// Index the project folders in the background, then swap in a pipeline
+    /// that knows their names. Until then dictation works without them.
+    private func startProjectIndex() {
+        let paths = config.projects
+        guard !paths.isEmpty else { return }
+        let config = self.config
+        Task.detached(priority: .utility) { [weak self] in
+            let started = Date()
+            let index = ProjectIndex.scan(paths)
+            let pipeline = TranscriptPipeline(config: config, project: index)
+            let elapsed = Date().timeIntervalSince(started)
+            await MainActor.run {
+                guard let self else { return }
+                self.pipeline = pipeline
+                log(String(
+                    format: "✓ projects indexed — %d names, %d files in %.1f s",
+                    min(index.identifiers.count, ProjectIndex.maxTerms), index.files.count, elapsed))
+            }
         }
     }
 
@@ -483,8 +506,16 @@ final class Daemon {
             // transcript, because the ASR-level alternatives do not work on
             // this stack: Whisper returns empty output when given promptTokens,
             // and the on-device LLM cannot do fuzzy Turkish-phonetic matching.
-            if config.refine == .llm { setIndicator(.refining) }
-            let processed = await pipeline.process(output.text)
+            // Into an editor, a terminal or a coding agent: project names,
+            // casing commands and file mentions apply. Read now — the cursor
+            // is still in that app, the pill never takes focus.
+            let code = CodeContext.isCode(
+                bundleID: AppEnvironment.frontmostApp()?.bundleID, extra: config.codeApps)
+            if config.refine == .llm && !code { setIndicator(.refining) }
+            let processed = await pipeline.process(output.text, code: code)
+            for change in processed.codeChanges {
+                log("  code: \(change.from) → \(change.to)")
+            }
             for correction in processed.corrections {
                 log("  vocabulary: \(correction.from) → \(correction.to)")
             }
