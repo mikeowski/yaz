@@ -82,6 +82,9 @@ actor ParakeetTranscriber: Transcriber {
         _ samples: [Float], options: TranscribeOptions
     ) async throws -> TranscriptionOutput {
         let level = try options.gate.check(samples)
+        // Then the voice check: loud is not the same as speech, and Whisper
+        // invents text for noise as readily as for silence.
+        try await options.voice?.check(samples)
         guard let manager else { throw YazError.engineNotPrepared(engine: name) }
 
         let engineName = name

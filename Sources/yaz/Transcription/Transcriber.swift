@@ -71,6 +71,9 @@ extension Transcriber {
 /// the raw model output stays visible.
 struct TranscribeOptions: Sendable {
     var gate = SpeechGate()
+    /// The speech check after the level gate. `nil` skips it; the daemon and
+    /// `yaz transcribe --strict` turn it on.
+    var voice: VoiceCheck? = nil
     var thresholds = TranscriptionQuality.Thresholds.default
     /// Abandon a transcription that hangs. A wedged Core ML call must not take
     /// the daemon with it.

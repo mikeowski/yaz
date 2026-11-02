@@ -193,6 +193,12 @@ private struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Toggle("Skip recordings without speech", isOn: $model.config.vad)
+                if model.config.vad {
+                    Text("Silero VAD drops noise, typing and coughs before Whisper sees them.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Vocabulary") {

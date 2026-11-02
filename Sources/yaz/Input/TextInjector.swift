@@ -48,47 +48,26 @@ enum TextInjector {
 
     // MARK: - Paste
 
+    /// One for the process: back-to-back dictations must share the record of
+    /// what the user had before the first of them.
+    @MainActor
+    private static let pasteboard = PasteboardRestore(board: SystemPasteboard())
+
     @MainActor
     private static func paste(_ text: String) {
-        let pasteboard = NSPasteboard.general
-
-        // Snapshot everything, not just the string: the user's clipboard may
-        // hold an image or a file promise, and coming back to find it replaced
-        // by dictation would be worse than the dictation failing.
-        let saved = snapshot(pasteboard)
-
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-
+        let token = pasteboard.put(text)
         postCommandV()
 
         // Restore after the target app has had a chance to read the pasteboard.
         // There is no completion callback for a synthetic paste, so this is a
         // delay — chosen long enough for slow Electron apps, short enough that
         // a ⌘V of your own right after dictating still gets the old contents
-        // back rather than a race.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            restore(saved, to: pasteboard)
+        // back rather than a race. `PasteboardRestore` skips the restore when
+        // something newer is on the pasteboard by then.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            pasteboard.restore(after: token)
         }
-    }
-
-    /// Everything currently on the pasteboard, per type.
-    private static func snapshot(_ pasteboard: NSPasteboard) -> [NSPasteboardItem] {
-        (pasteboard.pasteboardItems ?? []).map { item in
-            let copy = NSPasteboardItem()
-            for type in item.types {
-                if let data = item.data(forType: type) {
-                    copy.setData(data, forType: type)
-                }
-            }
-            return copy
-        }
-    }
-
-    private static func restore(_ items: [NSPasteboardItem], to pasteboard: NSPasteboard) {
-        pasteboard.clearContents()
-        guard !items.isEmpty else { return }
-        pasteboard.writeObjects(items)
     }
 
     /// Synthesise ⌘V.

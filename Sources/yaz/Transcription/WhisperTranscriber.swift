@@ -92,6 +92,9 @@ actor WhisperTranscriber: Transcriber {
         // Cheap rejections first: a hotkey tap or a muted mic must not cost a
         // model round trip.
         let level = try options.gate.check(samples)
+        // Then the voice check: loud is not the same as speech, and Whisper
+        // invents text for noise as readily as for silence.
+        try await options.voice?.check(samples)
         guard box.isLoaded else { throw YazError.engineNotPrepared(engine: name) }
 
         // Whisper's own decoder handles segmentation; we only pin the language

@@ -100,7 +100,7 @@ does not exist` almost always means the wrong Apple ID rather than the wrong
 password.
 
 ```sh
-swift test                  # 262 tests, ~1 s
+swift test                  # 283 tests, ~1 s
 ./scripts/bundle.sh         # picks up the Developer ID automatically
 ./scripts/notarize.sh       # app + DMG, notarised and stapled
 ```

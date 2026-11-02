@@ -885,10 +885,19 @@ struct Transcribe: ParsableCommand {
             var options = strict ? TranscribeOptions() : .raw
             options.timeout = .seconds(Int(max(maxSeconds, 120)))
 
+            // The voice detector is loaded in both modes: --strict enforces
+            // it, and the default mode prints its scores so the threshold can
+            // be checked against real recordings.
+            let voiceGate = VoiceActivityGate(threshold: Config.load().vadThreshold)
+            await SileroVoiceActivity.shared.prepare()
+            if strict {
+                options.voice = VoiceCheck(detector: SileroVoiceActivity.shared, gate: voiceGate)
+            }
+
             var failures = 0
             for path in files {
                 do {
-                    try await transcribeOne(path, engine: engine, options: options)
+                    try await transcribeOne(path, engine: engine, options: options, voiceGate: voiceGate)
                 } catch let error as YazError {
                     failures += 1
                     print("\n═══ \(URL(fileURLWithPath: path).lastPathComponent) ═══")
@@ -902,9 +911,12 @@ struct Transcribe: ParsableCommand {
     }
 
     private func transcribeOne(
-        _ path: String, engine: any Transcriber, options: TranscribeOptions
+        _ path: String, engine: any Transcriber, options: TranscribeOptions,
+        voiceGate: VoiceActivityGate
     ) async throws {
         let samples = try AudioLoader.load(path, maxSeconds: maxSeconds)
+        let voice = await SileroVoiceActivity.shared.speechProbabilities(samples)
+            .map { voiceGate.verdict(for: $0) }
 
         var best = Double.infinity
         var output: TranscriptionOutput?
@@ -925,6 +937,15 @@ struct Transcribe: ParsableCommand {
         print(String(
             format: "  latency %.0f ms · RTF %.3f · peak %.3f · rms %.3f",
             best * 1000, best / max(seconds, 0.001), output.level.peak, output.level.rms))
+
+        if let voice {
+            print(String(
+                format: "  voice %.2f · %ld of %ld windows over %.2f%@",
+                voice.peakProbability, voice.speechWindows, voice.windows,
+                voiceGate.threshold, voice.hasSpeech ? "" : " · no speech"))
+        } else {
+            print("  (voice activity detector unavailable — level gate only)")
+        }
 
         if let signals = output.quality.signals {
             print(String(
