@@ -6,7 +6,20 @@ Notable changes to yaz. Format loosely follows
 
 ## [Unreleased]
 
+Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
+
 ### Added
+
+- **Automatic updates** through Sparkle. The signed app reads
+  `https://yaz.mike4.dev/downloads/appcast.xml` once a day and offers a new
+  version from the menu bar, without a window over the app you are dictating
+  into. `yaz updates` reports whether a copy can update itself. The CLI does
+  not update itself.
+- **yaz.mike4.dev**, the website: download, install steps, checksum, and a
+  replay of a measured dictation. Served from `site/` by Cloudflare.
+- **`scripts/release.sh`** builds, notarises and publishes a release: the DMG,
+  `latest.json`, the signed update feed, and optionally the GitHub release
+  (`--github`) and the site (`--deploy`).
 
 - **Voice activity check.** Silero VAD (FluidAudio, on the Neural Engine) runs
   after the level gate and drops recordings that are loud but hold no speech —

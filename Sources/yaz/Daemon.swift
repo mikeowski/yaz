@@ -68,6 +68,16 @@ final class Daemon {
         menuBar?.onFixPermission = { [weak self] in self?.presentPermissionAlert() }
         menuBar?.onUseFallbackHotkey = { [weak self] in self?.switchToFallbackHotkey() }
 
+        // Sparkle runs only in the signed .app; `Updates` decides.
+        if Updates.canUpdate {
+            let updates = Updates.shared
+            menuBar?.onCheckForUpdates = { updates.checkForUpdates() }
+            updates.onAvailable = { [weak self] version in
+                self?.menuBar?.setUpdateAvailable(version)
+            }
+            log("updates: \(Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String ?? "")")
+        }
+
         // macOS owns the globe key whenever a second keyboard layout or
         // Dictation is enabled, and then it consumes the press before any
         // session tap sees it — the hotkey does nothing, silently.

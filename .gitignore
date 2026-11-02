@@ -3,3 +3,9 @@
 *.xcodeproj
 .DS_Store
 dist/
+
+# Release artefacts (DMGs are published, not committed)
+site/downloads/*.dmg
+
+# Wrangler local state
+.wrangler/

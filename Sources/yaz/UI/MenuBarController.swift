@@ -15,6 +15,11 @@ final class MenuBarController {
     var onOpenHistory: (() -> Void)?
     var onFixPermission: (() -> Void)?
     var onUseFallbackHotkey: (() -> Void)?
+    /// Set only when Sparkle is running (the signed .app); otherwise the
+    /// update items stay out of the menu.
+    var onCheckForUpdates: (() -> Void)? {
+        didSet { checkForUpdatesItem.isHidden = onCheckForUpdates == nil }
+    }
 
     private let item: NSStatusItem
     private let statusLine = NSMenuItem(title: "starting…", action: nil, keyEquivalent: "")
@@ -22,6 +27,10 @@ final class MenuBarController {
         title: "⚠︎  Grant Accessibility permission…", action: nil, keyEquivalent: "")
     private let hotkeyConflictItem = NSMenuItem(
         title: "⚠︎  fn is claimed by macOS — use right option", action: nil, keyEquivalent: "")
+    private let checkForUpdatesItem = NSMenuItem(
+        title: "Check for Updates…", action: nil, keyEquivalent: "")
+    private let updateAvailableItem = NSMenuItem(
+        title: "Update available", action: nil, keyEquivalent: "")
     private let summary: String
 
     init(summary: String) {
@@ -121,6 +130,18 @@ final class MenuBarController {
 
         menu.addItem(.separator())
 
+        // A background check never opens a window over the app the user is
+        // dictating into; it shows this item and waits.
+        updateAvailableItem.target = self
+        updateAvailableItem.action = #selector(checkForUpdates)
+        updateAvailableItem.isHidden = true
+        menu.addItem(updateAvailableItem)
+
+        checkForUpdatesItem.target = self
+        checkForUpdatesItem.action = #selector(checkForUpdates)
+        checkForUpdatesItem.isHidden = true
+        menu.addItem(checkForUpdatesItem)
+
         let quit = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -138,6 +159,13 @@ final class MenuBarController {
         }
     }
 
+    /// Show or clear "Update to x.y…".
+    func setUpdateAvailable(_ version: String?) {
+        updateAvailableItem.isHidden = version == nil
+        if let version { updateAvailableItem.title = "Update to yaz \(version)…" }
+    }
+
+    @objc private func checkForUpdates() { onCheckForUpdates?() }
     @objc private func useFallbackHotkey() { onUseFallbackHotkey?() }
     @objc private func fixPermission() { onFixPermission?() }
     @objc private func openSettings() { onOpenSettings?() }

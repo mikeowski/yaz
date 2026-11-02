@@ -29,7 +29,7 @@ note() { printf '  %s\n' "$*"; }
 command -v swift >/dev/null 2>&1 || die "swift not found"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
-    "$ROOT/Resources/AppInfo.plist" 2>/dev/null || echo 0.1.0)"
+    "$ROOT/Resources/AppInfo.plist" 2>/dev/null || echo 0.2.0)"
 
 # --- build ------------------------------------------------------------------
 
@@ -48,6 +48,23 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BUILT" "$APP/Contents/MacOS/yaz"
 cp "$ROOT/Resources/AppInfo.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
+
+# --- Sparkle ---
+# The binary weak-links Sparkle and finds it through
+# @executable_path/../Frameworks. ditto, not cp: the framework is made of
+# symlinks (Versions/Current), and a copy that resolves them breaks its
+# signature.
+SPARKLE_SRC="$ROOT/.build/release/Sparkle.framework"
+if [ ! -d "$SPARKLE_SRC" ]; then
+    SPARKLE_SRC="$(find "$ROOT/.build/artifacts" -type d -name Sparkle.framework \
+        -path '*macos*' 2>/dev/null | head -1)"
+fi
+[ -n "$SPARKLE_SRC" ] && [ -d "$SPARKLE_SRC" ] \
+    || die "Sparkle.framework not found in .build — did 'swift build' resolve the Sparkle package?"
+mkdir -p "$APP/Contents/Frameworks"
+ditto "$SPARKLE_SRC" "$APP/Contents/Frameworks/Sparkle.framework"
+note "Sparkle: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+    "$APP/Contents/Frameworks/Sparkle.framework/Resources/Info.plist" 2>/dev/null || echo embedded)"
 
 # --- icon ---
 # The icon is drawn by the binary itself, so there is no asset catalogue and
@@ -81,6 +98,31 @@ rm -rf "$(dirname "$ICONSET")"
 #      time. Last resort.
 ENTITLEMENTS="$ROOT/Resources/yaz.entitlements"
 
+# Inside out, never --deep. --deep re-signs Sparkle's helpers with the app's
+# options and drops the entitlements its Downloader service needs; Sparkle's
+# documentation and notarisation both ask for each piece to be signed on its
+# own. Every piece gets the Hardened Runtime; with --timestamp for a release.
+#
+#   sign_app <identity> [--timestamp]
+sign_app() {
+    identity="$1"
+    timestamp="${2:-}"
+    fw="$APP/Contents/Frameworks/Sparkle.framework"
+    if [ -d "$fw" ]; then
+        codesign --force $timestamp --options runtime --sign "$identity" \
+            "$fw/Versions/B/XPCServices/Installer.xpc" || return 1
+        codesign --force $timestamp --options runtime --preserve-metadata=entitlements \
+            --sign "$identity" "$fw/Versions/B/XPCServices/Downloader.xpc" || return 1
+        codesign --force $timestamp --options runtime --sign "$identity" \
+            "$fw/Versions/B/Autoupdate" || return 1
+        codesign --force $timestamp --options runtime --sign "$identity" \
+            "$fw/Versions/B/Updater.app" || return 1
+        codesign --force $timestamp --options runtime --sign "$identity" "$fw" || return 1
+    fi
+    codesign --force $timestamp --options runtime --entitlements "$ENTITLEMENTS" \
+        --sign "$identity" "$APP" || return 1
+}
+
 DEVELOPER_ID="$(security find-identity -v -p codesigning 2>/dev/null \
     | grep "Developer ID Application" | head -1 \
     | sed -E 's/.*"(Developer ID Application: [^"]+)".*/\1/')"
@@ -90,10 +132,7 @@ if [ -n "$DEVELOPER_ID" ]; then
     # stops validating the day the certificate expires, rather than staying
     # valid for everything signed while it was live — and notarisation refuses
     # an untimestamped bundle outright.
-    SIGN_ERR="$(codesign --force --deep --timestamp \
-        --options runtime \
-        --entitlements "$ENTITLEMENTS" \
-        --sign "$DEVELOPER_ID" "$APP" 2>&1)" \
+    SIGN_ERR="$(sign_app "$DEVELOPER_ID" --timestamp 2>&1)" \
         || die "signing with Developer ID failed:
 $SIGN_ERR"
     note "signed: $DEVELOPER_ID"
@@ -118,22 +157,18 @@ else
         # Output is captured rather than piped: the exit status of `cmd | sed`
         # is sed's, which is always 0, so a pipeline here would report success
         # no matter what codesign did.
-        if SIGN_ERR="$(codesign --force --deep --options runtime \
-               --entitlements "$ENTITLEMENTS" \
-               --sign "$IDENTITY" "$APP" 2>&1)"
+        if SIGN_ERR="$(sign_app "$IDENTITY" 2>&1)"
         then
             note "signed: $IDENTITY (stable across rebuilds, not notarisable)"
         else
             printf '%s\n' "$SIGN_ERR" | sed 's/^/    /'
             note "signing with '$IDENTITY' failed — see the error above"
-            codesign --force --deep --sign - "$APP" >/dev/null 2>&1 \
+            sign_app - >/dev/null 2>&1 \
                 || die "ad-hoc signing failed too"
             note "fell back to ad-hoc — permissions will reset on every rebuild"
         fi
     else
-        codesign --force --deep --options runtime \
-            --entitlements "$ENTITLEMENTS" --sign - "$APP" 2>/dev/null \
-            || codesign --force --deep --sign - "$APP" 2>/dev/null \
+        sign_app - 2>/dev/null \
             || note "could not sign (not fatal)"
         note "ad-hoc signature — macOS permissions reset on every rebuild"
         note "run ./scripts/signing-identity.sh once to stop that"

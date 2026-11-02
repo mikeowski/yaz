@@ -1,0 +1,21 @@
+{
+  // The landing page and the Sparkle update feed, served as static assets
+  // (no Worker script). Cloudflare builds it from this repository on every
+  // push to main (Workers Builds; build command: sh scripts/site-build.sh).
+  // By hand: scripts/release.sh --deploy, or npx wrangler@4 deploy.
+  // The Worker's name in the Cloudflare dashboard must match "name" below.
+  "name": "yaz",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./site",
+    // Unknown paths get site/404.html with a 404 status.
+    "not_found_handling": "404-page"
+  },
+  // yaz.mike4.dev is the home, and the update feed every installed copy reads
+  // (SUFeedURL in Resources/AppInfo.plist). Cloudflare creates the DNS record
+  // for a custom domain itself, in the mike4.dev zone.
+  "routes": [
+    { "pattern": "yaz.mike4.dev", "custom_domain": true }
+  ],
+  "workers_dev": true
+}

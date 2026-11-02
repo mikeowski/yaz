@@ -27,7 +27,7 @@ enum AppEnvironment {
     /// Version from the bundle, or a build-time default for the CLI.
     static var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-            ?? "0.1.0"
+            ?? "0.2.0"
     }
 
     /// Where user data lives. `Application Support` rather than `~/.config`
