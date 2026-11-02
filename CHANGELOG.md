@@ -10,6 +10,12 @@ Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
 
 ### Added
 
+- **Turkish numbers as digits.** "saat on beş otuzda" → "saat 15.30'da",
+  "yüzde elli" → "%50", "on beş bin dolar" → "15.000 dolar", "iki bin yirmi
+  altıda" → "2026'da". The suffix follows the reading. Words that only look
+  like numbers (onu, altında, yedi, bin, yüzünü, bir) stay words: 29
+  conversions and 23 look-alikes are in the `yaz eval` score. `yaz numbers`
+  shows the result; `"numbers": false` turns it off.
 - **German term repair.** Set `"language": "de"` and the vocabulary repairs
   English terms in German dictation, guarded by a German lexicon. Without the
   lexicon, 6 of 30 ordinary sentences changed (`Morgen` → merge, `Doktor` →

@@ -208,6 +208,7 @@ private struct SettingsView: View {
                         Text(mode.displayName).tag(mode)
                     }
                 }
+                Toggle("Write Turkish numbers as digits", isOn: $model.config.numbers)
                 if model.config.refine == .llm {
                     Text("The language model adds 0.3–1.4 s per utterance.")
                         .font(.caption)

@@ -9,7 +9,7 @@ struct Yaz: ParsableCommand {
         commandName: "yaz",
         abstract: "On-device dictation for macOS. Hold the key, speak, release — the text lands at your cursor.",
         version: AppEnvironment.version,
-        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self, Microphones.self, Projects.self, Eval.self, Learned.self],
+        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self, Microphones.self, Projects.self, Eval.self, Learned.self, Numbers.self],
         defaultSubcommand: Run.self
     )
 }
@@ -1168,5 +1168,21 @@ struct Learned: ParsableCommand {
             }
         }
         print("file: \(LearnedRules.path.path)")
+    }
+}
+
+struct Numbers: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Show how spoken Turkish numbers are written as digits.")
+
+    @Argument(help: "Turkish text, as Whisper would write it.")
+    var text: String
+
+    func run() throws {
+        let result = TurkishNumbers.format(text)
+        for change in result.changes {
+            print("  number: \(change.from) -> \(change.to)")
+        }
+        print(result.text)
     }
 }

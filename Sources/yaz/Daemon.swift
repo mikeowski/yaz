@@ -579,6 +579,9 @@ final class Daemon {
             for change in processed.codeChanges {
                 log("  code: \(change.from) → \(change.to)")
             }
+            for change in processed.numberChanges {
+                log("  number: \(change.from) → \(change.to)")
+            }
             for correction in processed.corrections {
                 log("  vocabulary: \(correction.from) → \(correction.to)")
             }
