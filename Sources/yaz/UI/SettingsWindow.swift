@@ -226,6 +226,7 @@ private struct SettingsView: View {
                 Text("English terms that get mangled in Turkish speech are repaired here.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle("Also use the names in the front window", isOn: $model.config.screenContext)
 
                 HStack {
                     TextField("Add a term (e.g. pull request)", text: $model.newTerm)

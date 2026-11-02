@@ -66,6 +66,9 @@ struct Config: Sendable, Equatable {
     var learn: Bool = true
     /// Write spoken Turkish numbers as digits: "saat on beşte" → "saat 15'te".
     var numbers: Bool = true
+    /// Add the names visible in the front window to the vocabulary for each
+    /// dictation (`ScreenContext`). Read through Accessibility, never saved.
+    var screenContext: Bool = true
 
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/yaz/config.json")
@@ -140,6 +143,7 @@ struct Config: Sendable, Equatable {
         if let value = json["live_text"] as? Bool { liveText = value }
         if let value = json["learn"] as? Bool { learn = value }
         if let value = json["numbers"] as? Bool { numbers = value }
+        if let value = json["screen_context"] as? Bool { screenContext = value }
         if let raw = json["microphone"] {
             if let uid = raw as? String, !uid.isEmpty { microphone = uid }
             else if raw is NSNull { microphone = nil }
@@ -228,6 +232,7 @@ struct Config: Sendable, Equatable {
             "live_text": liveText,
             "learn": learn,
             "numbers": numbers,
+            "screen_context": screenContext,
         ]
         if let microphone { json["microphone"] = microphone }
         if !projects.isEmpty { json["projects"] = projects }
@@ -279,7 +284,8 @@ struct Config: Sendable, Equatable {
           "hands_free": true,
           "live_text": false,
           "learn": true,
-          "numbers": true
+          "numbers": true,
+          "screen_context": true
         }
 
         """

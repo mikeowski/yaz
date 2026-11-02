@@ -54,6 +54,8 @@ final class Daemon {
     /// fixes (`learn`): the pipeline is rebuilt from these when either changes.
     private var projectIndex = ProjectIndex.empty
     private var learned = LearnedRules.load()
+    /// Terms read from the screen when the key went down, for this dictation.
+    private var screenTerms: Task<[VocabularyTerm], Never>?
     /// The user's own evaluation cases (`PersonalCorpus`).
     private var personal = PersonalCorpus.load()
 
@@ -236,6 +238,24 @@ final class Daemon {
             let elapsed = Date().timeIntervalSince(started)
             log(String(format: "✓ %@ ready — %.1f s", engine.model, elapsed))
             await MainActor.run { DaemonHolder.live?.engineBecameReady() }
+        }
+    }
+
+    /// Read the front window while the user speaks: the terms are ready by
+    /// the time the key comes up.
+    private func readScreenTerms() {
+        screenTerms?.cancel()
+        guard config.screenContext, Vocabulary.isSupported(language: config.language) else {
+            screenTerms = nil
+            return
+        }
+        let language = config.language
+        let known = config.vocabulary + learned.terms
+        screenTerms = Task.detached(priority: .userInitiated) {
+            let text = ScreenReader.frontWindowText()
+            let lexicon = Lexicon.forLanguage(language) ?? .turkish
+            let candidates = ScreenContext.terms(in: text, lexicon: lexicon, excluding: known)
+            return ScreenContext.vetted(candidates, language: language)
         }
     }
 
@@ -465,6 +485,7 @@ final class Daemon {
         case .start:
             do {
                 try capture.start()
+                readScreenTerms()
                 log("● recording")
                 setIndicator(.recording)
                 startLivePreview()
@@ -601,7 +622,12 @@ final class Daemon {
             let code = CodeContext.isCode(
                 bundleID: AppEnvironment.frontmostApp()?.bundleID, extra: config.codeApps)
             if config.refine == .llm && !code { setIndicator(.refining) }
-            let processed = await pipeline.process(output.text, code: code)
+            let context = await screenTerms?.value ?? []
+            screenTerms = nil
+            if verbose, !context.isEmpty {
+                log("  screen: \(context.count) terms (\(context.prefix(6).map(\.canonical).joined(separator: ", ")))")
+            }
+            let processed = await pipeline.process(output.text, code: code, context: context)
             for change in processed.codeChanges {
                 log("  code: \(change.from) → \(change.to)")
             }

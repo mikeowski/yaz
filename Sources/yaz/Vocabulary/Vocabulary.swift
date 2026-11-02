@@ -87,6 +87,18 @@ struct Vocabulary: Sendable {
     private let lexicon: Lexicon
     /// Blocks keyed by normalized heard text and lowercased term.
     private let blockedKeys: Set<String>
+    private let blocked: [Block]
+    private let language: String
+
+    /// The same vocabulary with `extra` terms after the existing ones (which
+    /// win ties), keeping thresholds, blocks and language. For terms that
+    /// apply to one dictation only (`ScreenContext`).
+    func adding(_ extra: [VocabularyTerm]) -> Vocabulary {
+        guard !extra.isEmpty else { return self }
+        return Vocabulary(
+            terms: terms + extra, threshold: threshold, skeletonThreshold: skeletonThreshold,
+            blocked: blocked, language: language)
+    }
 
     private static func blockKey(heard: String, term: String) -> String {
         PhoneticKey.normalize(heard) + "\u{1F}" + term.lowercased()
@@ -114,6 +126,8 @@ struct Vocabulary: Sendable {
         self.threshold = threshold
         self.skeletonThreshold = skeletonThreshold
         self.blockedKeys = Set(blocked.map { Self.blockKey(heard: $0.heard, term: $0.term) })
+        self.blocked = blocked
+        self.language = language
 
         var entries: [Entry] = []
         for term in terms {
