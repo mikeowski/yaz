@@ -209,6 +209,12 @@ private struct SettingsView: View {
                     }
                 }
                 Toggle("Write Turkish numbers as digits", isOn: $model.config.numbers)
+                Toggle("Voice commands", isOn: $model.config.voiceCommands)
+                if model.config.voiceCommands {
+                    Text("Say \"yeni paragraf\" at the end of a sentence, or just \"geri al\" to remove the last dictation.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if model.config.refine == .llm {
                     Text("The language model adds 0.3–1.4 s per utterance.")
                         .font(.caption)

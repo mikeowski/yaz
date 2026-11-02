@@ -194,6 +194,29 @@ rules are conservative:
 are part of the `yaz eval` score, together with the 30 everyday sentences,
 which must stay unchanged. Set `"numbers": false` to turn it off.
 
+### Voice commands
+
+| Say | yaz does |
+|---|---|
+| … `yeni satır.` | a line break |
+| … `yeni paragraf.` | an empty line |
+| … `soru işareti` | `?` |
+| … `ünlem işareti` | `!` |
+| … `iki nokta üst üste` | `:` |
+| `geri al` (or `bunu sil`), on its own | removes the last dictation |
+
+A command counts only where a command is said: at the end of a sentence.
+"Toplantı bitti, yeni satır. Sonra görüşürüz." starts a new line, but "Yeni
+satır ekledim." (*I added a new line*) is a sentence. `geri al` counts only
+when it is the whole dictation.
+
+The removal works through Accessibility and only if the last dictation still
+ends exactly at the cursor. yaz sends no keystrokes, so if you typed, moved
+or edited, nothing is removed. The menu has the same action, **Remove Last
+Dictation**. In a terminal or an editor, and when `inject_mode` is `type`
+(where a line break is a Return that sends the message), only the punctuation
+commands apply. Set `"voice_commands": false` to turn commands off.
+
 ### Names on screen
 
 You usually dictate about something you are looking at: a pull request, a
@@ -473,6 +496,7 @@ same file. Therefore you can also edit the file manually.
   "learn": true,
   "numbers": true,
   "screen_context": true,
+  "voice_commands": true,
   "on_transcript": "my-hook",
   "vocabulary": [
     "Slack", "pull request", "CI pipeline", "Kubernetes",

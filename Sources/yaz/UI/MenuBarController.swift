@@ -16,6 +16,7 @@ final class MenuBarController {
     var onFixPermission: (() -> Void)?
     var onUseFallbackHotkey: (() -> Void)?
     var onPasteLast: (() -> Void)?
+    var onUndoLast: (() -> Void)?
     /// Set only when Sparkle is running (the signed .app); otherwise the
     /// update items stay out of the menu.
     var onCheckForUpdates: (() -> Void)? {
@@ -126,6 +127,12 @@ final class MenuBarController {
         pasteLast.target = self
         menu.addItem(pasteLast)
 
+        // Removes it again, only if it is still right before the cursor.
+        let undoLast = NSMenuItem(
+            title: "Remove Last Dictation", action: #selector(undoLastDictation), keyEquivalent: "")
+        undoLast.target = self
+        menu.addItem(undoLast)
+
         menu.addItem(.separator())
 
         let settings = NSMenuItem(
@@ -177,6 +184,7 @@ final class MenuBarController {
 
     @objc private func checkForUpdates() { onCheckForUpdates?() }
     @objc private func pasteLastDictation() { onPasteLast?() }
+    @objc private func undoLastDictation() { onUndoLast?() }
     @objc private func useFallbackHotkey() { onUseFallbackHotkey?() }
     @objc private func fixPermission() { onFixPermission?() }
     @objc private func openSettings() { onOpenSettings?() }

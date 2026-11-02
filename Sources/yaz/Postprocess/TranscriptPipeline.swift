@@ -27,6 +27,11 @@ struct TranscriptPipeline: Sendable {
     let language: String
     /// Write spoken Turkish numbers as digits (`TurkishNumbers`).
     let numbers: Bool
+    /// Carry out "yeni satır", "soru işareti"… (`VoiceCommands`).
+    let voiceCommands: Bool
+    /// Line breaks may be inserted: false when text is typed key by key,
+    /// where a line break is a Return.
+    let lineBreaks: Bool
 
     struct Output: Sendable {
         let text: String
@@ -35,6 +40,8 @@ struct TranscriptPipeline: Sendable {
         var codeChanges: [CodeFormatter.Change] = []
         /// Numbers written as digits.
         var numberChanges: [TurkishNumbers.Change] = []
+        /// Voice commands carried out, as said.
+        var commands: [String] = []
         let refined: Bool
         /// Set when a refinement was produced and then thrown away.
         let refinementRejected: String?
@@ -49,6 +56,8 @@ struct TranscriptPipeline: Sendable {
         self.refiner = Refiner(mode: config.refine, language: config.language)
         self.language = config.language
         self.numbers = config.numbers
+        self.voiceCommands = config.voiceCommands
+        self.lineBreaks = config.injectMode == .paste
         self.codeVocabulary = Vocabulary(
             terms: terms + project.vocabularyTerms(), blocked: learned.blocks,
             language: config.language)
@@ -61,9 +70,12 @@ struct TranscriptPipeline: Sendable {
     init(
         vocabulary: Vocabulary, refiner: Refiner, language: String = Vocabulary.lexiconLanguage,
         codeVocabulary: Vocabulary? = nil, formatter: CodeFormatter = CodeFormatter(),
-        numbers: Bool = false
+        numbers: Bool = false,
+        voiceCommands: Bool = false
     ) {
         self.numbers = numbers
+        self.voiceCommands = voiceCommands
+        self.lineBreaks = true
         self.vocabulary = vocabulary
         self.refiner = refiner
         self.language = language
@@ -95,11 +107,13 @@ struct TranscriptPipeline: Sendable {
             corrections: corrected.corrections, in: result.text
         ) {
             let digits = writeNumbers(formatted.text)
+            let commanded = runCommands(digits.text, code: code)
             return Output(
-                text: digits.text,
+                text: commanded.text,
                 corrections: corrected.corrections,
                 codeChanges: formatted.changes,
                 numberChanges: digits.changes,
+                commands: commanded.commands,
                 refined: false,
                 refinementRejected: "post-processing dropped the term \"\(lost)\"")
         }
@@ -107,13 +121,22 @@ struct TranscriptPipeline: Sendable {
         // Numbers last, on the final wording: a model asked to tidy "15'te"
         // could spell it out again, but it never sees the digits.
         let digits = writeNumbers(result.text)
+        let commanded = runCommands(digits.text, code: code)
         return Output(
-            text: digits.text,
+            text: commanded.text,
             corrections: corrected.corrections,
             codeChanges: formatted.changes,
             numberChanges: digits.changes,
+            commands: commanded.commands,
             refined: result.changed,
             refinementRejected: result.rejection)
+    }
+
+    private func runCommands(_ text: String, code: Bool) -> VoiceCommands.Result {
+        guard voiceCommands, VoiceCommands.isSupported(language: language) else {
+            return VoiceCommands.Result(text: text, commands: [])
+        }
+        return VoiceCommands.apply(text, code: code || !lineBreaks)
     }
 
     private func writeNumbers(_ text: String) -> TurkishNumbers.Result {

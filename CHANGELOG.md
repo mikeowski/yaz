@@ -10,6 +10,12 @@ Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
 
 ### Added
 
+- **Voice commands.** "yeni satır", "yeni paragraf", "soru işareti", "ünlem
+  işareti", "iki nokta üst üste" at the end of a sentence; "Yeni satır
+  ekledim." stays a sentence. "geri al" on its own (and **Remove Last
+  Dictation** in the menu) removes the last dictation through Accessibility,
+  only if it still ends at the cursor. No line breaks in code apps or when
+  typing. `"voice_commands": false` turns them off.
 - **Names on screen.** When the key goes down, yaz reads the front window's
   visible text through Accessibility and adds the words that look like names
   (`PaymentGateway`, `CORS`, "Pull Request") to the vocabulary for that
