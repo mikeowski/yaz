@@ -11,7 +11,8 @@ decides, git keeps or reverts.
 swift run yaz eval --quiet
 ```
 
-prints one integer: `false matches × 3 + misses` over `Sources/yaz/Eval/EvalCorpus.swift`.
+prints one integer: `false matches × 3 + misses` over `Sources/yaz/Eval/EvalCorpus.swift`,
+summed over every language (Turkish and German). `--language de` scores one.
 **Lower is better.** A false match costs three misses because it is invisible:
 a missed term stays visibly mangled, a wrong replacement looks like what the
 user said.
@@ -24,7 +25,9 @@ user said.
   (`Sources/yaz/Vocabulary/Vocabulary.swift`). Try values with
   `yaz eval --threshold X --skeleton-threshold Y` before editing.
 - `PhoneticKey` normalisation rules (`Sources/yaz/Vocabulary/PhoneticKey.swift`).
-- `TurkishLexicon.common` and its suffix list.
+- `TurkishLexicon.common`, `GermanLexicon.common` and their suffix lists. A
+  word added to make one sentence pass is overfitting: add words that are
+  frequent in the language, then check them on sentences outside the set.
 - `Learner.minimumSimilarity`, `Learner.promoteAfter`.
 
 ## What you must not change

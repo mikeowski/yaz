@@ -105,12 +105,13 @@ $ yaz transcribe --language en sample.wav
   Today I reviewed the pull request and merged it into main after the CI pipeline turned green.
 ```
 
-**Term repair operates only in Turkish.** This is a safety limit, not a
-temporary condition.
+**Term repair operates in Turkish and German.** It needs a list of the usual
+words of the language. This is a safety limit, not a temporary condition.
 
-The guard that prevents an incorrect replacement is a list of usual Turkish
-words. In a different language, the guard protects nothing. These are
-measurements in English, from before the limit was in the code:
+The guard that prevents an incorrect replacement is that list: a usual word is
+replaced only on near-exact evidence. In a language without a list, the guard
+protects nothing. These are measurements in English, from before the limit was
+in the code:
 
 ```
 "into main"       → "Notion"
@@ -118,9 +119,26 @@ measurements in English, from before the limit was in the code:
 "the CI pipeline" → "CI pipeline"
 ```
 
-Therefore yaz does not apply term repair to a different language. It reports
-this in the log. Support for a different language needs a list of its usual
-words and its phonetic rules. A flag is not sufficient.
+German was measured the same way before its list existed. Six of 30 ordinary
+sentences changed:
+
+```
+"Morgen"   → "merge"       "Doktor"   → "Docker"
+"Reis"     → "Redis"       "war viel" → "Vercel"
+"Kurs"     → "Cursor"
+```
+
+With `GermanLexicon` (about 650 frequent words), all 30 sentences are
+unchanged. So are 38 more sentences that were not used to make the list. A
+German spelling of a term is repaired: `Släck` → `Slack`, `Pullrequest` →
+`pull request`. The German evaluation set has no recall cases yet, because
+none are measured. Cases are added from real transcripts, not guessed.
+
+For other languages yaz does not apply term repair. It reports this in the log.
+Support for a further language needs a list of its usual words
+(`Sources/yaz/Vocabulary/Lexicon.swift`) and a precision set in
+`EvalCorpus`. A flag is not sufficient. Filler removal (`refine: fillers`) is
+still Turkish only.
 
 ## Term repair
 
@@ -430,7 +448,7 @@ yaz install --launch-at-login | --uninstall | --status
 yaz vocab test "<text>"                # test term repair and show the scores
 yaz vocab refine --mode llm "<text>"   # test post-processing
 yaz vocab explain "<term>" "<heard>"   # compare the phonetic keys
-yaz eval [--learned] [--quiet]         # score term repair over the fixed set
+yaz eval [--language de] [--learned] [--quiet]   # score term repair over the fixed set
 yaz learned [--forget <term>] [--clear]
 
 yaz transcribe <file...>               # audio to text, with the latency

@@ -428,9 +428,14 @@ struct VocabularyLanguageTests {
         #expect(Vocabulary.isSupported(language: language))
     }
 
+    @Test("German is supported", arguments: ["de", "DE", "de-DE", "de-AT"])
+    func germanIsSupported(_ language: String) {
+        #expect(Vocabulary.isSupported(language: language))
+    }
+
     @Test(
-        "other languages are not",
-        arguments: ["en", "de", "fr", "es", "ru", "ja", "en-US"]
+        "languages without a lexicon are not",
+        arguments: ["en", "fr", "es", "ru", "ja", "en-US"]
     )
     func othersAreNot(_ language: String) {
         #expect(!Vocabulary.isSupported(language: language))

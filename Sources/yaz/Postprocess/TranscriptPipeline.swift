@@ -40,12 +40,15 @@ struct TranscriptPipeline: Sendable {
         // The user's own terms first: they win a tie with a learned rule or a
         // project name. Blocks are repairs the user undid (`Learner`).
         let terms = config.vocabulary + learned.terms
-        self.vocabulary = Vocabulary(terms: terms, blocked: learned.blocks)
+        self.vocabulary = Vocabulary(
+            terms: terms, blocked: learned.blocks, language: config.language)
         self.refiner = Refiner(mode: config.refine, language: config.language)
         self.language = config.language
         self.codeVocabulary = Vocabulary(
-            terms: terms + project.vocabularyTerms(), blocked: learned.blocks)
-        self.formatter = CodeFormatter(files: project.files)
+            terms: terms + project.vocabularyTerms(), blocked: learned.blocks,
+            language: config.language)
+        self.formatter = CodeFormatter(
+            files: project.files, lexicon: Lexicon.forLanguage(config.language) ?? .turkish)
         self.codeRefiner = Refiner(
             mode: config.refine == .llm ? .fillers : config.refine, language: config.language)
     }

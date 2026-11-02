@@ -27,36 +27,63 @@ enum Evaluator {
         }
     }
 
-    /// Score a vocabulary over the corpus. `extra` terms are added to the
-    /// corpus's own, as a learned rule or a project's names would be.
+    /// One language's part of the corpus.
+    struct LanguageSet: Sendable {
+        let language: String
+        let riskyTerms: [VocabularyTerm]
+        let recall: [(heard: String, expected: String)]
+        let precision: [String]
+    }
+
+    static let sets: [LanguageSet] = [
+        LanguageSet(
+            language: "tr", riskyTerms: EvalCorpus.riskyTerms,
+            recall: EvalCorpus.recall, precision: EvalCorpus.precision),
+        LanguageSet(
+            language: EvalCorpus.German.language, riskyTerms: EvalCorpus.German.riskyTerms,
+            recall: EvalCorpus.German.recall, precision: EvalCorpus.German.precision),
+    ]
+
+    /// Score a vocabulary over the corpus: one language's set, or all of them
+    /// summed when `language` is nil (what `yaz eval` reports, since a
+    /// threshold or a phonetic rule changes every language at once). `extra`
+    /// terms are added to the corpus's own, as a learned rule or a project's
+    /// names would be.
     static func score(
+        language: String? = nil,
         extra: [VocabularyTerm] = [],
         blocked: [Vocabulary.Block] = [],
         threshold: Double = Vocabulary.defaultThreshold,
         skeletonThreshold: Double = Vocabulary.defaultSkeletonThreshold
     ) -> Score {
-        let vocabulary = Vocabulary(
-            terms: EvalCorpus.terms + extra, threshold: threshold,
-            skeletonThreshold: skeletonThreshold, blocked: blocked)
-        let risky = Vocabulary(
-            terms: EvalCorpus.riskyTerms + extra, threshold: threshold,
-            skeletonThreshold: skeletonThreshold, blocked: blocked)
-
-        var score = Score(
-            falseMatches: 0, misses: 0,
-            recallCases: EvalCorpus.recall.count,
-            precisionCases: EvalCorpus.precision.count * 2)
-
-        for (heard, expected) in EvalCorpus.recall where !vocabulary.correct(heard).text.contains(expected) {
-            score.misses += 1
+        let chosen = sets.filter { set in
+            language.map { $0.lowercased().hasPrefix(set.language) } ?? true
         }
-        for sentence in EvalCorpus.precision {
-            for vocab in [vocabulary, risky] {
-                let result = vocab.correct(sentence)
-                if result.didChange {
-                    score.falseMatches += 1
-                    score.offenders.append(
-                        result.corrections.map { "\($0.from) → \($0.to)" }.joined(separator: ", "))
+        var score = Score(falseMatches: 0, misses: 0, recallCases: 0, precisionCases: 0)
+        for set in chosen {
+            let vocabulary = Vocabulary(
+                terms: EvalCorpus.terms + extra, threshold: threshold,
+                skeletonThreshold: skeletonThreshold, blocked: blocked, language: set.language)
+            let risky = Vocabulary(
+                terms: set.riskyTerms + extra, threshold: threshold,
+                skeletonThreshold: skeletonThreshold, blocked: blocked, language: set.language)
+
+            score.recallCases += set.recall.count
+            score.precisionCases += set.precision.count * 2
+            for (heard, expected) in set.recall
+            where !vocabulary.correct(heard).text.contains(expected) {
+                score.misses += 1
+            }
+            for sentence in set.precision {
+                for vocab in [vocabulary, risky] {
+                    let result = vocab.correct(sentence)
+                    if result.didChange {
+                        score.falseMatches += 1
+                        score.offenders.append(
+                            "[\(set.language)] "
+                                + result.corrections.map { "\($0.from) → \($0.to)" }
+                                .joined(separator: ", "))
+                    }
                 }
             }
         }
@@ -66,14 +93,15 @@ enum Evaluator {
     /// Whether a learned rule may be kept: it must fix the case it was
     /// learned from, and leave the score no worse than without it.
     static func gate(
-        _ candidate: VocabularyTerm, heard: String, existing: [VocabularyTerm] = []
+        _ candidate: VocabularyTerm, heard: String, existing: [VocabularyTerm] = [],
+        language: String = Vocabulary.lexiconLanguage
     ) -> (accepted: Bool, reason: String) {
-        let alone = Vocabulary(terms: existing + [candidate]).correct(heard)
+        let alone = Vocabulary(terms: existing + [candidate], language: language).correct(heard)
         guard alone.text.contains(candidate.canonical) else {
             return (false, "does not fix \"\(heard)\"")
         }
-        let before = score(extra: existing)
-        let after = score(extra: existing + [candidate])
+        let before = score(language: language, extra: existing)
+        let after = score(language: language, extra: existing + [candidate])
         guard after.value <= before.value else {
             let detail = after.offenders.first.map { ": \($0)" } ?? ""
             return (false, "makes the evaluation worse (\(before.value) → \(after.value))\(detail)")

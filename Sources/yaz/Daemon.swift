@@ -256,11 +256,17 @@ final class Daemon {
             let edits = CorrectionDiff.edits(pasted: pasted, field: field)
             guard !edits.isEmpty else { return }
 
-            var learner = Learner(rules: self.learned)
-            let events = learner.observe(
-                edits: edits, corrections: corrections, userTerms: self.config.vocabulary)
-            guard learner.rules != self.learned else { return }
-            self.learned = learner.rules
+            // The gate scores the whole evaluation set: off the main thread.
+            let learner = Learner(rules: self.learned, language: self.config.language)
+            let userTerms = self.config.vocabulary
+            let (rules, events) = await Task.detached(priority: .utility) {
+                var learner = learner
+                let events = learner.observe(
+                    edits: edits, corrections: corrections, userTerms: userTerms)
+                return (learner.rules, events)
+            }.value
+            guard rules != self.learned else { return }
+            self.learned = rules
             do {
                 try self.learned.save()
             } catch {
@@ -591,7 +597,8 @@ final class Daemon {
             TextInjector.inject(processed.text, mode: config.injectMode)
             lastText = processed.text
             runHook(with: processed.text)
-            if config.learn, let bundleID = target?.bundleID {
+            if config.learn, Vocabulary.isSupported(language: config.language),
+               let bundleID = target?.bundleID {
                 scheduleReadBack(
                     pasted: processed.text, corrections: processed.corrections, in: bundleID)
             }
