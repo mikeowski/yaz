@@ -75,9 +75,15 @@ struct CorrectionDiffTests {
     @Test("multi-word replacements stay together")
     func multiWord() {
         let edits = CorrectionDiff.edits(
-            pasted: "Puhrıkı Esti açtım bugün",
-            field: "pull request açtım bugün")
+            pasted: "Puhrıkı Esti açtım, akşam merge ederim",
+            field: "pull request açtım, akşam merge ederim")
         #expect(edits == [CorrectionDiff.Edit(heard: "Puhrıkı Esti", meant: "pull request")])
+    }
+
+    @Test("a short dictation that is mostly rewritten is not trusted")
+    func tooLittleLeft() {
+        #expect(CorrectionDiff.edits(
+            pasted: "Puhrıkı Esti açtım bugün", field: "pull request açtım bugün").isEmpty)
     }
 
     @Test("an untouched dictation gives nothing")
