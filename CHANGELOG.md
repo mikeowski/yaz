@@ -6,7 +6,9 @@ Notable changes to yaz. Format loosely follows
 
 ## [Unreleased]
 
-Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
+## [0.2.0] — 2026-11-02
+
+Build 2. Release notes: `release-notes/0.2.0.md`.
 
 ### Fixed
 
