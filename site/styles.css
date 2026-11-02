@@ -267,6 +267,7 @@ kbd {
 .feature-wide { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 36px; align-items: start; }
 .feature-wide h3, .feature-wide > p:first-of-type { grid-column: 1; }
 .feature-wide .repairs { grid-column: 2; grid-row: 1 / span 3; }
+.feature-wide .repairs-code td:first-child { width: 50%; }
 .feature-wide .note { grid-column: 1; }
 @media (max-width: 760px) { .feature-wide { grid-template-columns: 1fr; } .feature-wide .repairs { grid-column: 1; grid-row: auto; } }
 .feature h3 { margin: 0 0 8px; font-size: 21px; font-weight: 720; letter-spacing: -0.01em; }

@@ -25,12 +25,16 @@ struct TranscriptPipeline: Sendable {
     /// The dictation language. Decides whether the Turkish-specific layers may
     /// run at all.
     let language: String
+    /// Write spoken Turkish numbers as digits (`TurkishNumbers`).
+    let numbers: Bool
 
     struct Output: Sendable {
         let text: String
         let corrections: [Vocabulary.Correction]
         /// Casing commands and file mentions applied (code context only).
         var codeChanges: [CodeFormatter.Change] = []
+        /// Numbers written as digits.
+        var numberChanges: [TurkishNumbers.Change] = []
         let refined: Bool
         /// Set when a refinement was produced and then thrown away.
         let refinementRejected: String?
@@ -44,6 +48,7 @@ struct TranscriptPipeline: Sendable {
             terms: terms, blocked: learned.blocks, language: config.language)
         self.refiner = Refiner(mode: config.refine, language: config.language)
         self.language = config.language
+        self.numbers = config.numbers
         self.codeVocabulary = Vocabulary(
             terms: terms + project.vocabularyTerms(), blocked: learned.blocks,
             language: config.language)
@@ -55,8 +60,10 @@ struct TranscriptPipeline: Sendable {
 
     init(
         vocabulary: Vocabulary, refiner: Refiner, language: String = Vocabulary.lexiconLanguage,
-        codeVocabulary: Vocabulary? = nil, formatter: CodeFormatter = CodeFormatter()
+        codeVocabulary: Vocabulary? = nil, formatter: CodeFormatter = CodeFormatter(),
+        numbers: Bool = false
     ) {
+        self.numbers = numbers
         self.vocabulary = vocabulary
         self.refiner = refiner
         self.language = language
@@ -85,20 +92,33 @@ struct TranscriptPipeline: Sendable {
         if result.changed, let lost = firstLostTerm(
             corrections: corrected.corrections, in: result.text
         ) {
+            let digits = writeNumbers(formatted.text)
             return Output(
-                text: formatted.text,
+                text: digits.text,
                 corrections: corrected.corrections,
                 codeChanges: formatted.changes,
+                numberChanges: digits.changes,
                 refined: false,
                 refinementRejected: "post-processing dropped the term \"\(lost)\"")
         }
 
+        // Numbers last, on the final wording: a model asked to tidy "15'te"
+        // could spell it out again, but it never sees the digits.
+        let digits = writeNumbers(result.text)
         return Output(
-            text: result.text,
+            text: digits.text,
             corrections: corrected.corrections,
             codeChanges: formatted.changes,
+            numberChanges: digits.changes,
             refined: result.changed,
             refinementRejected: result.rejection)
+    }
+
+    private func writeNumbers(_ text: String) -> TurkishNumbers.Result {
+        guard numbers, TurkishNumbers.isSupported(language: language) else {
+            return TurkishNumbers.Result(text: text, changes: [])
+        }
+        return TurkishNumbers.format(text)
     }
 
     /// The first canonical term that the vocabulary inserted but the refined

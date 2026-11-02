@@ -145,3 +145,72 @@ extension EvalCorpus {
         ]
     }
 }
+
+extension EvalCorpus {
+
+    /// Spoken Turkish numbers (`TurkishNumbers`). Same rule as the rest of
+    /// the file: a wrong digit is a false match, a number left as words is a
+    /// miss. The unchanged sentences are the words that only look like
+    /// numbers: "onu" (him), "altında" (under), "yedi" (ate), "bin" (get on),
+    /// "yüzünü" (face), and the article "bir".
+    enum Numbers {
+
+        static let convert: [(heard: String, expected: String)] = [
+            ("İki buçukta bitti.", "2,5'te bitti."),
+            ("Saat üç buçuğa kadar buradayım.", "Saat 3.30'a kadar buradayım."),
+            ("Bir buçuk saat sürdü.", "1,5 saat sürdü."),
+            ("Toplantı saat on beşte başlıyor.", "Toplantı saat 15'te başlıyor."),
+            ("Saat on beş otuzda görüşelim.", "Saat 15.30'da görüşelim."),
+            ("Saat dokuz kırk beşte çıktım.", "Saat 9.45'te çıktım."),
+            ("Saat iki buçukta buluşalım.", "Saat 2.30'da buluşalım."),
+            ("Saat ikide gel.", "Saat 2'de gel."),
+            ("Fatura iki bin yüz elli lira geldi.", "Fatura 2150 lira geldi."),
+            ("Bütçe on beş bin dolar.", "Bütçe 15.000 dolar."),
+            ("Proje iki bin yirmi altıda bitecek.", "Proje 2026'da bitecek."),
+            ("İndirim yüzde elli.", "İndirim %50."),
+            ("Fiyatı yüzde yirmi beş arttı.", "Fiyatı %25 arttı."),
+            ("Yüzde onluk bir artış.", "Yüzde onluk bir artış."),
+            ("Otuz yaşındayım.", "30 yaşındayım."),
+            ("Kırk yıl önce taşındık.", "40 yıl önce taşındık."),
+            ("On dakika sonra geliyorum.", "10 dakika sonra geliyorum."),
+            ("Yüz kişi katıldı.", "100 kişi katıldı."),
+            ("Beş lira ver.", "5 lira ver."),
+            ("Yirmi birinci yüzyıl.", "21. yüzyıl."),
+            ("Onuncu kattayım.", "10. kattayım."),
+            ("İki buçuk kilo elma aldım.", "2,5 kilo elma aldım."),
+            ("Sunucu 15 bin istek aldı.", "Sunucu 15.000 istek aldı."),
+            ("Üç milyon kullanıcı var.", "3.000.000 kullanıcı var."),
+            ("Bir milyon kez denedim.", "1.000.000 kez denedim."),
+            ("Yetmiş beşe kadar say.", "75'e kadar say."),
+            ("Dördüncü sıradayım, on dördüncü değil.", "Dördüncü sıradayım, 14. değil."),
+            ("Kırk sekiz saat sürdü.", "48 saat sürdü."),
+            ("Bin dokuz yüz seksen dörtte doğdu.", "1984'te doğdu."),
+        ]
+
+        static let unchanged: [String] = [
+            "Onu dün gördüm.",
+            "Ona söyledim, onda kalsın.",
+            "Kedi masanın altında uyuyor.",
+            "Yemeği yedi ve uyudu.",
+            "Ata bin ve git.",
+            "Yüzünü yıkadı.",
+            "Bir şey söylemek istiyorum.",
+            "Bir saat bekledim.",
+            "Altı yedi kişi geldi.",
+            "Beş dakika bekle.",
+            "Üç kere söyledim.",
+            "Birinci olarak bunu yap.",
+            "İki kişi geldi.",
+            "Bu yüzden geç kaldım.",
+            "On numaralı odaya bak.",
+            "Bin yıllık bir ağaç.",
+            "Yüzlerce kişi vardı.",
+            "Binlerce mesaj geldi.",
+            "Onlar da geliyor.",
+            "Dörtlü bir masa.",
+            "Sekizer kişilik gruplar.",
+            "Onun kitabı bende.",
+            "Elli elli paylaştık.",
+        ]
+    }
+}

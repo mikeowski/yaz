@@ -164,6 +164,36 @@ empty output on `large-v3-turbo`. The on-device model of Apple did not repair
 `Sılacık`, although it received the list of terms. Thus term repair is
 deterministic. It can only make words that you put in the vocabulary.
 
+### Numbers as digits
+
+Whisper writes a Turkish number as words about as often as digits. yaz writes
+them the way a Turkish text does:
+
+```
+$ yaz numbers "Toplantı saat on beş otuzda, bütçe on beş bin dolar, yüzde elli indirim."
+Toplantı saat 15.30'da, bütçe 15.000 dolar, %50 indirim.
+```
+
+The suffix moves behind an apostrophe (`on beşte` → `15'te`). When the
+reading changes, the suffix follows it: `iki buçukta` → `2,5'te`, and `saat iki
+buçukta` → `saat 2.30'da`. Thousands are grouped from five digits, so a year
+stays `2026`. The decimal mark is a comma.
+
+Many Turkish words only look like numbers: `onu` (him), `altında` (under),
+`yedi` (ate), `bin` (get on), `yüzünü` (face), and the article `bir`. So the
+rules are conservative:
+
+- Two or more number words convert only if they form a well-formed numeral.
+  `altı yedi kişi` (six or seven people) stays as words.
+- A single word converts only with context: after `saat` or `yüzde`, before a
+  unit or a currency, or when it is an unambiguous number of ten or more
+  (`otuz yaşında`). Single digits stay words in prose, and `bir` alone never
+  becomes `1`.
+
+`EvalCorpus.Numbers` holds 29 conversions and 23 look-alike sentences. They
+are part of the `yaz eval` score, together with the 30 everyday sentences,
+which must stay unchanged. Set `"numbers": false` to turn it off.
+
 ### Learning from your fixes
 
 When you fix a term after a dictation, yaz learns from it, but only under
@@ -415,6 +445,7 @@ same file. Therefore you can also edit the file manually.
   "vad": false,
   "vad_threshold": 0.3,
   "learn": true,
+  "numbers": true,
   "on_transcript": "my-hook",
   "vocabulary": [
     "Slack", "pull request", "CI pipeline", "Kubernetes",
@@ -450,6 +481,7 @@ yaz vocab refine --mode llm "<text>"   # test post-processing
 yaz vocab explain "<term>" "<heard>"   # compare the phonetic keys
 yaz eval [--language de] [--learned] [--quiet]   # score term repair over the fixed set
 yaz learned [--forget <term>] [--clear]
+yaz numbers "<text>"                   # spoken Turkish numbers as digits
 
 yaz transcribe <file...>               # audio to text, with the latency
   --engine-name whisper|parakeet

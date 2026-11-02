@@ -120,7 +120,30 @@ enum Evaluator {
                 }
             }
         }
+        if chosen.contains(where: { $0.language == TurkishNumbers.language }) {
+            addNumbers(to: &score)
+        }
         return score
+    }
+
+    /// Numbers: every Turkish sentence of the corpus plus the look-alikes
+    /// must come through unchanged, and every spoken number must be written.
+    private static func addNumbers(to score: inout Score) {
+        let unchanged = EvalCorpus.precision + EvalCorpus.Numbers.unchanged
+        score.precisionCases += unchanged.count
+        for sentence in unchanged {
+            let result = TurkishNumbers.format(sentence)
+            if result.text != sentence {
+                score.falseMatches += 1
+                score.offenders.append("[numbers] " + result.changes.map { "\($0.from) → \($0.to)" }
+                    .joined(separator: ", "))
+            }
+        }
+        score.recallCases += EvalCorpus.Numbers.convert.count
+        for (heard, expected) in EvalCorpus.Numbers.convert
+        where TurkishNumbers.format(heard).text != expected {
+            score.misses += 1
+        }
     }
 
     /// Whether a learned rule may be kept: it must fix the case it was

@@ -24,7 +24,8 @@ struct GermanTests {
         let score = Evaluator.score()
         #expect(score.value == 0, "\(score.offenders)")
         #expect(score.precisionCases
-            == (EvalCorpus.precision.count + EvalCorpus.German.precision.count) * 2)
+            == (EvalCorpus.precision.count + EvalCorpus.German.precision.count) * 2
+                + EvalCorpus.precision.count + EvalCorpus.Numbers.unchanged.count)
     }
 
     @Test(

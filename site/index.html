@@ -109,7 +109,7 @@
     <section class="section" id="features" aria-labelledby="features-title">
       <div class="section-head">
         <h2 id="features-title">What it does</h2>
-        <p>yaz started from <a href="https://github.com/digimata/parrot">parrot</a>'s skeleton and adds the three things a Turkish-speaking developer needs: a multilingual default, insertion that does not drop characters, and clean-up after transcription.</p>
+        <p>yaz started from <a href="https://github.com/digimata/parrot">parrot</a>'s skeleton and grew into dictation built around how a Turkish-speaking developer talks: Turkish with English terms in it, numbers, code, and fixes that teach it.</p>
       </div>
 
       <div class="features">
@@ -125,6 +125,21 @@
             </tbody>
           </table>
           <p class="note">It can only write words you put in the list, and a corpus of 30 ordinary Turkish sentences sets every threshold: none of them changes.</p>
+        </article>
+
+        <article class="feature feature-wide">
+          <h3>Numbers, the Turkish way</h3>
+          <p>Whisper spells a number out about as often as it writes digits. yaz writes them as Turkish text does: the suffix after an apostrophe, a dot for thousands, a comma for the decimal, 15.30 for the time.</p>
+          <table class="repairs repairs-code">
+            <thead><tr><th scope="col">Whisper heard</th><th scope="col">yaz writes</th></tr></thead>
+            <tbody>
+              <tr><td>saat on beş otuzda</td><td>saat 15.30'da</td></tr>
+              <tr><td>on beş bin dolar</td><td>15.000 dolar</td></tr>
+              <tr><td>yüzde elli</td><td>%50</td></tr>
+              <tr><td>iki buçukta</td><td>2,5'te</td></tr>
+            </tbody>
+          </table>
+          <p class="note"><i>Onu</i>, <i>altında</i>, <i>yedi</i>, <i>bin</i>, <i>yüzünü</i> and the article <i>bir</i> only look like numbers, so they stay words: 23 such sentences and 29 conversions are part of the test score.</p>
         </article>
 
         <article class="feature">
@@ -231,7 +246,7 @@
           <p>The matcher is deterministic, so every correction can be explained.</p>
           <pre class="code" tabindex="0" aria-label="Example commands"><code>yaz vocab test "Sılacık üzerinden yaz"
 yaz vocab explain "Slack" "Sılacık"
-<span class="c"># score 0 (false matches 0/120, misses 0/7)</span>
+<span class="c"># score 0 (false matches 0/173, misses 0/36)</span>
 yaz eval
 yaz projects --test "camel case user name"
 yaz doctor</code></pre>
