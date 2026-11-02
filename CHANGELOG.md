@@ -10,6 +10,13 @@ Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
 
 ### Added
 
+- **A new icon, in every macOS appearance.** `Resources/AppIcon.icon` is an
+  Icon Composer document: a vermilion fill and two Liquid Glass layers, a
+  voice and a caret. `bundle.sh` compiles it with `actool`, so macOS 26 draws
+  it in Default, Dark (system-dark fill, vermilion voice), Clear and Tinted,
+  following System Settings → Appearance. yaz's colour moves from indigo to
+  vermilion, on the website too, which now also follows light and dark mode
+  for its icons.
 - **Automatic updates** through Sparkle. The signed app reads
   `https://yaz.mike4.dev/downloads/appcast.xml` once a day and offers a new
   version from the menu bar, without a window over the app you are dictating

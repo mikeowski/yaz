@@ -1,16 +1,16 @@
 import AppKit
 
-/// The application icon, drawn in code.
+/// A flat drawing of the application icon.
 ///
-/// Same reasoning as `StatusIcon`: a vector redrawn per size stays crisp from
-/// 16 pt in the Finder sidebar to 1024 pt in Get Info, and there is no asset
-/// catalogue to go missing when the binary runs outside its bundle.
+/// The real icon is `Resources/AppIcon.icon`, an Icon Composer document that
+/// `scripts/bundle.sh` compiles with `actool`. macOS 26 renders that one in
+/// every appearance (Default, Dark, Clear, Tinted) with Liquid Glass. This
+/// drawing is the fallback for a machine without Xcode 26, where `actool`
+/// cannot read `.icon`, and the sheet `yaz preview --app-icon` writes. It
+/// follows the same geometry, so both read as the same mark.
 ///
-/// The mark is the menu bar glyph promoted to full size — sound arcs arriving
-/// at a text caret — so the app and its menu bar item are recognisably the same
-/// thing. What the app icon adds is depth: a macOS icon sits on a rounded
-/// plate with a light source, and a flat glyph on a flat square is the look of
-/// something unfinished.
+/// The mark: a voice (a dot and two waves) reaching a text caret. Geometry is
+/// in the 1024-point grid Icon Composer uses; the drawing scales it.
 enum AppIcon {
 
     /// Draw the icon into a square of `size` points.
@@ -22,154 +22,63 @@ enum AppIcon {
         return image
     }
 
+    /// Vermilion, top to bottom: the fill of `AppIcon.icon`.
+    static let fillTop = NSColor(displayP3Red: 1.0, green: 0.490, blue: 0.322, alpha: 1)
+    static let fillBottom = NSColor(displayP3Red: 0.855, green: 0.216, blue: 0.173, alpha: 1)
+
     static func draw(in rect: NSRect) {
-        let size = rect.width
+        let scale = rect.width / 1024
+        func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect {
+            // The grid is y-down like the SVG layers; AppKit is y-up.
+            NSRect(x: rect.minX + x * scale, y: rect.minY + (1024 - y - h) * scale,
+                   width: w * scale, height: h * scale)
+        }
 
-        // macOS icons do not fill their canvas: the rounded plate sits inside
-        // with margin, which is what makes icons line up optically in the Dock.
-        let inset = size * 0.098
-        let plate = rect.insetBy(dx: inset, dy: inset)
-        let radius = plate.width * 0.2237  // Apple's continuous-corner ratio
+        // macOS icons sit inside their canvas with margin; the plate is the
+        // rounded square, continuous-corner ratio.
+        let plateRect = r(100, 100, 824, 824)
+        let plate = NSBezierPath(roundedRect: plateRect, xRadius: 186 * scale, yRadius: 186 * scale)
 
-        let shape = NSBezierPath(roundedRect: plate, xRadius: radius, yRadius: radius)
-
-        drawPlate(shape, in: plate)
-        drawTopHighlight(shape, in: plate)
-        drawMark(in: plate)
-        drawRim(shape)
-    }
-
-    // MARK: - Plate
-
-    /// Deep indigo to violet, top-left to bottom-right.
-    ///
-    /// Not the system blue every second utility uses, and dark enough that a
-    /// white mark carries at 16 pt where a pastel would turn to mush.
-    private static func drawPlate(_ shape: NSBezierPath, in rect: NSRect) {
         NSGraphicsContext.saveGraphicsState()
-        shape.addClip()
-
-        let gradient = NSGradient(colorsAndLocations:
-            (NSColor(srgbRed: 0.42, green: 0.29, blue: 0.92, alpha: 1), 0.0),
-            (NSColor(srgbRed: 0.29, green: 0.20, blue: 0.72, alpha: 1), 0.52),
-            (NSColor(srgbRed: 0.14, green: 0.10, blue: 0.42, alpha: 1), 1.0)
-        )
-        gradient?.draw(in: rect, angle: -68)
-
-        // A soft radial bloom near the top-left reads as a light source and
-        // stops the gradient looking like a flat ramp.
-        let bloom = NSGradient(colorsAndLocations:
-            (NSColor(white: 1, alpha: 0.30), 0.0),
-            (NSColor(white: 1, alpha: 0.0), 1.0)
-        )
-        bloom?.draw(
-            fromCenter: NSPoint(x: rect.minX + rect.width * 0.26, y: rect.maxY - rect.height * 0.18),
-            radius: 0,
-            toCenter: NSPoint(x: rect.minX + rect.width * 0.26, y: rect.maxY - rect.height * 0.18),
-            radius: rect.width * 0.78,
-            options: [])
-
+        plate.addClip()
+        NSGradient(starting: fillBottom, ending: fillTop)?.draw(in: plateRect, angle: 90)
+        // A sheen along the top: the light Liquid Glass catches.
+        NSGradient(colorsAndLocations:
+            (NSColor(white: 1, alpha: 0.0), 0.55),
+            (NSColor(white: 1, alpha: 0.26), 1.0)
+        )?.draw(in: plateRect, angle: 90)
         NSGraphicsContext.restoreGraphicsState()
-    }
-
-    /// A bright hairline along the top edge — the highlight a physical object
-    /// catches from a light above it.
-    private static func drawTopHighlight(_ shape: NSBezierPath, in rect: NSRect) {
-        NSGraphicsContext.saveGraphicsState()
-        shape.addClip()
-
-        let band = NSRect(
-            x: rect.minX, y: rect.maxY - rect.height * 0.5,
-            width: rect.width, height: rect.height * 0.5)
-        let gradient = NSGradient(colorsAndLocations:
-            (NSColor(white: 1, alpha: 0.22), 1.0),
-            (NSColor(white: 1, alpha: 0.0), 0.0)
-        )
-        gradient?.draw(in: band, angle: 90)
-
-        NSGraphicsContext.restoreGraphicsState()
-    }
-
-    /// A thin inner rim so the plate has an edge instead of bleeding into the
-    /// wallpaper behind it.
-    private static func drawRim(_ shape: NSBezierPath) {
-        NSColor(white: 1, alpha: 0.16).setStroke()
-        shape.lineWidth = shape.bounds.width * 0.006
-        shape.stroke()
-    }
-
-    // MARK: - Mark
-
-    /// Sound arcs meeting a text caret, in white, with a soft shadow so it
-    /// sits above the plate rather than being painted onto it.
-    private static func drawMark(in plate: NSRect) {
-        let size = plate.width
-        let centerY = plate.midY
-
-        // Centre the *group*, not the caret. The mark runs from the outer
-        // arc's leftmost point to the caret's right serif; placing the caret
-        // at the middle pushes everything visibly right, which is what the
-        // first render did.
-        let arcOffset = size * 0.115      // caret → arc origin
-        let outerRadius = size * 0.200
-        let serifWidth = size * 0.150
-        let leftExtent = arcOffset + outerRadius   // left of the caret
-        let rightExtent = serifWidth / 2           // right of the caret
-        let caretX = plate.midX + (leftExtent - rightExtent) / 2
-
-        let markHeight = size * 0.48
 
         NSGraphicsContext.saveGraphicsState()
-        // Tight and low-contrast. The first attempt used a wide soft shadow
-        // and left a grey halo that read as a smudge rather than depth.
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor(srgbRed: 0.06, green: 0.03, blue: 0.20, alpha: 0.28)
-        shadow.shadowBlurRadius = size * 0.016
-        shadow.shadowOffset = NSSize(width: 0, height: -size * 0.010)
+        shadow.shadowColor = NSColor(srgbRed: 0.54, green: 0.10, blue: 0.06, alpha: 0.32)
+        shadow.shadowBlurRadius = 18 * scale
+        shadow.shadowOffset = NSSize(width: 0, height: -10 * scale)
         shadow.set()
-
         NSColor.white.setFill()
         NSColor.white.setStroke()
 
-        // Caret: stem plus serifs.
-        let stemWidth = size * 0.050
-        let serifHeight = size * 0.048
-
-        NSBezierPath(
-            roundedRect: NSRect(
-                x: caretX - stemWidth / 2, y: centerY - markHeight / 2,
-                width: stemWidth, height: markHeight),
-            xRadius: stemWidth / 2, yRadius: stemWidth / 2
-        ).fill()
-
-        for y in [centerY - markHeight / 2, centerY + markHeight / 2 - serifHeight] {
-            NSBezierPath(
-                roundedRect: NSRect(
-                    x: caretX - serifWidth / 2, y: y,
-                    width: serifWidth, height: serifHeight),
-                xRadius: serifHeight / 2, yRadius: serifHeight / 2
-            ).fill()
+        // Voice: a dot, and two waves opening toward the caret.
+        NSBezierPath(ovalIn: r(321 - 46, 512 - 46, 92, 92)).fill()
+        let origin = NSPoint(x: rect.minX + 321 * scale, y: rect.minY + 512 * scale)
+        for (radius, width) in [(CGFloat(110), CGFloat(64)), (200, 60)] {
+            let wave = NSBezierPath()
+            wave.appendArc(withCenter: origin, radius: radius * scale, startAngle: -52, endAngle: 52)
+            wave.lineWidth = width * scale
+            wave.lineCapStyle = .round
+            wave.stroke()
         }
 
-        // Two arcs opening toward the caret, reading as one emanation.
-        //
-        // Falloff is carried by thickness, not opacity. A translucent white
-        // over this purple turns grey, and the outer arc read as dirty rather
-        // than distant — which is how the second render looked.
-        let origin = NSPoint(x: caretX - arcOffset, y: centerY)
-        let arcs: [(radius: CGFloat, width: CGFloat, alpha: CGFloat)] = [
-            (size * 0.104, size * 0.052, 1.00),
-            (outerRadius, size * 0.042, 0.97),
-        ]
-        for arc in arcs {
-            let path = NSBezierPath()
-            path.lineWidth = arc.width
-            path.lineCapStyle = .round
-            path.appendArc(withCenter: origin, radius: arc.radius, startAngle: 133, endAngle: 227)
-            NSColor(white: 1, alpha: arc.alpha).setStroke()
-            path.stroke()
+        // Caret: one solid I-beam, stem and two bars.
+        NSBezierPath(rect: r(623, 330, 56, 364)).fill()
+        for y: CGFloat in [282, 690] {
+            NSBezierPath(roundedRect: r(595, y, 112, 52), xRadius: 26 * scale, yRadius: 26 * scale).fill()
         }
-
         NSGraphicsContext.restoreGraphicsState()
+
+        // A thin rim so the plate has an edge against the wallpaper.
+        NSColor(white: 1, alpha: 0.22).setStroke()
+        plate.lineWidth = 5 * scale
+        plate.stroke()
     }
 }

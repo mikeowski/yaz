@@ -64,9 +64,12 @@ jobs:
           "$RUNNER_TEMP/cli/yaz" updates | tee "$RUNNER_TEMP/cli/updates.txt"
           grep -q "updates: off" "$RUNNER_TEMP/cli/updates.txt"
 
-      - name: Verify the bundle embeds Sparkle
+      - name: Verify the bundle embeds Sparkle and the icon
         run: |
           test -d dist/yaz.app/Contents/Frameworks/Sparkle.framework
+          # The Icon Composer icon compiled: Default, Dark, Clear and Tinted.
+          test -f dist/yaz.app/Contents/Resources/Assets.car
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' dist/yaz.app/Contents/Info.plist)" = AppIcon
           codesign --verify --deep --strict dist/yaz.app
 
   lint:

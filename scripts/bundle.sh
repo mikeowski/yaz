@@ -67,19 +67,49 @@ note "Sparkle: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' 
     "$APP/Contents/Frameworks/Sparkle.framework/Resources/Info.plist" 2>/dev/null || echo embedded)"
 
 # --- icon ---
-# The icon is drawn by the binary itself, so there is no asset catalogue and
-# no checked-in PNGs to drift from the code that draws the menu bar mark.
-ICONSET="$(mktemp -d)/yaz.iconset"
-if "$BUILT" preview --write-iconset "$ICONSET" >/dev/null 2>&1 \
-    && iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/yaz.icns" 2>/dev/null; then
-    /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFile string yaz' \
-        "$APP/Contents/Info.plist" >/dev/null 2>&1 \
-        || /usr/libexec/PlistBuddy -c 'Set :CFBundleIconFile yaz' "$APP/Contents/Info.plist"
-    note "icon: $(du -h "$APP/Contents/Resources/yaz.icns" | cut -f1)"
+# Resources/AppIcon.icon is an Icon Composer document: a fill and two glass
+# layers (voice, caret) with a Dark specialization. actool compiles it into
+# Assets.car, which macOS 26 renders in every appearance the user picks in
+# System Settings → Appearance — Default, Dark, Clear and Tinted — and into
+# AppIcon.icns for anything that reads the classic file. CFBundleIconName
+# selects the asset; CFBundleIconFile names the .icns.
+#
+# Without actool (Command Line Tools only, no Xcode 26) the binary draws a
+# flat version of the same icon, which has a single appearance.
+set_icon_keys() {
+    for key in CFBundleIconFile CFBundleIconName; do
+        /usr/libexec/PlistBuddy -c "Delete :$key" "$APP/Contents/Info.plist" >/dev/null 2>&1 || true
+    done
+    /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string $1" "$APP/Contents/Info.plist"
+    [ -n "${2:-}" ] && /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string $2" "$APP/Contents/Info.plist"
+    return 0
+}
+
+ICON_OUT="$(mktemp -d)"
+if xcrun actool "$ROOT/Resources/AppIcon.icon" \
+        --compile "$ICON_OUT" \
+        --platform macosx \
+        --minimum-deployment-target 26.0 \
+        --app-icon AppIcon \
+        --standalone-icon-behavior all \
+        --output-partial-info-plist "$ICON_OUT/partial.plist" \
+        --output-format human-readable-text --errors --warnings >"$ICON_OUT/actool.log" 2>&1 \
+    && [ -f "$ICON_OUT/Assets.car" ] && [ -f "$ICON_OUT/AppIcon.icns" ]; then
+    cp "$ICON_OUT/Assets.car" "$ICON_OUT/AppIcon.icns" "$APP/Contents/Resources/"
+    set_icon_keys AppIcon AppIcon
+    note "icon: AppIcon.icon → Assets.car ($(du -h "$APP/Contents/Resources/Assets.car" | cut -f1)), Default, Dark, Clear, Tinted"
 else
-    note "could not build the icon (not fatal)"
+    sed 's/^/    /' "$ICON_OUT/actool.log" 2>/dev/null | head -20
+    ICONSET="$ICON_OUT/yaz.iconset"
+    if "$BUILT" preview --write-iconset "$ICONSET" >/dev/null 2>&1 \
+        && iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/yaz.icns" 2>/dev/null; then
+        set_icon_keys yaz
+        note "icon: actool could not compile AppIcon.icon — drawn fallback, one appearance only"
+    else
+        note "could not build the icon (not fatal)"
+    fi
 fi
-rm -rf "$(dirname "$ICONSET")"
+rm -rf "$ICON_OUT"
 
 # The binary also carries its own __TEXT,__info_plist section (the identity
 # it needs when run as a CLI). Inside a bundle Contents/Info.plist wins; both
