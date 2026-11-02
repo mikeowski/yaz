@@ -191,6 +191,7 @@
           <li><b>It is noted.</b> The replaced words must sound alike and must not be ordinary Turkish: an edit of meaning is not a mishearing.</li>
           <li><b>Twice, it is tested.</b> 7 measured manglings and 60 everyday sentences, scored as false matches&nbsp;×&nbsp;3 + misses. The rule stays only if the score does not rise.</li>
           <li><b>Undo is instant.</b> Put back a word yaz changed, and that replacement is blocked at once.</li>
+          <li><b>Your sentences count.</b> Every fix you make and every dictation you leave alone becomes a private test case. A rule that would break one of your own sentences is rejected, even if the shared set allows it. <code>yaz eval --personal</code> shows how many of your fixes yaz now gets right.</li>
         </ol>
 
         <div class="ledger" role="table" aria-label="Example of yaz learned">
@@ -199,7 +200,7 @@
           <div class="ledger-row is-blocked" role="row"><span role="cell">doktor ↛ Docker</span><span role="cell" class="badge">blocked · you undid it</span></div>
           <div class="ledger-row is-rejected" role="row"><span role="cell">doktor → Docker</span><span role="cell" class="badge">rejected · failed the test</span></div>
           <div class="ledger-row" role="row"><span role="cell">Körsır → Cursor</span><span role="cell" class="badge">seen once</span></div>
-          <p class="ledger-foot"><code>yaz learned</code> lists them, <code>--forget</code> removes one. Rules live in <code>learned.json</code>, never in the cloud.</p>
+          <p class="ledger-foot"><code>yaz learned</code> lists them, <code>--forget</code> removes one. Rules and your test cases live on your Mac, never in the cloud.</p>
         </div>
       </div>
     </section>
@@ -344,7 +345,7 @@ curl -s https://yaz.mike4.dev/downloads/latest.json</code></pre>
         </details>
         <details>
           <summary>What does learning read, and can I turn it off?</summary>
-          <p>Once, about 12&nbsp;seconds after a paste, the text of the field you dictated into, through Accessibility, and only if that app is still in front. Password fields are never read. Nothing is sent anywhere; only the learned word pairs are saved. Set <code>"learn": false</code> to turn it off, <code>yaz learned --clear</code> to forget everything.</p>
+          <p>Once, about 12&nbsp;seconds after a paste, the text of the field you dictated into, through Accessibility, and only if that app is still in front. Password fields are never read. Nothing is sent anywhere. The learned word pairs are saved, and, while history is on, your fixed and kept dictations as private test cases. Set <code>"learn": false</code> to turn it off, <code>yaz learned --clear</code> to forget everything.</p>
         </details>
         <details>
           <summary>How do I uninstall it?</summary>

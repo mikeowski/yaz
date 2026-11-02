@@ -1106,10 +1106,17 @@ struct Eval: ParsableCommand {
     @Flag(help: "Include the rules yaz has learned on this Mac.")
     var learned = false
 
+    @Flag(help: "Score your own cases instead: your fixes and the dictations you kept.")
+    var personal = false
+
     @Flag(help: "Print only the score, for scripts.")
     var quiet = false
 
     func run() throws {
+        if personal {
+            try runPersonal()
+            return
+        }
         let rules = learned ? LearnedRules.load() : LearnedRules()
         let score = Evaluator.score(
             language: language, extra: rules.terms, blocked: rules.blocks,
@@ -1120,6 +1127,34 @@ struct Eval: ParsableCommand {
             return
         }
         print(score)
+        for offender in score.offenders {
+            print("  false match: \(offender)")
+        }
+    }
+
+    /// Your vocabulary and learned rules over `PersonalCorpus`, with the
+    /// thresholds given, so a change can be tried on your own speech first.
+    private func runPersonal() throws {
+        let corpus = PersonalCorpus.load()
+        guard !corpus.isEmpty else {
+            print("no personal cases yet: they come from the fixes you make and the dictations you keep")
+            return
+        }
+        let config = Config.load()
+        let rules = LearnedRules.load()
+        let vocabulary = Vocabulary(
+            terms: config.vocabulary + rules.terms,
+            threshold: threshold ?? Vocabulary.defaultThreshold,
+            skeletonThreshold: skeletonThreshold ?? Vocabulary.defaultSkeletonThreshold,
+            blocked: rules.blocks, language: config.language)
+        let score = corpus.score(vocabulary)
+        if quiet {
+            print(score.value)
+            return
+        }
+        print(score)
+        print("  your fixes yaz now gets right: \(score.recallCases - score.misses)/\(score.recallCases)")
+        print("  your kept dictations unchanged: \(score.precisionCases - score.falseMatches)/\(score.precisionCases)")
         for offender in score.offenders {
             print("  false match: \(offender)")
         }
@@ -1138,15 +1173,19 @@ struct Learned: ParsableCommand {
 
     func run() throws {
         var rules = LearnedRules.load()
+        var personal = PersonalCorpus.load()
         if clear {
             rules = LearnedRules()
             try rules.save()
-            print("cleared")
+            personal.remove()
+            print("cleared, personal cases too")
             return
         }
         if let forget {
             rules.forget(term: forget)
             try rules.save()
+            personal.forget(term: forget)
+            if !personal.isEmpty { try personal.save() }
             print("forgot \(forget)")
             return
         }
@@ -1167,6 +1206,8 @@ struct Learned: ParsableCommand {
                 print("seen \(observation.count)x \(observation.heard) -> \(observation.meant)")
             }
         }
+        print("personal cases: \(personal.fixes.count) fixes, \(personal.kept.count) kept dictations"
+            + " (yaz eval --personal)")
         print("file: \(LearnedRules.path.path)")
     }
 }

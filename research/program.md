@@ -52,6 +52,15 @@ user said.
 6. Repeat. Stop after 20 tries or when the score is 0 and a new idea would
    need new cases.
 
+## Your own data
+
+`swift run yaz eval --personal` scores the same metric over the user's own
+cases (`~/Library/Application Support/yaz/personal.json`): their fixes and
+the dictations they kept. Use it to check a threshold change on real speech
+before the shared set: `yaz eval --personal --threshold 0.8`. The file holds
+the user's dictated sentences: never copy it into the repository, a commit or
+`results.tsv`, only the score.
+
 ## The online half
 
 The app runs the same keep-or-revert on the user's Mac (`Learner`): a fix the

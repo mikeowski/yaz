@@ -10,6 +10,11 @@ Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
 
 ### Added
 
+- **Your own test set.** Every fix you make after a dictation and every
+  dictation you keep as pasted becomes a private case in `personal.json`.
+  A learned rule must also leave these no worse, so it can never break one of
+  your own sentences. `yaz eval --personal` shows how many of your fixes yaz
+  now gets right. Stored only while history and learning are on.
 - **Turkish numbers as digits.** "saat on beş otuzda" → "saat 15.30'da",
   "yüzde elli" → "%50", "on beş bin dolar" → "15.000 dolar", "iki bin yirmi
   altıda" → "2026'da". The suffix follows the reading. Words that only look
