@@ -59,6 +59,39 @@ enum Evaluator {
         let chosen = sets.filter { set in
             language.map { $0.lowercased().hasPrefix(set.language) } ?? true
         }
+        // The shipped settings score the same every time: the gate compares
+        // against them on every candidate, so they are computed once.
+        let isDefault = extra.isEmpty && blocked.isEmpty
+            && threshold == Vocabulary.defaultThreshold
+            && skeletonThreshold == Vocabulary.defaultSkeletonThreshold
+        if isDefault, let cached = baselines[key(chosen)] { return cached }
+        return compute(
+            chosen, extra: extra, blocked: blocked,
+            threshold: threshold, skeletonThreshold: skeletonThreshold)
+    }
+
+    private static func key(_ chosen: [LanguageSet]) -> String {
+        chosen.map(\.language).joined(separator: ",")
+    }
+
+    private static let baselines: [String: Score] = {
+        var table: [String: Score] = [:]
+        for chosen in sets.map({ [$0] }) + [sets] {
+            table[key(chosen)] = compute(
+                chosen, extra: [], blocked: [],
+                threshold: Vocabulary.defaultThreshold,
+                skeletonThreshold: Vocabulary.defaultSkeletonThreshold)
+        }
+        return table
+    }()
+
+    private static func compute(
+        _ chosen: [LanguageSet],
+        extra: [VocabularyTerm],
+        blocked: [Vocabulary.Block],
+        threshold: Double,
+        skeletonThreshold: Double
+    ) -> Score {
         var score = Score(falseMatches: 0, misses: 0, recallCases: 0, precisionCases: 0)
         for set in chosen {
             let vocabulary = Vocabulary(
