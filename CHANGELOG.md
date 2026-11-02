@@ -8,6 +8,16 @@ Notable changes to yaz. Format loosely follows
 
 Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
 
+### Fixed
+
+- **Fixes were missed.** The field was read once, 12 s after a paste: a fix
+  followed by Return (the field already empty) and a fix made later were
+  lost. Electron apps (Slack, VS Code, Notion, Discord) exposed no field text
+  at all, and in a short dictation a deleted and retyped word left too
+  little to recognise. yaz now watches the field for up to a minute, anchors
+  the dictation on the text around it, asks Electron apps for their text,
+  and says in the menu what it noted, learned or rejected.
+
 ### Added
 
 - **Per-app settings.** Under `apps` in the config, by bundle id: `language`,

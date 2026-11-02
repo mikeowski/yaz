@@ -60,10 +60,12 @@ final class Daemon {
     private var profilePipelines: [String: TranscriptPipeline] = [:]
     /// The user's own evaluation cases (`PersonalCorpus`).
     private var personal = PersonalCorpus.load()
-
-    /// How long after a paste the field is read back: long enough for a
-    /// quick fix, short enough that the user is still in that field.
-    private static let readBackDelay: Duration = .seconds(12)
+    /// How long a dictation is watched for fixes at most.
+    private static let watchLimit: TimeInterval = 60
+    /// Edits are done once the field has not changed for this long.
+    private static let settleAfter: TimeInterval = 6
+    /// An untouched dictation is kept as right after this long.
+    private static let keptAfter: TimeInterval = 20
 
     init(config: Config, verbose: Bool) {
         self.config = config
@@ -252,6 +254,9 @@ final class Daemon {
             screenTerms = nil
             return
         }
+        if let front = AppEnvironment.frontmostApp()?.bundleID {
+            FieldReader.enableAccessibility(bundleID: front)
+        }
         let language = config.language
         let known = config.vocabulary + learned.terms
         screenTerms = Task.detached(priority: .userInitiated) {
@@ -301,19 +306,45 @@ final class Daemon {
     private func scheduleReadBack(
         pasted: String, corrections: [Vocabulary.Correction], in bundleID: String
     ) {
+        FieldReader.enableAccessibility(bundleID: bundleID)
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: Self.readBackDelay)
-            guard let self, self.config.learn,
-                  AppEnvironment.frontmostApp()?.bundleID == bundleID,
-                  let field = FieldReader.focusedText()
-            else { return }
+            // Watch the field while the user edits: one look later misses a
+            // fix followed by Return. Stop when the dictation leaves the
+            // field, the user leaves the app, edits settle, or a minute
+            // passes; the last reading that held the dictation counts.
+            var tracker = EditTracker(pasted: pasted)
+            let started = Date()
+            var lastChange = started
+            var lastRegion: String?
+            var readAnything = false
+            try? await Task.sleep(for: .milliseconds(600))
+            while Date().timeIntervalSince(started) < Self.watchLimit {
+                guard AppEnvironment.frontmostApp()?.bundleID == bundleID else { break }
+                let field = FieldReader.focusedText()
+                if field != nil { readAnything = true }
+                let status = tracker.observe(field)
+                if status == .gone { break }
+                if tracker.region != lastRegion {
+                    lastRegion = tracker.region
+                    lastChange = Date()
+                }
+                let quiet = Date().timeIntervalSince(lastChange)
+                if status == .edited && quiet > Self.settleAfter { break }
+                if status == .untouched && quiet > Self.keptAfter { break }
+                try? await Task.sleep(for: .seconds(1))
+            }
+            guard let self, self.config.learn else { return }
+            if !readAnything {
+                log("○ learning: could not read the text field in \(bundleID) through Accessibility")
+                return
+            }
             // The personal set keeps sentences, so it follows the history
             // switch: no history, no stored text.
             let keepsCases = self.config.history
 
             // Left exactly as pasted: it was right, and must stay right.
             let trimmed = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
-            if field.contains(trimmed) {
+            if tracker.wasKept {
                 guard keepsCases else { return }
                 var personal = self.personal
                 personal.recordKept(trimmed)
@@ -324,8 +355,11 @@ final class Daemon {
                 return
             }
 
-            let edits = CorrectionDiff.edits(pasted: pasted, field: field)
-            guard !edits.isEmpty else { return }
+            let edits = tracker.edits
+            guard !edits.isEmpty else {
+                if self.verbose { log("  learning: no word replaced") }
+                return
+            }
 
             // The gate scores the whole evaluation set: off the main thread.
             let learner = Learner(
@@ -355,14 +389,18 @@ final class Daemon {
             for event in events {
                 switch event {
                 case let .noted(heard, meant, count):
-                    if self.verbose { log("  learn: noted \(heard) -> \(meant) (\(count)x)") }
+                    log("• noted your fix: \(heard) -> \(meant) (\(count) of \(Learner.promoteAfter))")
+                    self.menuBar?.note("noted: \(heard) → \(meant), once more to learn it")
                 case let .learned(heard, meant):
                     log("✓ learned: \(heard) -> \(meant)")
+                    self.menuBar?.note("learned: \(heard) → \(meant)")
                     changed = true
                 case let .rejected(heard, meant, reason):
                     log("○ not learned: \(heard) -> \(meant), \(reason)")
+                    self.menuBar?.note("not learned: \(heard) → \(meant)")
                 case let .blocked(heard, term):
                     log("✓ will not turn \(heard) into \(term) again")
+                    self.menuBar?.note("won't write \(term) for \(heard) again")
                     changed = true
                 }
             }

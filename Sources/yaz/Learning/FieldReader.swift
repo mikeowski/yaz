@@ -1,3 +1,4 @@
+import AppKit
 import ApplicationServices
 import Foundation
 
@@ -9,6 +10,24 @@ enum FieldReader {
     /// Fields longer than this are documents, not inputs: aligning against
     /// them is slow and rarely right.
     static let maxLength = 20_000
+
+    @MainActor private static var enabled = Set<pid_t>()
+
+    /// Electron and Chromium apps (Slack, VS Code, Notion, Discord, Cursor)
+    /// build their accessibility tree only when an assistive app asks for
+    /// it, and until then a text field has no readable value. This is the
+    /// documented request (`AXManualAccessibility`); other apps ignore it.
+    /// Once per process.
+    @MainActor
+    static func enableAccessibility(bundleID: String) {
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
+            let pid = app.processIdentifier
+            guard !enabled.contains(pid) else { continue }
+            enabled.insert(pid)
+            AXUIElementSetAttributeValue(
+                AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        }
+    }
 
     @MainActor
     static func focusedText() -> String? {

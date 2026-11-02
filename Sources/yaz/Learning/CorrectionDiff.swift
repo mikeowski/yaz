@@ -28,6 +28,16 @@ enum CorrectionDiff {
         return replacements(a, b)
     }
 
+    /// The edits between the dictation and the text that replaced it in
+    /// place (`EditTracker` found it between fixed anchors), so no search
+    /// for where it is: every replaced run counts.
+    static func edits(pasted: String, region: String) -> [Edit] {
+        let a = words(pasted)
+        let b = words(region)
+        guard !a.isEmpty, !b.isEmpty else { return [] }
+        return replacements(a, b)
+    }
+
     // MARK: -
 
     /// Whitespace-separated words, with outer punctuation trimmed for
