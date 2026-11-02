@@ -60,6 +60,10 @@ struct Config: Sendable, Equatable {
     var projects: [String] = []
     /// Extra bundle identifiers to treat as code apps (`CodeContext`).
     var codeApps: [String] = []
+    /// Read the field back after a dictation and learn from what the user
+    /// fixed. Rules land in learned.json only if the fixed evaluation passes
+    /// (see `Learner`). Text never leaves the Mac.
+    var learn: Bool = true
 
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/yaz/config.json")
@@ -132,6 +136,7 @@ struct Config: Sendable, Equatable {
             codeApps = value.filter { !$0.isEmpty }
         }
         if let value = json["live_text"] as? Bool { liveText = value }
+        if let value = json["learn"] as? Bool { learn = value }
         if let raw = json["microphone"] {
             if let uid = raw as? String, !uid.isEmpty { microphone = uid }
             else if raw is NSNull { microphone = nil }
@@ -218,6 +223,7 @@ struct Config: Sendable, Equatable {
             "vad_threshold": Double(vadThreshold),
             "hands_free": handsFree,
             "live_text": liveText,
+            "learn": learn,
         ]
         if let microphone { json["microphone"] = microphone }
         if !projects.isEmpty { json["projects"] = projects }
@@ -267,7 +273,8 @@ struct Config: Sendable, Equatable {
           "vad": false,
           "vad_threshold": 0.3,
           "hands_free": true,
-          "live_text": false
+          "live_text": false,
+          "learn": true
         }
 
         """

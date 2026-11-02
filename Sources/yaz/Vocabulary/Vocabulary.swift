@@ -73,7 +73,20 @@ struct Vocabulary: Sendable {
     var threshold: Double = Vocabulary.defaultThreshold
     var skeletonThreshold: Double = Vocabulary.defaultSkeletonThreshold
 
+    /// A replacement the user undid: what was heard must never again become
+    /// this term. Learned from corrections (`Learner`).
+    struct Block: Codable, Sendable, Equatable, Hashable {
+        let heard: String
+        let term: String
+    }
+
     private let entries: [Entry]
+    /// Blocks keyed by normalized heard text and lowercased term.
+    private let blockedKeys: Set<String>
+
+    private static func blockKey(heard: String, term: String) -> String {
+        PhoneticKey.normalize(heard) + "\u{1F}" + term.lowercased()
+    }
 
     /// One matchable spelling — a canonical form or one of its aliases.
     private struct Entry {
@@ -88,11 +101,13 @@ struct Vocabulary: Sendable {
     init(
         terms: [VocabularyTerm],
         threshold: Double = Vocabulary.defaultThreshold,
-        skeletonThreshold: Double = Vocabulary.defaultSkeletonThreshold
+        skeletonThreshold: Double = Vocabulary.defaultSkeletonThreshold,
+        blocked: [Block] = []
     ) {
         self.terms = terms
         self.threshold = threshold
         self.skeletonThreshold = skeletonThreshold
+        self.blockedKeys = Set(blocked.map { Self.blockKey(heard: $0.heard, term: $0.term) })
 
         var entries: [Entry] = []
         for term in terms {
@@ -198,6 +213,12 @@ struct Vocabulary: Sendable {
 
         let normalizedWindow = PhoneticKey.normalize(stems)
         guard !normalizedWindow.isEmpty else { return nil }
+
+        // The user undid this exact replacement before.
+        if !blockedKeys.isEmpty,
+           blockedKeys.contains(Self.blockKey(heard: stems, term: entry.canonical)) {
+            return nil
+        }
 
         // A window holding an ordinary Turkish word is something the user
         // plainly said. It may still be replaced, but only on near-exact

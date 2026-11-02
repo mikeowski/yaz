@@ -9,7 +9,7 @@ struct Yaz: ParsableCommand {
         commandName: "yaz",
         abstract: "On-device dictation for macOS. Hold the key, speak, release — the text lands at your cursor.",
         version: AppEnvironment.version,
-        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self, Microphones.self, Projects.self],
+        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self, Microphones.self, Projects.self, Eval.self, Learned.self],
         defaultSubcommand: Run.self
     )
 }
@@ -1083,5 +1083,87 @@ struct Projects: ParsableCommand {
                 print("  \(term.canonical)  ← \"\(term.aliases.first ?? "")\"")
             }
         }
+    }
+}
+struct Eval: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Score term repair over the fixed evaluation set (lower is better).",
+        discussion: """
+            The metric is false matches x 3 + misses over EvalCorpus. This is \
+            the number research/program.md asks an agent to bring down; the \
+            set itself must not change to make a score pass.
+            """)
+
+    @Option(help: "Similarity threshold to try.")
+    var threshold: Double?
+
+    @Option(help: "Consonant-skeleton threshold to try.")
+    var skeletonThreshold: Double?
+
+    @Flag(help: "Include the rules yaz has learned on this Mac.")
+    var learned = false
+
+    @Flag(help: "Print only the score, for scripts.")
+    var quiet = false
+
+    func run() throws {
+        let rules = learned ? LearnedRules.load() : LearnedRules()
+        let score = Evaluator.score(
+            extra: rules.terms, blocked: rules.blocks,
+            threshold: threshold ?? Vocabulary.defaultThreshold,
+            skeletonThreshold: skeletonThreshold ?? Vocabulary.defaultSkeletonThreshold)
+        if quiet {
+            print(score.value)
+            return
+        }
+        print(score)
+        for offender in score.offenders {
+            print("  false match: \(offender)")
+        }
+    }
+}
+
+struct Learned: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Show or forget what yaz learned from your corrections.")
+
+    @Option(help: "Forget the rules and blocks for this term.")
+    var forget: String?
+
+    @Flag(help: "Forget everything learned.")
+    var clear = false
+
+    func run() throws {
+        var rules = LearnedRules.load()
+        if clear {
+            rules = LearnedRules()
+            try rules.save()
+            print("cleared")
+            return
+        }
+        if let forget {
+            rules.forget(term: forget)
+            try rules.save()
+            print("forgot \(forget)")
+            return
+        }
+        if rules.rules.isEmpty && rules.blocks.isEmpty && rules.observations.isEmpty {
+            print("nothing learned yet")
+            return
+        }
+        for rule in rules.rules {
+            print("learned  \(rule.heard) -> \(rule.meant)")
+        }
+        for block in rules.blocks {
+            print("blocked  \(block.heard) -/-> \(block.term)")
+        }
+        for observation in rules.observations {
+            if let reason = observation.rejectedBecause {
+                print("rejected \(observation.heard) -> \(observation.meant): \(reason)")
+            } else {
+                print("seen \(observation.count)x \(observation.heard) -> \(observation.meant)")
+            }
+        }
+        print("file: \(LearnedRules.path.path)")
     }
 }

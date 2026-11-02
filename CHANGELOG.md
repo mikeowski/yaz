@@ -10,6 +10,13 @@ Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
 
 ### Added
 
+- **Learning from your fixes.** yaz reads the field back after a paste and
+  learns a term you fix twice. A rule is kept only if the fixed evaluation
+  (`EvalCorpus`: false matches × 3 + misses) does not get worse, so it can
+  never learn to turn `doktor` into `Docker`. A repair you undo is blocked at
+  once. `yaz learned` shows and forgets rules; `yaz eval` prints the score;
+  `research/program.md` runs the same keep-or-revert loop offline with an
+  agent, in the manner of Karpathy's autoresearch.
 - **A new icon, in every macOS appearance.** `Resources/AppIcon.icon` is an
   Icon Composer document: a vermilion fill and two Liquid Glass layers, a
   voice and a caret. `bundle.sh` compiles it with `actool`, so macOS 26 draws

@@ -36,12 +36,15 @@ struct TranscriptPipeline: Sendable {
         let refinementRejected: String?
     }
 
-    init(config: Config, project: ProjectIndex = .empty) {
-        self.vocabulary = Vocabulary(terms: config.vocabulary)
+    init(config: Config, project: ProjectIndex = .empty, learned: LearnedRules = LearnedRules()) {
+        // The user's own terms first: they win a tie with a learned rule or a
+        // project name. Blocks are repairs the user undid (`Learner`).
+        let terms = config.vocabulary + learned.terms
+        self.vocabulary = Vocabulary(terms: terms, blocked: learned.blocks)
         self.refiner = Refiner(mode: config.refine, language: config.language)
         self.language = config.language
-        // The user's own terms first: they win a tie with a project name.
-        self.codeVocabulary = Vocabulary(terms: config.vocabulary + project.vocabularyTerms())
+        self.codeVocabulary = Vocabulary(
+            terms: terms + project.vocabularyTerms(), blocked: learned.blocks)
         self.formatter = CodeFormatter(files: project.files)
         self.codeRefiner = Refiner(
             mode: config.refine == .llm ? .fillers : config.refine, language: config.language)

@@ -50,12 +50,21 @@ final class Daemon {
     private var liveTimer: Timer?
     private var liveInFlight = false
 
+    /// The project names (`projects`) and what was learned from the user's
+    /// fixes (`learn`): the pipeline is rebuilt from these when either changes.
+    private var projectIndex = ProjectIndex.empty
+    private var learned = LearnedRules.load()
+
+    /// How long after a paste the field is read back: long enough for a
+    /// quick fix, short enough that the user is still in that field.
+    private static let readBackDelay: Duration = .seconds(12)
+
     init(config: Config, verbose: Bool) {
         self.config = config
         self.engine = config.makeEngine()
         self.monitor = HotkeyMonitor(hotkey: config.hotkey, debug: verbose)
         self.activeHotkey = config.hotkey
-        self.pipeline = TranscriptPipeline(config: config)
+        self.pipeline = TranscriptPipeline(config: config, learned: learned)
         self.history = TranscriptHistory(limit: config.historyLimit, enabled: config.history)
         self.overlay = config.overlay ? RecordingOverlay() : nil
         self.verbose = verbose
@@ -228,20 +237,68 @@ final class Daemon {
         }
     }
 
+    private func rebuildPipeline() {
+        pipeline = TranscriptPipeline(config: config, project: projectIndex, learned: learned)
+    }
+
+    /// Read the field back a little after a paste and learn from what the
+    /// user fixed. Nothing happens if they moved to another app: the focused
+    /// field is then not the one yaz typed into.
+    private func scheduleReadBack(
+        pasted: String, corrections: [Vocabulary.Correction], in bundleID: String
+    ) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.readBackDelay)
+            guard let self, self.config.learn,
+                  AppEnvironment.frontmostApp()?.bundleID == bundleID,
+                  let field = FieldReader.focusedText()
+            else { return }
+            let edits = CorrectionDiff.edits(pasted: pasted, field: field)
+            guard !edits.isEmpty else { return }
+
+            var learner = Learner(rules: self.learned)
+            let events = learner.observe(
+                edits: edits, corrections: corrections, userTerms: self.config.vocabulary)
+            guard learner.rules != self.learned else { return }
+            self.learned = learner.rules
+            do {
+                try self.learned.save()
+            } catch {
+                log("! could not save learned rules: \(error.localizedDescription)")
+            }
+
+            var changed = false
+            for event in events {
+                switch event {
+                case let .noted(heard, meant, count):
+                    if self.verbose { log("  learn: noted \(heard) -> \(meant) (\(count)x)") }
+                case let .learned(heard, meant):
+                    log("✓ learned: \(heard) -> \(meant)")
+                    changed = true
+                case let .rejected(heard, meant, reason):
+                    log("○ not learned: \(heard) -> \(meant), \(reason)")
+                case let .blocked(heard, term):
+                    log("✓ will not turn \(heard) into \(term) again")
+                    changed = true
+                }
+            }
+            if changed { self.rebuildPipeline() }
+        }
+    }
+
     /// Index the project folders in the background, then swap in a pipeline
     /// that knows their names. Until then dictation works without them.
     private func startProjectIndex() {
         let paths = config.projects
         guard !paths.isEmpty else { return }
-        let config = self.config
         Task.detached(priority: .utility) { [weak self] in
             let started = Date()
             let index = ProjectIndex.scan(paths)
-            let pipeline = TranscriptPipeline(config: config, project: index)
             let elapsed = Date().timeIntervalSince(started)
             await MainActor.run {
                 guard let self else { return }
-                self.pipeline = pipeline
+                self.projectIndex = index
+                self.rebuildPipeline()
                 log(String(
                     format: "✓ projects indexed — %d names, %d files in %.1f s",
                     min(index.identifiers.count, ProjectIndex.maxTerms), index.files.count, elapsed))
@@ -534,6 +591,10 @@ final class Daemon {
             TextInjector.inject(processed.text, mode: config.injectMode)
             lastText = processed.text
             runHook(with: processed.text)
+            if config.learn, let bundleID = target?.bundleID {
+                scheduleReadBack(
+                    pasted: processed.text, corrections: processed.corrections, in: bundleID)
+            }
 
             let entry = HistoryEntry(
                 date: Date(),
