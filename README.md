@@ -131,20 +131,24 @@ rejects a recording that is below the silence threshold. Whisper gives no
 output for the first condition. Whisper invents sentences for the second
 condition.
 
-Then yaz uses a voice activity detector (Silero VAD, from FluidAudio). A loud
+You can also turn on a voice activity detector (Silero VAD, from FluidAudio). A loud
 sound is not always speech. A fan, typing, or a cough can pass the silence
 threshold, and Whisper then invents a sentence. The detector gives a speech
 probability for each 256 ms window. If no window is at or above `vad_threshold`
 (0.3), yaz rejects the recording and writes the reason in the log.
 
-The detector is a filter, not a requirement. yaz downloads the small model at
-the first start. Until the model is ready, and if it does not load, yaz keeps
-each recording. `yaz transcribe` shows the scores for each file, so you can
-examine the threshold with your microphone:
+The detector is off by default, because the threshold is not yet measured on
+real microphones. An incorrect threshold removes dictation without a warning.
+Before you set `"vad": true`, examine the scores with your microphone.
+`yaz transcribe` shows them for each file:
 
 ```
   voice 0.97 · 18 of 22 windows over 0.30
 ```
+
+The detector is a filter, not a requirement. yaz downloads the small model at
+the start. Until the model is ready, and if it does not load, yaz keeps each
+recording.
 
 After inference, yaz uses the confidence signals of the decoder. These signals
 find invented text:
@@ -336,7 +340,7 @@ same file. Therefore you can also edit the file manually.
   "menu_bar": true,
   "history": true,
   "history_limit": 2000,
-  "vad": true,
+  "vad": false,
   "vad_threshold": 0.3,
   "on_transcript": "my-hook",
   "vocabulary": [

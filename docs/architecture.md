@@ -1210,10 +1210,12 @@ Two rules keep the detector from costing dictation:
    threshold is 0.3, below Hex's 0.4, because FluidAudio scores 256 ms windows
    and a short word can straddle two of them.
 
-**Not yet measured.** 0.3 is a reasoned starting point, not a measurement.
-`yaz transcribe` prints the peak probability and the window count for every
-file, so the threshold can be checked against `fixtures/` and against real
-microphones before it is tightened.
+**Not yet measured, so off by default.** 0.3 is a reasoned starting point, not
+a measurement, and a wrong threshold drops dictation without a word. The check
+is opt-in (`"vad": true`) until it has been measured. `yaz transcribe` prints
+the peak probability and the window count for every file whatever the setting,
+so the threshold can be checked against `fixtures/` and against real
+microphones first.
 
 ### What was not taken from Hex
 

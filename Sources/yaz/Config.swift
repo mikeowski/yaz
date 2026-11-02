@@ -40,7 +40,11 @@ struct Config: Sendable, Equatable {
     var historyLimit: Int = TranscriptHistory.defaultLimit
     /// Drop recordings that are loud enough but hold no speech (a fan, a
     /// keyboard, a cough), using Silero VAD. See `VoiceActivityGate`.
-    var vad: Bool = true
+    ///
+    /// Off by default until the threshold is measured on real microphones: a
+    /// wrong threshold drops dictation silently, which is worse than the noise
+    /// it removes.
+    var vad: Bool = false
     /// Window speech probability that counts as speech.
     var vadThreshold: Float = VoiceActivityGate.defaultThreshold
 
@@ -230,7 +234,7 @@ struct Config: Sendable, Equatable {
           "menu_bar": true,
           "history": true,
           "history_limit": 2000,
-          "vad": true,
+          "vad": false,
           "vad_threshold": 0.3
         }
 

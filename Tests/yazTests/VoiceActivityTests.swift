@@ -102,21 +102,23 @@ struct VoiceCheckTests {
 @Suite("Config — the voice check settings")
 struct VoiceActivityConfigTests {
 
-    @Test("on by default, with the default threshold")
+    /// The threshold is not yet measured on real microphones, and a wrong
+    /// one loses dictation silently. Opt-in until it is.
+    @Test("off by default, with the default threshold")
     func defaults() {
         let config = Config()
-        #expect(config.vad)
+        #expect(!config.vad)
+        #expect(config.voiceCheck == nil)
         #expect(config.vadThreshold == VoiceActivityGate.defaultThreshold)
-        #expect(config.voiceCheck?.gate.threshold == VoiceActivityGate.defaultThreshold)
     }
 
     @Test("both keys are read")
     func readsKeys() {
         var config = Config()
-        config.apply(["vad": false, "vad_threshold": 0.5], source: "test")
-        #expect(!config.vad)
+        config.apply(["vad": true, "vad_threshold": 0.5], source: "test")
+        #expect(config.vad)
         #expect(config.vadThreshold == 0.5)
-        #expect(config.voiceCheck == nil)
+        #expect(config.voiceCheck?.gate.threshold == 0.5)
     }
 
     @Test("a threshold outside (0, 1) is ignored")
@@ -132,7 +134,7 @@ struct VoiceActivityConfigTests {
     @Test("the settings survive a write and a read")
     func roundTrips() throws {
         var config = Config()
-        config.vad = false
+        config.vad = true
         config.vadThreshold = 0.45
         let url = FileManager.default.temporaryDirectory
             .appending(path: "yaz-vad-\(UUID().uuidString)")
@@ -141,7 +143,7 @@ struct VoiceActivityConfigTests {
 
         try config.save(to: url)
         let loaded = Config.load(from: url)
-        #expect(loaded.vad == false)
+        #expect(loaded.vad == true)
         #expect(loaded.vadThreshold == 0.45)
     }
 }

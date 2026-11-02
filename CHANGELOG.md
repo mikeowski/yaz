@@ -10,10 +10,11 @@ Notable changes to yaz. Format loosely follows
 
 - **Voice activity check.** Silero VAD (FluidAudio, on the Neural Engine) runs
   after the level gate and drops recordings that are loud but hold no speech —
-  a fan, typing, a cough — before Whisper can invent text for them. On by
-  default (`"vad": true`, `"vad_threshold": 0.3`). The model downloads in the
-  background; until it is ready, or if it fails to load, every recording is
-  kept. `yaz transcribe` prints the scores, and `--strict` enforces them.
+  a fan, typing, a cough — before Whisper can invent text for them. Off by
+  default until the 0.3 threshold is measured on real microphones; turn it on
+  with `"vad": true`. The model downloads in the background; until it is
+  ready, or if it fails to load, every recording is kept. `yaz transcribe`
+  always prints the scores, and `--strict` enforces them when `vad` is on.
 
 ### Fixed
 

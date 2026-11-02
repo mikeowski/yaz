@@ -885,13 +885,15 @@ struct Transcribe: ParsableCommand {
             var options = strict ? TranscribeOptions() : .raw
             options.timeout = .seconds(Int(max(maxSeconds, 120)))
 
-            // The voice detector is loaded in both modes: --strict enforces
-            // it, and the default mode prints its scores so the threshold can
-            // be checked against real recordings.
-            let voiceGate = VoiceActivityGate(threshold: Config.load().vadThreshold)
+            // The voice detector always prints its scores, so the threshold
+            // can be checked against real recordings before `vad` is turned
+            // on. --strict enforces it only when the config turns it on,
+            // matching what the daemon would do.
+            let config = Config.load()
+            let voiceGate = VoiceActivityGate(threshold: config.vadThreshold)
             await SileroVoiceActivity.shared.prepare()
             if strict {
-                options.voice = VoiceCheck(detector: SileroVoiceActivity.shared, gate: voiceGate)
+                options.voice = config.voiceCheck
             }
 
             var failures = 0
