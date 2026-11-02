@@ -38,6 +38,17 @@ final class Daemon {
     /// Poll that watches for the Accessibility grant arriving.
     private var permissionPoll: Timer?
 
+    /// Hold to talk, or tap twice for hands-free. Owns when a recording
+    /// starts and stops; `handle(_:)` only feeds it key edges.
+    private var ptt: PushToTalk
+
+    /// The last text pasted, for "Paste Last Dictation".
+    private var lastText: String?
+
+    /// Live preview while recording (`live_text`).
+    private var liveTimer: Timer?
+    private var liveInFlight = false
+
     init(config: Config, verbose: Bool) {
         self.config = config
         self.engine = config.makeEngine()
@@ -47,6 +58,8 @@ final class Daemon {
         self.history = TranscriptHistory(limit: config.historyLimit, enabled: config.history)
         self.overlay = config.overlay ? RecordingOverlay() : nil
         self.verbose = verbose
+        self.ptt = PushToTalk(handsFree: config.handsFree)
+        capture.preferredDeviceUID = config.microphone
     }
 
     func run() throws {
@@ -67,6 +80,7 @@ final class Daemon {
         menuBar?.onOpenHistory = { [settings] in settings.showHistory() }
         menuBar?.onFixPermission = { [weak self] in self?.presentPermissionAlert() }
         menuBar?.onUseFallbackHotkey = { [weak self] in self?.switchToFallbackHotkey() }
+        menuBar?.onPasteLast = { [weak self] in self?.pasteLast() }
 
         // Sparkle runs only in the signed .app; `Updates` decides.
         if Updates.canUpdate {
@@ -312,34 +326,132 @@ final class Daemon {
     }
 
     private func handle(_ event: HotkeyMonitor.Event) {
+        let now = ProcessInfo.processInfo.systemUptime
         switch event {
         case .pressed:
-            guard ready else {
-                log("  (model still loading)")
-                return
+            // A new recording needs the model and an idle pipeline; a press
+            // that belongs to a recording in progress (the second tap, the
+            // stop of a hands-free one) always goes through.
+            if ptt.state == .idle {
+                guard ready else {
+                    log("  (model still loading)")
+                    return
+                }
+                guard !busy else {
+                    if verbose { log("  (previous transcription still running — not recording)") }
+                    return
+                }
             }
-            guard !busy else {
-                if verbose { log("  (previous transcription still running — not recording)") }
-                return
-            }
+            apply(ptt.press(at: now))
+        case .released:
+            apply(ptt.release(at: now))
+        }
+    }
+
+    private func apply(_ command: PushToTalk.Command) {
+        switch command {
+        case .start:
             do {
                 try capture.start()
                 log("● recording")
                 setIndicator(.recording)
+                startLivePreview()
             } catch {
+                ptt.reset()
                 log("couldn't start recording: \(error)")
                 menuBar?.note("microphone unavailable")
             }
+        case .lock:
+            log("● recording hands-free — press the key again to stop")
+            menuBar?.note("● recording hands-free")
+            if !config.liveText { overlay?.setDetail("hands-free · press to stop") }
+        case .stop:
+            stopRecording()
+        case .discard:
+            stopLivePreview()
+            _ = capture.stop()
+            setIndicator(.idle)
+            if verbose { log("○ a single tap — dropped") }
+        case .none:
+            break
+        }
+        // A tap waits for its second: close the window if none comes.
+        if case .armed = ptt.state {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(PushToTalk.secondTapWindow + 0.05))
+                guard let self else { return }
+                self.apply(self.ptt.tick(at: ProcessInfo.processInfo.systemUptime))
+            }
+        }
+    }
 
-        case .released:
-            guard capture.isRecording else { return }
-            let samples = capture.stop()
-            let sawSignal = capture.didSeeSignal
-            let hitLimit = capture.didHitLimit
-            if hitLimit { log("warning: recording hit the length limit and was truncated") }
-            setIndicator(.transcribing)
-            busy = true
-            Task { await self.finish(samples, sawSignal: sawSignal) }
+    private func stopRecording() {
+        stopLivePreview()
+        guard capture.isRecording else { return }
+        let samples = capture.stop()
+        let sawSignal = capture.didSeeSignal
+        let hitLimit = capture.didHitLimit
+        if hitLimit { log("warning: recording hit the length limit and was truncated") }
+        setIndicator(.transcribing)
+        busy = true
+        Task { await self.finish(samples, sawSignal: sawSignal) }
+    }
+
+    // MARK: - Live preview
+
+    /// About once a second, transcribe what has been said so far and show it
+    /// in the pill. Raw Whisper output, no gates: it is only ever shown. The
+    /// final transcript is a separate pass over the whole recording.
+    private func startLivePreview() {
+        guard config.liveText else { return }
+        liveTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            MainActor.assumeIsolated { self.refreshLivePreview() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        liveTimer = timer
+    }
+
+    private func stopLivePreview() {
+        liveTimer?.invalidate()
+        liveTimer = nil
+        overlay?.setDetail(nil)
+    }
+
+    private func refreshLivePreview() {
+        guard !liveInFlight, capture.isRecording else { return }
+        let samples = capture.snapshot()
+        // Under a second, Whisper returns nothing worth showing.
+        guard Double(samples.count) >= AudioLoader.sampleRate else { return }
+        liveInFlight = true
+        let engine = self.engine
+        Task.detached(priority: .utility) { [weak self] in
+            var options = TranscribeOptions.raw
+            options.timeout = .seconds(10)
+            let text = try? await engine.transcribe(samples, options: options).text
+            await MainActor.run {
+                guard let self else { return }
+                self.liveInFlight = false
+                if self.capture.isRecording, let text {
+                    self.overlay?.setDetail(LivePreview.tail(of: text))
+                }
+            }
+        }
+    }
+
+    // MARK: - Paste last
+
+    /// Paste the previous dictation again, into whatever is focused now. The
+    /// menu is in the status bar and yaz never becomes active, so the app the
+    /// user was in is still the one that receives it.
+    private func pasteLast() {
+        if let lastText {
+            TextInjector.inject(lastText, mode: config.injectMode)
+            return
+        }
+        Task { [history] in
+            guard let text = await history.entries(limit: 1).first?.text else { return }
+            await MainActor.run { TextInjector.inject(text, mode: Config.load().injectMode) }
         }
     }
 
@@ -389,6 +501,7 @@ final class Daemon {
             let target = AppEnvironment.frontmostApp()
 
             TextInjector.inject(processed.text, mode: config.injectMode)
+            lastText = processed.text
             runHook(with: processed.text)
 
             let entry = HistoryEntry(

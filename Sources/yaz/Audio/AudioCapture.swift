@@ -1,5 +1,6 @@
 import AVFoundation
 import Accelerate
+import AudioToolbox
 import Foundation
 
 /// Captures microphone audio while the hotkey is held and returns 16 kHz mono
@@ -50,6 +51,20 @@ final class AudioCapture: @unchecked Sendable {
 
     var isRecording: Bool { lock.withLock { running } }
 
+    /// UID of the microphone to use (see `AudioDevices`); nil follows the
+    /// system default. Read at every `start()`, so a change applies to the
+    /// next recording.
+    var preferredDeviceUID: String? {
+        get { lock.withLock { preferredUID } }
+        set { lock.withLock { preferredUID = newValue } }
+    }
+    private var preferredUID: String?
+
+    /// Everything captured so far, without stopping. For the live preview.
+    func snapshot() -> [Float] {
+        lock.withLock { samples }
+    }
+
     /// Begin capturing. Idempotent.
     func start() throws {
         lock.lock()
@@ -60,6 +75,7 @@ final class AudioCapture: @unchecked Sendable {
         lock.unlock()
 
         let input = engine.inputNode
+        selectDevice(on: input)
         let inputFormat = input.outputFormat(forBus: 0)
 
         guard let target = AVAudioFormat(
@@ -117,6 +133,26 @@ final class AudioCapture: @unchecked Sendable {
     var didHitLimit: Bool { lock.withLock { hitLimit } }
 
     // MARK: -
+
+    /// Point the engine's input at the preferred microphone, before its
+    /// format is read. A device that is not connected falls back to the
+    /// system default, with a line in the log rather than an error: a
+    /// missing headset must not stop dictation.
+    private func selectDevice(on input: AVAudioInputNode) {
+        guard let uid = preferredDeviceUID else { return }
+        guard let device = AudioDevices.input(uid: uid) else {
+            log("microphone \(uid) is not connected — using the system default")
+            return
+        }
+        guard let unit = input.audioUnit else { return }
+        var id = device.id
+        let status = AudioUnitSetProperty(
+            unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+            &id, UInt32(MemoryLayout<AudioDeviceID>.size))
+        if status != noErr {
+            log("couldn't switch to the microphone \(device.name) (\(status)) — using the system default")
+        }
+    }
 
     private func append(
         _ buffer: AVAudioPCMBuffer,

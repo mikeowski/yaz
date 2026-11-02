@@ -88,8 +88,12 @@ final class SettingsModel: ObservableObject {
     /// New-term field in the vocabulary editor.
     @Published var newTerm: String = ""
 
+    /// Input devices, for the microphone picker.
+    @Published var microphones: [AudioDevices.Input] = []
+
     func reload() {
         config = .load()
+        microphones = AudioDevices.inputs()
     }
 
     func save() {
@@ -174,6 +178,22 @@ private struct SettingsView: View {
                     Label("Parakeet does not support Turkish", systemImage: "xmark.octagon")
                         .font(.caption)
                         .foregroundStyle(.red)
+                }
+            }
+
+            Section("Recording") {
+                Picker("Microphone", selection: $model.config.microphone) {
+                    Text("System default").tag(String?.none)
+                    ForEach(model.microphones) { mic in
+                        Text(mic.name).tag(Optional(mic.uid))
+                    }
+                }
+                Toggle("Tap the key twice for hands-free", isOn: $model.config.handsFree)
+                Toggle("Show the words while you speak", isOn: $model.config.liveText)
+                if model.config.liveText {
+                    Text("Runs Whisper about once a second while recording.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
