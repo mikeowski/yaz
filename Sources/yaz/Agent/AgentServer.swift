@@ -9,10 +9,10 @@ import Foundation
 /// (`AgentHandoff`: your next dictation goes to the agent instead of being
 /// pasted). JSON-RPC 2.0, one message per line on stdin and stdout; the
 /// agent starts the process, so there is no listener at all.
-struct AgentServer {
+struct AgentServer: Sendable {
 
     /// Where the dictations come from: newest first.
-    var history: () -> [HistoryEntry]
+    var history: @Sendable () -> [HistoryEntry]
     var historyEnabled: Bool
     var handoff: AgentHandoff
     /// How often `wait_for_dictation` looks for the reply.

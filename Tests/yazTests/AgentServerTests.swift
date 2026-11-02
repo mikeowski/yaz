@@ -24,6 +24,19 @@ struct AgentServerTests {
             handoff: AgentHandoff(directory: dir), pollInterval: 0.05, version: "9.9.9")
     }
 
+    /// `wait_for_dictation` blocks its thread while it waits, as it should in
+    /// `yaz mcp`. In tests that would hold a thread of the shared pool and
+    /// slow every timing test running beside it, so it gets its own.
+    private func callOffPool(
+        _ server: AgentServer, _ name: String, _ arguments: [String: Int]
+    ) async -> (String, Bool) {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                continuation.resume(returning: call(server, name, arguments))
+            }
+        }
+    }
+
     private func call(_ server: AgentServer, _ name: String, _ arguments: [String: Any] = [:]) -> (String, Bool) {
         let response = server.handle([
             "jsonrpc": "2.0", "id": 7, "method": "tools/call",
@@ -95,7 +108,7 @@ struct AgentServerTests {
     }
 
     @Test("wait_for_dictation returns the next dictation, handed over instead of pasted")
-    func waitReturnsReply() {
+    func waitReturnsReply() async {
         let dir = FileManager.default.temporaryDirectory.appending(path: "yaz-agent-\(UUID())")
         defer { try? FileManager.default.removeItem(at: dir) }
         let handoff = AgentHandoff(directory: dir)
@@ -109,8 +122,8 @@ struct AgentServerTests {
                 Thread.sleep(forTimeInterval: 0.02)
             }
         }
-        let (text, isError) = call(server(directory: dir), "wait_for_dictation",
-                                   ["timeout_seconds": 10, "prompt": "merge edeyim mi?"])
+        let (text, isError) = await callOffPool(server(directory: dir), "wait_for_dictation",
+                                                ["timeout_seconds": 10])
         #expect(!isError)
         #expect(text == "evet, merge et")
         #expect(handoff.pendingWait() == nil)
@@ -119,10 +132,10 @@ struct AgentServerTests {
     }
 
     @Test("wait_for_dictation gives up after its timeout")
-    func waitTimesOut() {
+    func waitTimesOut() async {
         let dir = FileManager.default.temporaryDirectory.appending(path: "yaz-agent-\(UUID())")
         defer { try? FileManager.default.removeItem(at: dir) }
-        let (text, isError) = call(server(directory: dir), "wait_for_dictation", ["timeout_seconds": 1])
+        let (text, isError) = await callOffPool(server(directory: dir), "wait_for_dictation", ["timeout_seconds": 1])
         #expect(isError)
         #expect(text.contains("no dictation"))
         #expect(AgentHandoff(directory: dir).pendingWait() == nil)
