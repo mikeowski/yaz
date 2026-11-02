@@ -7,6 +7,8 @@
 yaz is a dictation tool for macOS. Hold the hotkey. Speak. Release the hotkey.
 yaz then writes the text at your cursor. No data goes out of your computer.
 
+**Website:** [yaz.mike4.dev](https://yaz.mike4.dev)
+
 yaz uses the structure of [parrot](https://github.com/digimata/parrot). It adds
 the three functions that parrot does not have: a default that operates in many
 languages, reliable text insertion, and post-processing.
@@ -15,12 +17,35 @@ languages, reliable text insertion, and post-processing.
 
 ## Install the application
 
-1. Download the DMG file from the
-   [releases page](https://github.com/mikeowski/yaz/releases/latest).
+1. Download the DMG file from [yaz.mike4.dev](https://yaz.mike4.dev), or from
+   the [releases page](https://github.com/mikeowski/yaz/releases/latest).
 2. Open the DMG file.
 3. Move `yaz.app` into the Applications folder.
 
 yaz operates from the menu bar. It has no dock icon and no window.
+
+### Updates
+
+From version 0.2, the application updates itself with
+[Sparkle](https://sparkle-project.org). Once a day, it reads the update feed at
+`https://yaz.mike4.dev/downloads/appcast.xml`. When a new version is
+available, the menu shows `Update to yaz x.y…`. yaz does not open a window
+over the application that you dictate into. The menu also has
+`Check for Updates…`.
+
+Each update has an EdDSA signature. yaz refuses an update that does not agree
+with the key in the application. `yaz updates` shows the status:
+
+```
+$ /Applications/yaz.app/Contents/MacOS/yaz updates
+version: 0.2.0 (2)
+sparkle: loaded
+feed:    https://yaz.mike4.dev/downloads/appcast.xml
+updates: on
+```
+
+The CLI that `scripts/install.sh` installs does not update itself. Update it
+with `git pull` and `scripts/install.sh`.
 
 The maintainer signs each release with a Developer ID certificate. Apple then
 notarises it. Therefore the application opens correctly. Gatekeeper does not

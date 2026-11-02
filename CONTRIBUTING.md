@@ -99,8 +99,41 @@ App-Specific Passwords; an account password will not work. A `401 — the accoun
 does not exist` almost always means the wrong Apple ID rather than the wrong
 password.
 
+One command does a release. It builds, signs, notarises, writes the download
+manifest, and signs the Sparkle update feed:
+
 ```sh
-swift test                  # 283 tests, ~1 s
+swift test                            # 283 tests, ~1 s
+./scripts/release.sh                  # dist/yaz-<version>.dmg + site/downloads/
+./scripts/release.sh --github         # also a GitHub release (tag pushed first)
+./scripts/release.sh --deploy         # also the site + feed to yaz.mike4.dev
+```
+
+Before a release:
+
+1. Raise `CFBundleShortVersionString` **and** `CFBundleVersion` in
+   `Resources/AppInfo.plist`. Sparkle compares `CFBundleVersion`; a release
+   that does not raise it is never offered, and `release.sh` refuses one that
+   the feed already lists.
+2. Write the notes to `dist/notes-<version>.md`. They are the GitHub release
+   body and the text in Sparkle's update window.
+3. `git tag v<version> && git push origin v<version>` (for `--github`).
+
+The feed is signed with the Sparkle EdDSA key in the login Keychain — the same
+key as Kare's. `release.sh` compares it with `SUPublicEDKey` in
+`Resources/AppInfo.plist` and stops if they differ: a feed signed with another
+key is one that every installed copy rejects, and nobody updates again. It also
+runs `yaz updates --require` on the finished bundle, so a build whose updater
+does not work is never published.
+
+`--deploy` publishes `site/` to Cloudflare (`wrangler.jsonc`, the Worker `yaz`
+with the custom domain `yaz.mike4.dev`). Run `npx wrangler login` once. DMGs
+are not committed; commit `site/downloads/appcast.xml`, `latest.json` and
+`site/_redirects` after a release.
+
+The steps inside `release.sh`, for when one of them fails:
+
+```sh
 ./scripts/bundle.sh         # picks up the Developer ID automatically
 ./scripts/notarize.sh       # app + DMG, notarised and stapled
 ```
@@ -118,6 +151,6 @@ DMG alone leaves the copy the user drags to Applications without its own
 ticket, which then needs a network round trip on first launch — and fails
 closed if the machine is offline.
 
-Bump the version in `Package.swift`, `scripts/bundle.sh` and `CHANGELOG.md`
-together; `bundle.sh` names the DMG from the bundle's version, so a mismatch
-ships a file whose name disagrees with what is inside it.
+The version lives in `Resources/AppInfo.plist`; `bundle.sh`, `notarize.sh` and
+`release.sh` all read it from there. Move the `CHANGELOG.md` entry from
+Unreleased to the new version in the same commit.
