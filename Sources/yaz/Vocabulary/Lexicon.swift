@@ -13,6 +13,12 @@ struct Lexicon: Sendable {
     let protectedWordThreshold: Double
     private let isCommonWord: @Sendable (String) -> Bool
 
+    init(language: String, protectedWordThreshold: Double, isCommonWord: @escaping @Sendable (String) -> Bool) {
+        self.language = language
+        self.protectedWordThreshold = protectedWordThreshold
+        self.isCommonWord = isCommonWord
+    }
+
     func isCommon(_ word: String) -> Bool { isCommonWord(word) }
 
     /// True when any word in the window is common enough to protect.

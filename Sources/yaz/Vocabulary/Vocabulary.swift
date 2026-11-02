@@ -233,6 +233,14 @@ struct Vocabulary: Sendable {
         if stems.compare(entry.canonical, options: .caseInsensitive) == .orderedSame {
             return nil
         }
+        // The term with an English plural ending is the term too: "pull
+        // requests" must not lose its "s". (Turkish puts suffixes behind an
+        // apostrophe, which the tokenizer already keeps.)
+        let lower = stems.lowercased()
+        let canonical = entry.canonical.lowercased()
+        if lower == canonical + "s" || lower == canonical + "es" {
+            return nil
+        }
 
         let normalizedWindow = PhoneticKey.normalize(stems)
         guard !normalizedWindow.isEmpty else { return nil }

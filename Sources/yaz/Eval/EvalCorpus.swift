@@ -214,3 +214,92 @@ extension EvalCorpus {
         ]
     }
 }
+
+extension EvalCorpus {
+
+    /// English as the main language. Precision only for term repair, as for
+    /// German: no English manglings have been measured yet.
+    enum English {
+
+        static let language = "en"
+
+        /// Terms near English words: "doctor", "were all", "ready".
+        static let riskyTerms: [VocabularyTerm] = [
+            VocabularyTerm(canonical: "Docker"),
+            VocabularyTerm(canonical: "Redis"),
+            VocabularyTerm(canonical: "Vercel"),
+            VocabularyTerm(canonical: "Figma"),
+            VocabularyTerm(canonical: "Jira"),
+            VocabularyTerm(canonical: "Kafka"),
+            VocabularyTerm(canonical: "Svelte"),
+        ]
+
+        static let recall: [(heard: String, expected: String)] = []
+
+        /// Everyday English, the counterpart of the Turkish set.
+        static let precision: [String] = [
+            "I got up early this morning and made breakfast before work.",
+            "The delivery guy called and said the package arrives today.",
+            "These new shoes are a little tight, I might return them.",
+            "We are driving to my grandparents' place this weekend.",
+            "My phone is almost dead and I left the charger at home.",
+            "Lunch was soup and rice, not bad at all.",
+            "I paid the rent but forgot to ask for a receipt again.",
+            "Did you watch the game last night? They scored in the last minute.",
+            "My laptop got really slow, I think it needs a cleanup.",
+            "I took the cat to the vet and she got her shots.",
+            "I signed up for a course but I rarely make it to class.",
+            "The electricity bill is really high this month.",
+            "My daughter has a part in the school play.",
+            "Please don't forget to water the plants on the balcony.",
+            "I applied for a loan at the bank and I'm waiting to hear back.",
+            "Traffic was terrible, I was almost an hour late.",
+            "The doctor told me to take the pills every morning.",
+            "The neighbors were loud again late last night.",
+            "We cancelled the trip because work got busy.",
+            "I added milk, bread and cheese to the shopping list.",
+            "My brother passed the exam and we were all thrilled.",
+            "I washed the curtains and now I have to iron them.",
+            "We had a fight but then we made up.",
+            "When I finish this book I'll lend it to you.",
+            "The morning meeting got moved to the afternoon.",
+            "I'm hungry, should we order something?",
+            "I got a haircut but it's way too short.",
+            "The trees in the garden really need trimming.",
+            "It's raining, don't forget your umbrella.",
+            "The trail was hard, I gave up halfway through the run.",
+        ]
+
+        static let numbersConvert: [(heard: String, expected: String)] = [
+            ("We had twenty-five people at the launch.", "We had 25 people at the launch."),
+            ("The budget is fifteen thousand dollars.", "The budget is 15,000 dollars."),
+            ("Revenue grew fifty percent this year.", "Revenue grew 50% this year."),
+            ("It took three hundred and twelve tests.", "It took 312 tests."),
+            ("Version two point oh ships today.", "Version two point oh ships today."),
+            ("Two million users signed up.", "2,000,000 users signed up."),
+            ("Wait forty-five minutes before retrying.", "Wait 45 minutes before retrying."),
+            ("We fixed a hundred and twenty bugs.", "We fixed 120 bugs."),
+            ("He is ten years old.", "He is 10 years old."),
+            ("It costs a thousand euros.", "It costs 1000 euros."),
+            ("Ninety nine problems.", "99 problems."),
+            ("Set the timeout to thirty seconds.", "Set the timeout to 30 seconds."),
+        ]
+
+        /// "one" the pronoun, "five minutes", "at nine", idioms.
+        static let numbersUnchanged: [String] = [
+            "No one came to the meeting.",
+            "This one is better than that one.",
+            "I have two kids and a dog.",
+            "Give me five minutes.",
+            "Twenty is not a lot.",
+            "One of these days I will fix it.",
+            "We met at nine.",
+            "Only one is left.",
+            "A hundred times no.",
+            "I'll be there in a second.",
+            "The hundred-year flood.",
+            "She won the first prize.",
+            "Seven of them agreed.",
+        ]
+    }
+}

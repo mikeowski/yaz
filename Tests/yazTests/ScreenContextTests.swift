@@ -56,7 +56,7 @@ struct ScreenContextTests {
 
     @Test("nothing is used for a language without a lexicon")
     func unsupported() {
-        #expect(ScreenContext.vetted([VocabularyTerm(canonical: "Vercel")], language: "en").isEmpty)
+        #expect(ScreenContext.vetted([VocabularyTerm(canonical: "Vercel")], language: "ja").isEmpty)
     }
 
     @Test("a screen term repairs this dictation only")

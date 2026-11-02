@@ -445,13 +445,19 @@ struct VocabularyLanguageTests {
 
     @Test(
         "languages without a lexicon are not",
-        arguments: ["en", "fr", "es", "ru", "ja", "en-US"]
+        arguments: ["fr", "es", "ru", "ja", "ko"]
     )
     func othersAreNot(_ language: String) {
         #expect(!Vocabulary.isSupported(language: language))
     }
 
-    /// The exact damage that motivated the boundary.
+    @Test("English is supported", arguments: ["en", "EN", "en-US", "en-GB"])
+    func englishIsSupported(_ language: String) {
+        #expect(Vocabulary.isSupported(language: language))
+    }
+
+    /// The exact damage that motivated the boundary, and the English lexicon
+    /// that now prevents it.
     @Test("English text is left alone by the pipeline")
     func englishIsUntouched() async {
         let terms = [
@@ -461,13 +467,13 @@ struct VocabularyLanguageTests {
         ]
         let english = "Today I reviewed the pull request and merged it into main"
 
-        // Directly: the layer would damage it.
+        // With the Turkish lexicon, the layer damages it.
         let raw = Vocabulary(terms: terms).correct(english)
         #expect(raw.didChange, "the damage this boundary exists to prevent should be reproducible")
 
-        // Through the pipeline with language: en — untouched.
+        // With the English one, untouched.
         let pipeline = TranscriptPipeline(
-            vocabulary: Vocabulary(terms: terms),
+            vocabulary: Vocabulary(terms: terms, language: "en"),
             refiner: Refiner(mode: .off),
             language: "en")
         let result = await pipeline.process(english)
@@ -489,6 +495,7 @@ struct VocabularyLanguageTests {
     @Test("the filler filter declares the same boundary")
     func fillerFilterDeclaresItsLanguage() {
         #expect(FillerFilter.isSupported(language: "tr"))
-        #expect(!FillerFilter.isSupported(language: "en"))
+        #expect(FillerFilter.isSupported(language: "en"))
+        #expect(!FillerFilter.isSupported(language: "ja"))
     }
 }

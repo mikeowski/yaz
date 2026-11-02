@@ -46,7 +46,7 @@ struct LanguagePack: Sendable {
     static let german = LanguagePack(code: "de", name: "German", lexicon: .german)
 
     /// Every main language with more than transcription.
-    static let all: [LanguagePack] = [.turkish, .german]
+    static let all: [LanguagePack] = [.turkish, .english, .german]
 
     static func forLanguage(_ language: String) -> LanguagePack? {
         let code = language.lowercased()
