@@ -17,6 +17,27 @@ cd "$(dirname "$0")/.."
 MANIFEST=site/downloads/latest.json
 field() { node -e "process.stdout.write(String(require('./$MANIFEST')['$1']))"; }
 
+REPO="${YAZ_REPO:-mikeowski/yaz}"
+
+# A release is out but its manifest and signed feed are not committed yet:
+# deploying this checkout would put the previous version back on the site,
+# in the download button and in the update feed. Refuse, so Cloudflare keeps
+# the deploy release.sh made. Commit site/downloads/latest.json,
+# site/downloads/appcast.xml and site/_redirects from the release, then push.
+RELEASED="$(curl -fsSL --retry 2 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
+    | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).tag_name||"").replace(/^v/,""))}catch{}})' \
+    || true)"
+COMMITTED="$(field version)"
+if [ -n "$RELEASED" ] && node -e '
+    const a = process.argv[1].split(".").map(Number), b = process.argv[2].split(".").map(Number);
+    for (let i = 0; i < 3; i++) { if ((a[i]||0) !== (b[i]||0)) process.exit((a[i]||0) > (b[i]||0) ? 0 : 1); }
+    process.exit(1);' "$RELEASED" "$COMMITTED"; then
+    printf 'release v%s is out, but site/downloads/latest.json says %s.\n' "$RELEASED" "$COMMITTED" >&2
+    printf 'commit the release files (latest.json, appcast.xml, _redirects) before deploying the site.\n' >&2
+    exit 1
+fi
+[ -n "$RELEASED" ] || printf 'note: could not read the latest GitHub release; deploying anyway\n'
+
 URL="$(field url)"
 case "$URL" in
     /downloads/*) ;;
@@ -26,7 +47,6 @@ esac
 VERSION="$(field version)"
 FILE="$(field file)"
 SHA="$(field sha256)"
-REPO="${YAZ_REPO:-mikeowski/yaz}"
 TARGET="site/downloads/$FILE"
 
 printf 'fetching %s from the GitHub release v%s\n' "$FILE" "$VERSION"
