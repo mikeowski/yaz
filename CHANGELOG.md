@@ -8,6 +8,10 @@ Notable changes to yaz. Format loosely follows
 
 ### Added
 
+- **Five main languages.** Settings has a main-language picker (Turkish,
+  English, German, Spanish, French, or any other Whisper language for
+  transcription only) and says what the chosen one gets. The site and README
+  now present yaz as multi-language, with Turkish as the reference.
 - **English as a main language.** Set `"language": "en"` and English gets
   the full pack: term repair guarded by an English word list (without it,
   "doctor" became Docker and "into main" Notion; with it, none of 30

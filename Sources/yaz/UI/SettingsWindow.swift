@@ -173,7 +173,27 @@ private struct SettingsView: View {
                 }
                 .disabled(model.config.engine != .whisper)
 
-                TextField("Language code", text: $model.config.language)
+                Picker("Main language", selection: Binding(
+                    get: { LanguagePack.forLanguage(model.config.language)?.code ?? "other" },
+                    set: { choice in
+                        if choice != "other" { model.config.language = choice }
+                        else if LanguagePack.forLanguage(model.config.language) != nil { model.config.language = "" }
+                    })) {
+                    ForEach(LanguagePack.all, id: \.code) { pack in
+                        Text(pack.name).tag(pack.code)
+                    }
+                    Text("Other (transcription only)").tag("other")
+                }
+                if let pack = LanguagePack.forLanguage(model.config.language) {
+                    Text("Full support: \(pack.features.joined(separator: ", ")).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    TextField("Whisper language code (e.g. ja, it, pt)", text: $model.config.language)
+                    Text("Transcription only: the clean-up layers need a word list for the language.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if model.config.engine == .parakeet && model.config.language == "tr" {
                     Label("Parakeet does not support Turkish", systemImage: "xmark.octagon")
                         .font(.caption)

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>yaz: say it in Turkish, it's written right</title>
-  <meta name="description" content="Push-to-talk dictation for the Mac that hears Turkish. English terms spelled right, numbers written as digits, code in your editor, and it learns from every fix. On-device, nothing uploaded. macOS 26, Apple silicon.">
+  <title>yaz: say it, it's written right</title>
+  <meta name="description" content="Push-to-talk dictation for the Mac in Turkish, English, German, Spanish and French. Terms spelled right, numbers written as digits, code in your editor, and it learns from every fix. On-device, nothing uploaded. macOS 26, Apple silicon.">
   <link rel="canonical" href="https://yaz.mike4.dev/">
   <meta name="theme-color" content="#0B0807">
   <meta name="color-scheme" content="dark">
@@ -12,8 +12,8 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="yaz">
   <meta property="og:url" content="https://yaz.mike4.dev/">
-  <meta property="og:title" content="yaz: say it in Turkish, it's written right">
-  <meta property="og:description" content="Push-to-talk dictation for the Mac. Turkish by default, English terms and numbers right, learns from your fixes, nothing uploaded.">
+  <meta property="og:title" content="yaz: say it, it's written right">
+  <meta property="og:description" content="Push-to-talk dictation for the Mac in five languages. Terms and numbers right, learns from your fixes, nothing uploaded.">
   <meta property="og:image" content="https://yaz.mike4.dev/img/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -53,9 +53,9 @@
     </a>
     <nav class="nav-links" aria-label="Primary">
       <a href="#fixes">What it fixes</a>
+      <a href="#languages">Languages</a>
       <a href="#learns">Learns</a>
       <a href="#agents">Agents</a>
-      <a href="#questions">FAQ</a>
     </nav>
     <a class="pill pill--solid pill--small" data-download href="/download">Download</a>
   </header>
@@ -68,7 +68,7 @@
 
       <figure class="stage" aria-labelledby="stage-caption">
         <p class="eyebrow appear appear--soft d1"><span class="dot" aria-hidden="true"></span>Push-to-talk dictation for macOS</p>
-        <p class="transcript appear appear--soft d2" id="transcript" aria-live="polite"><span class="transcript-hint">Hold <kbd>⌥</kbd> and watch what Whisper hears, then what yaz writes.</span></p>
+        <p class="transcript appear appear--soft d2" id="transcript" aria-live="polite"><span class="transcript-hint">Hold <kbd>⌥</kbd> and watch a Turkish dictation: what Whisper hears, then what yaz writes.</span></p>
         <p class="stage-meta" id="stage-meta" aria-hidden="true">&nbsp;</p>
         <button type="button" class="holdkey appear appear--pop d3" id="holdkey">
           <span class="holdkey-dot" aria-hidden="true"></span>
@@ -80,11 +80,11 @@
 
       <div class="hero-foot">
         <h1 class="hero-title" id="hero-title">
-          <span class="line"><span class="appear appear--mask d4">Say it in Turkish.</span></span>
+          <span class="line"><span class="appear appear--mask d4">Say it.</span></span>
           <span class="line"><span class="appear appear--mask d5">It's <em>written</em> right.</span></span>
         </h1>
         <div class="hero-side">
-          <p class="lede appear appear--soft d6">yaz turns your speech into text at the cursor, in any app. English terms spelled right, numbers as digits, code in your editor, and it learns from every fix. Whisper runs on your Mac; nothing is uploaded.</p>
+          <p class="lede appear appear--soft d6">yaz turns your speech into text at the cursor, in any app, in Turkish, English, German, Spanish or French. Terms spelled right, numbers as digits, code in your editor, and it learns from every fix. Whisper runs on your Mac; nothing is uploaded.</p>
           <div class="cta-row appear appear--btn d7">
             <a class="pill pill--solid" data-download href="/download">
               Download for Mac
@@ -104,7 +104,7 @@
     <!-- 2 · Manifesto, read at scroll pace -->
     <section class="manifesto" aria-label="Why yaz">
       <p class="label">01 — Why</p>
-      <p class="scroll-reveal" id="manifesto">Whisper hears Turkish well. What comes out wrong is everything around it: the <span class="hl">English terms</span>, the <span class="hl">numbers</span>, the <span class="hl">names on your screen</span>. yaz fixes those as you speak, and <span class="hl">learns from every fix</span> you make.</p>
+      <p class="scroll-reveal" id="manifesto">Whisper hears you well. What comes out wrong is everything around it: the <span class="hl">English terms</span>, the <span class="hl">numbers</span>, the <span class="hl">names on your screen</span>. yaz fixes those as you speak, in <span class="hl">five languages</span>, and <span class="hl">learns from every fix</span> you make.</p>
     </section>
 
     <!-- 3 · What it fixes -->
@@ -157,11 +157,48 @@
       </div>
     </section>
 
+    <!-- 3b · Languages -->
+    <section class="section" id="languages" aria-labelledby="languages-title">
+      <header class="section-head reveal">
+        <p class="label">03 — Languages</p>
+        <h2 id="languages-title">Five languages, <em>one ear each</em>.</h2>
+        <p class="section-lede">Pick your main language and it gets everything: term repair, fillers, numbers, voice commands, learning. Each one is guarded by its own list of everyday words, measured on everyday sentences and on more that were held out. Turkish is where yaz started.</p>
+      </header>
+      <ol class="langs">
+        <li class="lang reveal">
+          <p class="lang-name">Turkish <span>tr · reference</span></p>
+          <p class="lang-raw">Sılacık'ta yaz, saat on beş otuzda</p>
+          <p class="lang-fix"><mark>Slack</mark>'ta yaz, saat <mark>15.30'da</mark></p>
+        </li>
+        <li class="lang reveal">
+          <p class="lang-name">English <span>en</span></p>
+          <p class="lang-raw">Cooper Netties served fifteen thousand requests</p>
+          <p class="lang-fix"><mark>Kubernetes</mark> served <mark>15,000</mark> requests</p>
+        </li>
+        <li class="lang reveal">
+          <p class="lang-name">German <span>de</span></p>
+          <p class="lang-raw">Kommst du um fünfzehn Uhr dreißig Fragezeichen</p>
+          <p class="lang-fix">Kommst du um <mark>15:30 Uhr?</mark></p>
+        </li>
+        <li class="lang reveal">
+          <p class="lang-name">Spanish <span>es</span></p>
+          <p class="lang-raw">vienes a las cinco signo de interrogación</p>
+          <p class="lang-fix"><mark>¿</mark>Vienes a las cinco<mark>?</mark></p>
+        </li>
+        <li class="lang reveal">
+          <p class="lang-name">French <span>fr</span></p>
+          <p class="lang-raw">on a corrigé quatre-vingt-dix bugs</p>
+          <p class="lang-fix">on a corrigé <mark>90</mark> bugs</p>
+        </li>
+      </ol>
+      <p class="note reveal">Every other language Whisper speaks is transcribed as is: without a word list to guard it, a clean-up would protect nothing.</p>
+    </section>
+
     <!-- 4 · Learning -->
     <section class="section learns" id="learns" aria-labelledby="learns-title">
       <div class="learns-grid">
         <header class="learns-head">
-          <p class="label">03 — Learns</p>
+          <p class="label">04 — Learns</p>
           <h2 id="learns-title">Fix it twice.<br><em>Never again.</em></h2>
           <p class="section-lede">A fix becomes a rule only if a fixed test set, and your own past dictations, stay correct. One number, keep or revert: the loop from Karpathy's <a href="https://github.com/karpathy/autoresearch">autoresearch</a>.</p>
         </header>
@@ -170,7 +207,7 @@
           <ol class="steps">
             <li class="reveal"><span class="step-n">1</span><div><h3>You fix it</h3><p>yaz follows the field for up to a minute while you edit, so a word you delete and retype counts, even if you press Return right after.</p></div></li>
             <li class="reveal"><span class="step-n">2</span><div><h3>It is noted</h3><p>The words must sound alike and must not be everyday Turkish: changing your mind is not a mishearing.</p></div></li>
-            <li class="reveal"><span class="step-n">3</span><div><h3>Twice, it is tested</h3><p>Measured manglings, 173 checks on everyday sentences and your own kept dictations. The rule stays only if the score does not rise.</p></div></li>
+            <li class="reveal"><span class="step-n">3</span><div><h3>Twice, it is tested</h3><p>Measured manglings, 522 checks on everyday sentences in five languages, and your own kept dictations. The rule stays only if the score does not rise.</p></div></li>
             <li class="reveal"><span class="step-n">4</span><div><h3>Undo is instant</h3><p>Put back a word yaz changed, and that replacement is blocked at once.</p></div></li>
           </ol>
 
@@ -189,7 +226,7 @@
     <section class="section agents" id="agents" aria-labelledby="agents-title">
       <div class="agents-grid">
         <header class="agents-copy reveal">
-          <p class="label">04 — Agents</p>
+          <p class="label">05 — Agents</p>
           <h2 id="agents-title">Your agent asks.<br><em>You answer out loud.</em></h2>
           <p class="section-lede"><code>yaz mcp</code> plugs yaz into Claude Code, Cursor or Codex. Hold the key and reply: your words go to the agent, not into its input box. No socket, no port; the agent starts yaz over stdio.</p>
           <pre class="code" tabindex="0" aria-label="Adding yaz to Claude Code"><code>claude mcp add yaz -- \
@@ -215,7 +252,7 @@
       <h2 class="sr-only" id="stats-title">Measured</h2>
       <dl class="stats">
         <div class="reveal"><dt>5.6&nbsp;s of speech, written in</dt><dd>506<small>ms</small></dd></div>
-        <div class="reveal"><dt>wrong changes in 173 checks on everyday sentences</dt><dd>0<small>/173</small></dd></div>
+        <div class="reveal"><dt>wrong changes in 522 checks on everyday sentences, five languages</dt><dd>0<small>/522</small></dd></div>
         <div class="reveal"><dt>of your audio or text uploaded</dt><dd>0<small>bytes</small></dd></div>
         <div class="reveal"><dt>the whole app</dt><dd>14<small>MB</small></dd></div>
       </dl>
@@ -225,7 +262,7 @@
     <!-- 7 · Everything else -->
     <section class="section" aria-labelledby="more-title">
       <header class="section-head reveal">
-        <p class="label">05 — And</p>
+        <p class="label">06 — And</p>
         <h2 id="more-title">The small things, <em>done</em>.</h2>
       </header>
       <ul class="more">
@@ -233,7 +270,7 @@
         <li class="reveal"><h3>Names on screen</h3><p>The terms in the window you are looking at are spelled right for that dictation.</p></li>
         <li class="reveal"><h3>Slack is not Mail</h3><p>Per-app language, clean-up and a chat style that drops a lone full stop.</p></li>
         <li class="reveal"><h3>Live text</h3><p>The words appear in the pill while you speak.</p></li>
-        <li class="reveal"><h3>Turkish and German</h3><p>Each guarded by its own list of everyday words.</p></li>
+        <li class="reveal"><h3>Any language, transcribed</h3><p>Every language Whisper speaks; five get the full clean-up.</p></li>
         <li class="reveal"><h3>Your clipboard, back</h3><p>yaz pastes, then puts your clipboard back as it was.</p></li>
         <li class="reveal"><h3>Any microphone</h3><p>Pick one from the menu, or follow the system's.</p></li>
         <li class="reveal"><h3>Wrong text is worse than none</h3><p>Taps, silence and invented text are dropped before they reach you.</p></li>
@@ -273,7 +310,7 @@ spctl --assess --type execute --verbose /Applications/yaz.app</code></pre>
     <!-- 9 · Questions -->
     <section class="section" id="questions" aria-labelledby="questions-title">
       <header class="section-head reveal">
-        <p class="label">06 — Questions</p>
+        <p class="label">07 — Questions</p>
         <h2 id="questions-title">Asked <em>often</em>.</h2>
       </header>
       <div class="faq">
@@ -294,8 +331,8 @@ spctl --assess --type execute --verbose /Applications/yaz.app</code></pre>
           <p>macOS keeps the globe key when a second keyboard layout or Dictation is on. Set System Settings → Keyboard → "Press 🌐 key to" → Do Nothing, or choose <b>right option</b> in yaz's menu.</p>
         </details>
         <details class="reveal">
-          <summary>Does it work in English?</summary>
-          <p>Transcription works in every language Whisper speaks. Term repair runs on Turkish and German, numbers and voice commands on Turkish: their guards are word lists, and without one they would protect nothing.</p>
+          <summary>Which languages does it support?</summary>
+          <p>Transcription works in every language Whisper speaks. Turkish, English, German, Spanish and French also get term repair, filler removal, numbers, voice commands and language-model clean-up for your main language. Those layers are guarded by each language's list of everyday words; without one they would protect nothing, so other languages are transcribed as is.</p>
         </details>
         <details class="reveal">
           <summary>How do I uninstall it?</summary>
