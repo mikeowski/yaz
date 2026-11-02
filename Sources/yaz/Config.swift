@@ -38,6 +38,15 @@ struct Config: Sendable, Equatable {
     var history: Bool = true
     /// How many entries to keep before the oldest are dropped.
     var historyLimit: Int = TranscriptHistory.defaultLimit
+    /// Drop recordings that are loud enough but hold no speech (a fan, a
+    /// keyboard, a cough), using Silero VAD. See `VoiceActivityGate`.
+    ///
+    /// Off by default until the threshold is measured on real microphones: a
+    /// wrong threshold drops dictation silently, which is worse than the noise
+    /// it removes.
+    var vad: Bool = false
+    /// Window speech probability that counts as speech.
+    var vadThreshold: Float = VoiceActivityGate.defaultThreshold
 
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/yaz/config.json")
@@ -101,6 +110,15 @@ struct Config: Sendable, Equatable {
         if let value = json["history_limit"] as? Int, value > 0 { historyLimit = value }
         if let value = json["overlay"] as? Bool { overlay = value }
         if let value = json["menu_bar"] as? Bool { menuBar = value }
+        if let value = json["vad"] as? Bool { vad = value }
+        if let raw = json["vad_threshold"] {
+            if let value = (raw as? NSNumber)?.doubleValue, value > 0, value < 1 {
+                vadThreshold = Float(value)
+            } else {
+                log("warning: \(source): vad_threshold = \(raw) is not recognised"
+                    + " (valid: a number between 0 and 1)")
+            }
+        }
         if let raw = json["vocabulary"] {
             vocabulary = Self.parseVocabulary(raw, source: source)
         }
@@ -137,6 +155,14 @@ struct Config: Sendable, Equatable {
         return terms
     }
 
+    /// The voice check this config asks for, or `nil` when it is off.
+    var voiceCheck: VoiceCheck? {
+        guard vad else { return nil }
+        return VoiceCheck(
+            detector: SileroVoiceActivity.shared,
+            gate: VoiceActivityGate(threshold: vadThreshold))
+    }
+
     /// Build the engine this config selects.
     func makeEngine() -> any Transcriber {
         switch engine {
@@ -163,6 +189,8 @@ struct Config: Sendable, Equatable {
             "menu_bar": menuBar,
             "history": history,
             "history_limit": historyLimit,
+            "vad": vad,
+            "vad_threshold": Double(vadThreshold),
         ]
         if let onTranscript { json["on_transcript"] = onTranscript }
         if !vocabulary.isEmpty {
@@ -205,7 +233,9 @@ struct Config: Sendable, Equatable {
           "overlay": true,
           "menu_bar": true,
           "history": true,
-          "history_limit": 2000
+          "history_limit": 2000,
+          "vad": false,
+          "vad_threshold": 0.3
         }
 
         """

@@ -6,7 +6,23 @@ Notable changes to yaz. Format loosely follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Voice activity check.** Silero VAD (FluidAudio, on the Neural Engine) runs
+  after the level gate and drops recordings that are loud but hold no speech —
+  a fan, typing, a cough — before Whisper can invent text for them. Off by
+  default until the 0.3 threshold is measured on real microphones; turn it on
+  with `"vad": true`. The model downloads in the background; until it is
+  ready, or if it fails to load, every recording is kept. `yaz transcribe`
+  always prints the scores, and `--strict` enforces them when `vad` is on.
+
+### Fixed
+
+- **The clipboard is no longer lost.** The restore after a paste was
+  unconditional. A copy made in the 250 ms after a dictation was overwritten,
+  and two dictations in a row restored the first dictation instead of the
+  user's own contents. The restore now checks the pasteboard's change count
+  and only the newest dictation restores.
 
 ## [0.1.0] — 2026-08-05
 

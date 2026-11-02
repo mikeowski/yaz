@@ -1153,6 +1153,80 @@ Supporting another language means writing its common-word list and phonetic
 normalisation. It is not a flag.
 
 
+## Hardening — round three: lessons from Hex
+
+[Hex](https://github.com/anomalyco/hex) is a cross-platform dictation tool in
+Rust. A side-by-side reading found two places where it does better than yaz.
+Both are now in yaz.
+
+### The clipboard restore lost data
+
+`TextInjector.paste` took a snapshot, pasted, and restored the snapshot 250 ms
+later — always. Two ordinary sequences lose the user's clipboard:
+
+| Sequence | What happened |
+|---|---|
+| Dictate, then ⌘C within 250 ms | the restore overwrote the new copy with the old contents |
+| Two dictations in a row | the second snapshot captured the **first dictation**; the last restore put a dictation back and the user's own contents were gone for good |
+
+`PasteboardRestore` makes the restore conditional, as Hex does in
+`ClipboardRestore`:
+
+- a **generation counter** — only the newest paste restores; an older timer
+  finds it was superseded and does nothing;
+- the pasteboard's **`changeCount`** — recorded right after our write; if it
+  moved, somebody else wrote, their contents are newer than the snapshot, and
+  they stay;
+- when the pasteboard still holds our previous dictation, the snapshot from
+  before *that* dictation is kept rather than replaced.
+
+The logic sits behind a small `RestorablePasteboard` protocol, so the tests
+drive it with a fake. `NSPasteboard` needs a window server, which CI does not
+have.
+
+### Loud is not the same as speech
+
+`SpeechGate` rejects quiet recordings by peak level. A fan, typing or a cough
+passes it, and Whisper then produces text. The decoder signals in
+`TranscriptionQuality` catch some of this afterwards, but only after ~500 ms of
+inference, and not reliably on short recordings.
+
+Hex keeps non-speech away from its models with Silero VAD. FluidAudio — already
+a dependency for Parakeet — ships Silero as a Core ML model (`VadManager`), so
+this costs no new package. `VoiceCheck` runs after the level gate and before
+inference:
+
+```
+SpeechGate (length, peak)  →  VoiceCheck (Silero, per 256 ms window)  →  Whisper
+```
+
+Two rules keep the detector from costing dictation:
+
+1. **It fails open.** The model downloads in the background at daemon start.
+   Until it is ready — and if it never loads — the detector answers `nil` and
+   every recording is kept. A missed utterance is worse than a noise recording
+   that reaches the decoder checks.
+2. **It is lenient.** One window at or above the threshold is enough. The
+   threshold is 0.3, below Hex's 0.4, because FluidAudio scores 256 ms windows
+   and a short word can straddle two of them.
+
+**Not yet measured, so off by default.** 0.3 is a reasoned starting point, not
+a measurement, and a wrong threshold drops dictation without a word. The check
+is opt-in (`"vad": true`) until it has been measured. `yaz transcribe` prints
+the peak probability and the window count for every file whatever the setting,
+so the threshold can be checked against `fixtures/` and against real
+microphones first.
+
+### What was not taken from Hex
+
+Hex passes the vocabulary to Whisper as a context prompt through
+transcribe.cpp, and that works there. In WhisperKit, `promptTokens` returns
+empty output on `large-v3-turbo` (see *Custom vocabulary* above), so the
+difference is the library, not the model. Even where a prompt works, it cannot
+preserve Turkish suffixes or refuse to touch a common Turkish word; the
+deterministic layer stays.
+
+
 ## Status
 
 - **M1 — done.** The engine layer, the `Transcriber` protocol, the Whisper and
@@ -1185,6 +1259,8 @@ normalisation. It is not a flag.
 - **M12 — done.** Developer ID signing, notarisation and stapling
   (`scripts/notarize.sh`), the entitlements file, the language boundary fix.
   262 tests.
+- **M13 — done.** Hardening round 3: the conditional clipboard restore
+  (`PasteboardRestore`) and the Silero voice check (`VoiceCheck`). 283 tests.
 
 The one thing still outstanding is a live dictation round: microphone permission
 needs the user's approval.

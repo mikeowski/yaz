@@ -38,6 +38,7 @@ enum YazError: Error, CustomStringConvertible, Equatable {
 
     case audioTooShort(seconds: Double, minimum: Double)
     case audioSilent(peak: Float, threshold: Float)
+    case noSpeechDetected(probability: Float, threshold: Float)
 
     var description: String {
         switch self {
@@ -79,15 +80,20 @@ enum YazError: Error, CustomStringConvertible, Equatable {
                 format: "recording too short (%.2f s, needs at least %.2f s)", seconds, minimum)
         case .audioSilent(let peak, let threshold):
             return String(format: "no sound in the recording (peak %.4f, threshold %.4f)", peak, threshold)
+        case .noSpeechDetected(let probability, let threshold):
+            return String(
+                format: "no speech in the recording (voice probability %.2f, threshold %.2f)",
+                probability, threshold)
         }
     }
 
     /// True when the condition is the user's recording rather than a fault:
-    /// too short, or silence. The daemon should drop these quietly instead of
-    /// showing an error — pressing the hotkey by accident is not a crash.
+    /// too short, silence, or sound that is not speech. The daemon should drop
+    /// these quietly instead of showing an error — pressing the hotkey by
+    /// accident is not a crash.
     var isBenignInput: Bool {
         switch self {
-        case .audioTooShort, .audioSilent, .audioEmpty: true
+        case .audioTooShort, .audioSilent, .noSpeechDetected, .audioEmpty: true
         default: false
         }
     }

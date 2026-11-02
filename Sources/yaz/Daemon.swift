@@ -149,6 +149,18 @@ final class Daemon {
         let needsDownload = config.engine == .whisper
             && !ModelStore.status(for: model.whisperKitID).isComplete
 
+        // The voice detector loads on its own. It is small, and until it is
+        // ready the voice check passes everything, so it must not hold up
+        // the speech model.
+        if config.vad {
+            Task.detached(priority: .utility) {
+                await SileroVoiceActivity.shared.prepare()
+                if await SileroVoiceActivity.shared.isReady {
+                    log("✓ voice activity detector ready")
+                }
+            }
+        }
+
         Task.detached(priority: .userInitiated) {
             // Fetch the weights first, with progress. Doing this inside
             // `prepare()` would work but say nothing: on a fresh machine the
@@ -329,7 +341,9 @@ final class Daemon {
 
         let started = Date()
         do {
-            let output = try await engine.transcribe(samples)
+            var options = TranscribeOptions()
+            options.voice = config.voiceCheck
+            let output = try await engine.transcribe(samples, options: options)
             let elapsed = Date().timeIntervalSince(started)
 
             switch output.quality.verdict {
@@ -381,7 +395,13 @@ final class Daemon {
         } catch let error as YazError where error.isBenignInput {
             // Tapping the key by accident, or a moment of silence, is not a
             // failure worth shouting about.
-            if verbose { log("○ \(error.description)") }
+            // A voice-check drop is always logged: if the threshold is wrong
+            // for someone's microphone, the log is where they will see it.
+            if case .noSpeechDetected = error {
+                log("○ skipped: \(error.description)")
+            } else if verbose {
+                log("○ \(error.description)")
+            }
             if !sawSignal && !samples.isEmpty {
                 // Distinguish "you were quiet" from "the mic is dead".
                 log("warning: no signal from the microphone — check the input device")
