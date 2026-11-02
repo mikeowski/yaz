@@ -56,6 +56,8 @@ final class Daemon {
     private var learned = LearnedRules.load()
     /// Terms read from the screen when the key went down, for this dictation.
     private var screenTerms: Task<[VocabularyTerm], Never>?
+    /// Pipelines for apps with a profile (`AppProfile`), by bundle id.
+    private var profilePipelines: [String: TranscriptPipeline] = [:]
     /// The user's own evaluation cases (`PersonalCorpus`).
     private var personal = PersonalCorpus.load()
 
@@ -279,6 +281,18 @@ final class Daemon {
 
     private func rebuildPipeline() {
         pipeline = TranscriptPipeline(config: config, project: projectIndex, learned: learned)
+        profilePipelines = [:]
+    }
+
+    /// The settings and pipeline for dictating into `bundleID`: the main ones,
+    /// or those of the app's profile.
+    private func settings(for bundleID: String?) -> (config: Config, pipeline: TranscriptPipeline) {
+        let appConfig = config.forApp(bundleID)
+        guard let bundleID, appConfig != config else { return (config, pipeline) }
+        if let cached = profilePipelines[bundleID] { return (appConfig, cached) }
+        let made = TranscriptPipeline(config: appConfig, project: projectIndex, learned: learned)
+        profilePipelines[bundleID] = made
+        return (appConfig, made)
     }
 
     /// Read the field back a little after a paste and learn from what the
@@ -616,9 +630,13 @@ final class Daemon {
         }
 
         let started = Date()
+        // The app being dictated into decides the settings: the overlay never
+        // takes focus, so the front app is still the target.
+        let (appConfig, activePipeline) = settings(for: AppEnvironment.frontmostApp()?.bundleID)
         do {
             var options = TranscribeOptions()
             options.voice = config.voiceCheck
+            if appConfig.language != config.language { options.language = appConfig.language }
             let output = try await engine.transcribe(samples, options: options)
             let elapsed = Date().timeIntervalSince(started)
 
@@ -641,7 +659,7 @@ final class Daemon {
             // casing commands and file mentions apply. Read now — the cursor
             // is still in that app, the pill never takes focus.
             // "geri al" on its own is an instruction to yaz, not text.
-            if config.voiceCommands, VoiceCommands.isSupported(language: config.language),
+            if appConfig.voiceCommands, VoiceCommands.isSupported(language: appConfig.language),
                let control = VoiceCommands.control(output.text) {
                 screenTerms?.cancel()
                 screenTerms = nil
@@ -651,15 +669,16 @@ final class Daemon {
                 return
             }
 
-            let code = CodeContext.isCode(
+            let code = appConfig.codeOverride ?? CodeContext.isCode(
                 bundleID: AppEnvironment.frontmostApp()?.bundleID, extra: config.codeApps)
-            if config.refine == .llm && !code { setIndicator(.refining) }
-            let context = await screenTerms?.value ?? []
+            if appConfig.refine == .llm && !code { setIndicator(.refining) }
+            let screen = await screenTerms?.value ?? []
+            let context = appConfig.screenContext && appConfig.language == config.language ? screen : []
             screenTerms = nil
             if verbose, !context.isEmpty {
                 log("  screen: \(context.count) terms (\(context.prefix(6).map(\.canonical).joined(separator: ", ")))")
             }
-            let processed = await pipeline.process(output.text, code: code, context: context)
+            let processed = await activePipeline.process(output.text, code: code, context: context)
             for change in processed.codeChanges {
                 log("  code: \(change.from) → \(change.to)")
             }
@@ -694,7 +713,8 @@ final class Daemon {
                 TextInjector.inject(processed.text, mode: config.injectMode)
                 lastText = processed.text
                 runHook(with: processed.text)
-                if config.learn, Vocabulary.isSupported(language: config.language),
+                if config.learn, Vocabulary.isSupported(language: appConfig.language),
+                   appConfig.language == config.language,
                    let bundleID = target?.bundleID {
                     scheduleReadBack(
                         pasted: processed.text, corrections: processed.corrections, in: bundleID)

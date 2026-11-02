@@ -72,6 +72,13 @@ struct Config: Sendable, Equatable {
     /// Spoken commands: "yeni satır", "soru işareti", "geri al"
     /// (`VoiceCommands`).
     var voiceCommands: Bool = true
+    /// How text is finished (`TextStyle`): `chat` drops a lone sentence's
+    /// full stop. Usually set per app.
+    var style: TextStyle = .standard
+    /// Settings that differ per app, by bundle identifier (`AppProfile`).
+    var apps: [String: AppProfile] = [:]
+    /// Set by `forApp` from a profile's `code`; never read from the file.
+    var codeOverride: Bool?
 
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/yaz/config.json")
@@ -148,6 +155,23 @@ struct Config: Sendable, Equatable {
         if let value = json["numbers"] as? Bool { numbers = value }
         if let value = json["screen_context"] as? Bool { screenContext = value }
         if let value = json["voice_commands"] as? Bool { voiceCommands = value }
+        if let raw = json["style"] as? String {
+            if let value = TextStyle(rawValue: raw) { style = value }
+            else { warn("style", raw, TextStyle.allCases.map(\.rawValue)) }
+        }
+        if let raw = json["apps"] as? [String: Any] {
+            var profiles: [String: AppProfile] = [:]
+            for (bundleID, value) in raw {
+                guard let object = value as? [String: Any] else {
+                    log("warning: \(source): apps.\(bundleID) is not an object")
+                    continue
+                }
+                profiles[bundleID] = AppProfile(json: object) { key, value, valid in
+                    warn("apps.\(bundleID).\(key)", value, valid)
+                }
+            }
+            apps = profiles
+        }
         if let raw = json["microphone"] {
             if let uid = raw as? String, !uid.isEmpty { microphone = uid }
             else if raw is NSNull { microphone = nil }
@@ -238,7 +262,9 @@ struct Config: Sendable, Equatable {
             "numbers": numbers,
             "screen_context": screenContext,
             "voice_commands": voiceCommands,
+            "style": style.rawValue,
         ]
+        if !apps.isEmpty { json["apps"] = apps.mapValues(\.json) }
         if let microphone { json["microphone"] = microphone }
         if !projects.isEmpty { json["projects"] = projects }
         if !codeApps.isEmpty { json["code_apps"] = codeApps }
@@ -291,7 +317,8 @@ struct Config: Sendable, Equatable {
           "learn": true,
           "numbers": true,
           "screen_context": true,
-          "voice_commands": true
+          "voice_commands": true,
+          "style": "standard"
         }
 
         """

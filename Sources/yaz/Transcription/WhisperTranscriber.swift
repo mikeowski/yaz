@@ -100,7 +100,7 @@ actor WhisperTranscriber: Transcriber {
         // Whisper's own decoder handles segmentation; we only pin the language
         // so it never wastes a pass auto-detecting, and pin temperature so
         // repeated runs over the same audio are comparable.
-        let decodeOptions = DecodingOptions(language: language, temperature: 0)
+        let decodeOptions = DecodingOptions(language: options.language ?? language, temperature: 0)
         let engineName = name
 
         let results: [TranscriptionResult]
