@@ -146,6 +146,35 @@ empty output on `large-v3-turbo`. The on-device model of Apple did not repair
 `Sılacık`, although it received the list of terms. Thus term repair is
 deterministic. It can only make words that you put in the vocabulary.
 
+### Learning from your fixes
+
+When you fix a term after a dictation, yaz learns from it, but only under
+a rule taken from Karpathy's
+[autoresearch](https://github.com/karpathy/autoresearch): a fixed evaluation
+decides, and a change is kept only if the evaluation does not get worse.
+
+- About 12 seconds after a paste, yaz reads the field back through
+  Accessibility, if you are still in the same app. It finds the words you
+  replaced. Secure fields are never read, and no text leaves the Mac.
+- If you make the same fix twice, for example `Vörsel` → `Vercel`, it becomes a
+  candidate rule. `Evaluator.gate` keeps the rule only if it repairs its
+  own case and the score over `EvalCorpus` stays the same or improves. That
+  corpus holds 7 measured manglings and 30 ordinary Turkish sentences, scored
+  as false matches × 3 + misses. A rule that would turn `doktor` into `Docker`
+  is rejected.
+- If you undo a repair (yaz wrote `Docker` and you changed it back to
+  `doktor`), that pair is blocked at once.
+
+`yaz learned` lists what was kept, blocked and rejected. `yaz learned --forget
+Vercel` removes the rules for one term, and `--clear` removes all of them.
+Rules are stored in `~/Library/Application Support/yaz/learned.json`. Set
+`"learn": false` to turn learning off.
+
+`yaz eval` prints the score. `research/program.md` is the offline half of the
+loop: instructions for an agent that tunes thresholds and the lexicon against
+that score, keeps a change only if the score drops, and logs every try to
+`research/results.tsv`.
+
 ## Quality gates
 
 yaz writes the transcript directly at your cursor. Therefore incorrect text is
@@ -367,6 +396,7 @@ same file. Therefore you can also edit the file manually.
   "history_limit": 2000,
   "vad": false,
   "vad_threshold": 0.3,
+  "learn": true,
   "on_transcript": "my-hook",
   "vocabulary": [
     "Slack", "pull request", "CI pipeline", "Kubernetes",
@@ -400,6 +430,8 @@ yaz install --launch-at-login | --uninstall | --status
 yaz vocab test "<text>"                # test term repair and show the scores
 yaz vocab refine --mode llm "<text>"   # test post-processing
 yaz vocab explain "<term>" "<heard>"   # compare the phonetic keys
+yaz eval [--learned] [--quiet]         # score term repair over the fixed set
+yaz learned [--forget <term>] [--clear]
 
 yaz transcribe <file...>               # audio to text, with the latency
   --engine-name whisper|parakeet
