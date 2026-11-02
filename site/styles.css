@@ -97,6 +97,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; scroll-padding-top: 72px; }
+
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 body {
   margin: 0;
@@ -364,3 +365,32 @@ kbd {
 .notfound .hero-title { font-size: clamp(40px, 7vw, 72px); }
 .notfound .hero-lede { margin-inline: auto; }
 .notfound-action { margin-top: 28px; }
+
+/* Learning */
+.learns-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .learns-grid { grid-template-columns: 1fr; } }
+.loop { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: 10px; }
+.loop li {
+  counter-increment: step; position: relative; padding: 18px 20px 18px 62px;
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius); color: var(--ink-soft);
+}
+.loop li::before {
+  content: counter(step); position: absolute; left: 18px; top: 16px; width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 750; font-size: 14px; color: var(--accent); background: var(--accent-soft);
+}
+.loop b { color: var(--ink); }
+.ledger { padding: 22px; border-radius: var(--radius); background: var(--code-bg); color: var(--code-ink); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 14px; }
+.ledger-head { color: var(--code-muted); font-size: 13px; padding-bottom: 10px; border-bottom: 1px solid rgb(255 255 255 / 0.1); }
+.ledger-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid rgb(255 255 255 / 0.08); }
+.ledger-row .badge { font-size: 12.5px; color: var(--code-muted); }
+.ledger-row.is-kept .badge { color: #4CD69C; }
+.ledger-row.is-blocked .badge { color: #FFC46B; }
+.ledger-row.is-rejected .badge { color: #FF8F70; }
+.ledger-row.is-rejected span:first-child { text-decoration: line-through; text-decoration-color: rgb(255 143 112 / 0.6); }
+.ledger-foot { margin: 14px 0 0; font-family: "Archivo", system-ui, sans-serif; font-size: 13.5px; color: var(--code-muted); }
+.ledger-foot code { background: rgb(255 255 255 / 0.08); color: var(--code-ink); }
+.dev-block-wide { grid-column: 1 / -1; }
+.repairs-code td:first-child { text-decoration: none; color: var(--ink-soft); }
+.repairs-code td:last-child, .repairs-code th:last-child { text-align: left; color: var(--fix); padding-right: 0; }
+.repairs-code th:last-child { color: var(--muted); }
+.repairs-code td:first-child { width: 42%; }
