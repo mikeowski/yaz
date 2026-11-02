@@ -11,8 +11,8 @@
 # Sparkle compares CFBundleVersion; a release that does not raise it is never
 # offered to anyone.
 #
-# Release notes go in dist/notes-<version>.md (Markdown: ## headings, - lists,
-# **bold**, `code`). They become the GitHub release body and the text Sparkle
+# Release notes go in release-notes/<version>.md (committed) or
+# dist/notes-<version>.md (Markdown: ## headings, - lists, **bold**, `code`). They become the GitHub release body and the text Sparkle
 # shows in its update window.
 #
 # Needs, once, on the maintainer's Mac:
@@ -44,6 +44,11 @@ DIST="$ROOT/dist"
 APP="$DIST/yaz.app"
 DMG="$DIST/yaz-$VERSION.dmg"
 NOTES="$DIST/notes-$VERSION.md"
+# Notes may be committed as release-notes/<version>.md; dist/ is not.
+if [ ! -f "$NOTES" ] && [ -f "$ROOT/release-notes/$VERSION.md" ]; then
+    mkdir -p "$DIST"
+    cp "$ROOT/release-notes/$VERSION.md" "$NOTES"
+fi
 DOWNLOADS="$ROOT/site/downloads"
 
 printf '› yaz %s (%s) → %s\n' "$VERSION" "$BUILD" "$SITE_URL"
