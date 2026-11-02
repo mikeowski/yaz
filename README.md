@@ -213,8 +213,19 @@ decides, and a change is kept only if the evaluation does not get worse.
 - If you undo a repair (yaz wrote `Docker` and you changed it back to
   `doktor`), that pair is blocked at once.
 
+Your own sentences are a second test set (`PersonalCorpus`, in
+`personal.json` next to the history). Every fix you make is a case that yaz
+should now get right, and every dictation you leave exactly as pasted is a
+case that must not change. The gate scores a candidate rule against both, so a
+rule that would break one of your sentences is rejected even when the shared
+set allows it. `yaz eval --personal` prints your score: how many of your fixes
+yaz now makes, and how many kept dictations stay unchanged. Add
+`--threshold` to try a setting on your own speech. Sentences are stored only
+while history and learning are both on.
+
 `yaz learned` lists what was kept, blocked and rejected. `yaz learned --forget
-Vercel` removes the rules for one term, and `--clear` removes all of them.
+Vercel` removes the rules and personal cases for one term, and `--clear`
+removes all of them.
 Rules are stored in `~/Library/Application Support/yaz/learned.json`. Set
 `"learn": false` to turn learning off.
 
@@ -480,6 +491,7 @@ yaz vocab test "<text>"                # test term repair and show the scores
 yaz vocab refine --mode llm "<text>"   # test post-processing
 yaz vocab explain "<term>" "<heard>"   # compare the phonetic keys
 yaz eval [--language de] [--learned] [--quiet]   # score term repair over the fixed set
+yaz eval --personal [--threshold 0.8]  # the same score over your own fixes and kept dictations
 yaz learned [--forget <term>] [--clear]
 yaz numbers "<text>"                   # spoken Turkish numbers as digits
 

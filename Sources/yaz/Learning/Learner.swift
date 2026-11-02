@@ -28,6 +28,9 @@ struct Learner: Sendable {
     /// The dictation language: its lexicon decides what is an ordinary word,
     /// its evaluation set decides what is kept.
     var language: String = Vocabulary.lexiconLanguage
+    /// The user's own cases: fixes are recorded here, and the gate scores
+    /// candidates against them too.
+    var personal = PersonalCorpus()
 
     enum Event: Sendable, Equatable {
         case noted(heard: String, meant: String, count: Int)
@@ -39,10 +42,13 @@ struct Learner: Sendable {
     /// Feed one dictation: what was pasted, the repairs yaz made in it, and
     /// the user's edits found afterwards. `userTerms` are the configured
     /// terms, for the gate.
+    /// `sentence` is what was pasted: each mishearing is recorded with it as
+    /// a personal case.
     mutating func observe(
         edits: [CorrectionDiff.Edit],
         corrections: [Vocabulary.Correction],
         userTerms: [VocabularyTerm],
+        sentence: String? = nil,
         now: Date = Date()
     ) -> [Event] {
         var events: [Event] = []
@@ -68,6 +74,7 @@ struct Learner: Sendable {
 
             let lexicon = Lexicon.forLanguage(language) ?? .turkish
             guard Self.isMishearing(heard: heard, meant: meant, lexicon: lexicon) else { continue }
+            if let sentence { personal.recordFix(sentence: sentence, heard: heard, meant: meant, at: now) }
             guard !rules.isKnown(heard: heard, meant: meant) else { continue }
 
             let count = rules.note(heard: heard, meant: meant, at: now)
@@ -78,7 +85,8 @@ struct Learner: Sendable {
 
             let candidate = VocabularyTerm(canonical: meant, aliases: [heard])
             let verdict = Evaluator.gate(
-                candidate, heard: heard, existing: userTerms + rules.terms, language: language)
+                candidate, heard: heard, existing: userTerms + rules.terms, language: language,
+                personal: personal)
             if verdict.accepted {
                 rules.learn(heard: heard, meant: meant, at: now)
                 events.append(.learned(heard: heard, meant: meant))

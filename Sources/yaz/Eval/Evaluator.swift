@@ -147,17 +147,28 @@ enum Evaluator {
     }
 
     /// Whether a learned rule may be kept: it must fix the case it was
-    /// learned from, and leave the score no worse than without it.
+    /// learned from, and leave the score no worse than without it, over the
+    /// fixed set and over the user's own (`PersonalCorpus`).
     static func gate(
         _ candidate: VocabularyTerm, heard: String, existing: [VocabularyTerm] = [],
-        language: String = Vocabulary.lexiconLanguage
+        language: String = Vocabulary.lexiconLanguage,
+        personal: PersonalCorpus = PersonalCorpus()
     ) -> (accepted: Bool, reason: String) {
         let alone = Vocabulary(terms: existing + [candidate], language: language).correct(heard)
         guard alone.text.contains(candidate.canonical) else {
             return (false, "does not fix \"\(heard)\"")
         }
-        let before = score(language: language, extra: existing)
-        let after = score(language: language, extra: existing + [candidate])
+        var before = score(language: language, extra: existing)
+        var after = score(language: language, extra: existing + [candidate])
+        if !personal.isEmpty {
+            let mine = personal.score(Vocabulary(terms: existing, language: language))
+            let mineAfter = personal.score(Vocabulary(terms: existing + [candidate], language: language))
+            before.falseMatches += mine.falseMatches
+            before.misses += mine.misses
+            after.falseMatches += mineAfter.falseMatches
+            after.misses += mineAfter.misses
+            after.offenders += mineAfter.offenders
+        }
         guard after.value <= before.value else {
             let detail = after.offenders.first.map { ": \($0)" } ?? ""
             return (false, "makes the evaluation worse (\(before.value) → \(after.value))\(detail)")

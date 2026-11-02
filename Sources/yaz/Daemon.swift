@@ -54,6 +54,8 @@ final class Daemon {
     /// fixes (`learn`): the pipeline is rebuilt from these when either changes.
     private var projectIndex = ProjectIndex.empty
     private var learned = LearnedRules.load()
+    /// The user's own evaluation cases (`PersonalCorpus`).
+    private var personal = PersonalCorpus.load()
 
     /// How long after a paste the field is read back: long enough for a
     /// quick fix, short enough that the user is still in that field.
@@ -253,18 +255,42 @@ final class Daemon {
                   AppEnvironment.frontmostApp()?.bundleID == bundleID,
                   let field = FieldReader.focusedText()
             else { return }
+            // The personal set keeps sentences, so it follows the history
+            // switch: no history, no stored text.
+            let keepsCases = self.config.history
+
+            // Left exactly as pasted: it was right, and must stay right.
+            let trimmed = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
+            if field.contains(trimmed) {
+                guard keepsCases else { return }
+                var personal = self.personal
+                personal.recordKept(trimmed)
+                if personal != self.personal {
+                    self.personal = personal
+                    try? personal.save()
+                }
+                return
+            }
+
             let edits = CorrectionDiff.edits(pasted: pasted, field: field)
             guard !edits.isEmpty else { return }
 
             // The gate scores the whole evaluation set: off the main thread.
-            let learner = Learner(rules: self.learned, language: self.config.language)
+            let learner = Learner(
+                rules: self.learned, language: self.config.language,
+                personal: keepsCases ? self.personal : PersonalCorpus())
             let userTerms = self.config.vocabulary
-            let (rules, events) = await Task.detached(priority: .utility) {
+            let (rules, personal, events) = await Task.detached(priority: .utility) {
                 var learner = learner
                 let events = learner.observe(
-                    edits: edits, corrections: corrections, userTerms: userTerms)
-                return (learner.rules, events)
+                    edits: edits, corrections: corrections, userTerms: userTerms,
+                    sentence: keepsCases ? trimmed : nil)
+                return (learner.rules, learner.personal, events)
             }.value
+            if keepsCases, personal != self.personal {
+                self.personal = personal
+                try? personal.save()
+            }
             guard rules != self.learned else { return }
             self.learned = rules
             do {
