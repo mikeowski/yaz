@@ -17,6 +17,10 @@ dependency's own `LICENSE` file in the resolved checkout, not assumed.
 | swift-transformers | Apache-2.0 | https://github.com/huggingface/swift-transformers |
 | swift-jinja | Apache-2.0 | https://github.com/huggingface/swift-jinja |
 | yyjson | MIT | https://github.com/ibireme/yyjson |
+| Sparkle | MIT — © the Sparkle Project contributors | https://github.com/sparkle-project/Sparkle |
+
+Sparkle is the one package that ships as a framework inside the app
+(`yaz.app/Contents/Frameworks/Sparkle.framework`), with its own licence file.
 
 Apache-2.0 requires that the licence and any `NOTICE` accompany redistribution.
 If you ship a binary of yaz, ship this file with it. FluidAudio carries its own
@@ -33,6 +37,7 @@ they carry their own licences, which are not MIT and are not ours to grant:
 |---|---|---|
 | `openai_whisper-large-v3-v20240930_turbo` (Core ML) | Argmax, converted from OpenAI Whisper | https://huggingface.co/argmaxinc/whisperkit-coreml |
 | `parakeet-tdt-0.6b-v3` (Core ML) | NVIDIA, converted by FluidInference | https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3 |
+| Silero VAD (Core ML), only with `"vad": true` | Silero, converted by FluidInference | https://huggingface.co/FluidInference/silero-vad-coreml |
 
 If you plan to redistribute yaz, or use it commercially, read those model cards
 yourself. They are stated here as pointers, not as a legal opinion, and they
@@ -43,3 +48,9 @@ can change independently of this repository.
 `FoundationModels`, `AVFoundation`, `AppKit`, `SwiftUI`, `Accelerate`, `IOKit`
 and `CoreGraphics` are system frameworks covered by the Apple SDK licence
 agreement. Nothing from them is redistributed here.
+
+## Website fonts
+
+`site/` (yaz.mike4.dev) serves Archivo and IBM Plex Mono, both under the SIL
+Open Font License 1.1. The licence texts are next to the font files in
+`site/fonts/`.
