@@ -268,6 +268,16 @@ struct VocabularyPrecisionTests {
         ])
         #expect(withAlias.correct("Noşın'a yazdım").text.contains("Notion"))
     }
+
+    /// An alias nothing like the term: only the alias itself can match it.
+    @Test("an alias heard exactly is replaced, however far from the term")
+    func exactAlias() {
+        let vocabulary = Vocabulary(terms: [VocabularyTerm(canonical: "Kubernetes", aliases: ["kates"])])
+        #expect(Vocabulary(terms: [VocabularyTerm(canonical: "Kubernetes")])
+            .correct("kates üzerinde çalışıyor").text == "kates üzerinde çalışıyor")
+        #expect(vocabulary.correct("kates üzerinde çalışıyor").text == "Kubernetes üzerinde çalışıyor")
+        #expect(vocabulary.correct("Kubernetes üzerinde").corrections.isEmpty)
+    }
 }
 
 @Suite("Vocabulary — overlapping matches")

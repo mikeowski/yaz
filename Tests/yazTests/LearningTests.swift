@@ -126,6 +126,15 @@ struct LearnerTests {
         #expect(learner.rules.rules.count == 1)
     }
 
+    @Test("a rule the term alone could never match is still learned")
+    func farAliasIsLearned() {
+        var learner = Learner(rules: LearnedRules())
+        let edit = CorrectionDiff.Edit(heard: "kates", meant: "Kubernetes")
+        _ = learner.observe(edits: [edit], corrections: [], userTerms: [])
+        let events = learner.observe(edits: [edit], corrections: [], userTerms: [])
+        #expect(events == [.learned(heard: "kates", meant: "Kubernetes")])
+    }
+
     @Test("an undone repair is blocked at once")
     func undoBlocks() {
         var learner = Learner(rules: LearnedRules())
