@@ -10,6 +10,11 @@ Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
 
 ### Added
 
+- **`yaz mcp`, for coding agents.** A Model Context Protocol server over
+  stdio. `wait_for_dictation` lets Claude Code, Cursor or Codex ask you
+  something you answer by voice: the dictation goes to the agent instead of
+  being pasted. `last_dictation`, `recent_dictations` and `search_dictations`
+  read the history. The hand-off is two 0600 files: no socket, no port.
 - **Voice commands.** "yeni satır", "yeni paragraf", "soru işareti", "ünlem
   işareti", "iki nokta üst üste" at the end of a sentence; "Yeni satır
   ekledim." stays a sentence. "geri al" on its own (and **Remove Last

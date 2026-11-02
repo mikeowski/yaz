@@ -63,12 +63,14 @@ actor TranscriptHistory {
     private let enabled: Bool
 
     init(url: URL? = nil, limit: Int = TranscriptHistory.defaultLimit, enabled: Bool = true) {
-        self.url = url ?? AppEnvironment.supportDirectory.appending(path: "history.jsonl")
+        self.url = url ?? Self.defaultURL
         self.limit = max(1, limit)
         self.enabled = enabled
     }
 
     var fileURL: URL { url }
+
+    static var defaultURL: URL { AppEnvironment.supportDirectory.appending(path: "history.jsonl") }
 
     /// Append one entry. Failure is logged, never thrown: losing a history
     /// line must not cost the user the dictation that produced it.
@@ -93,6 +95,15 @@ actor TranscriptHistory {
             try trimIfNeeded()
         } catch {
             log("couldn't write history: \(error)")
+        }
+    }
+
+    /// Every readable entry in a history file, oldest first, without the
+    /// actor: for `yaz mcp`, which reads the file the daemon writes.
+    static func read(from url: URL) -> [HistoryEntry] {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        return text.split(separator: "\n", omittingEmptySubsequences: true).compactMap {
+            try? decoder.decode(HistoryEntry.self, from: Data($0.utf8))
         }
     }
 
