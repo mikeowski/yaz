@@ -16,7 +16,7 @@ struct GermanTests {
     func precisionSet() {
         let score = Evaluator.score(language: "de")
         #expect(score.falseMatches == 0, "\(score.offenders)")
-        #expect(score.precisionCases == EvalCorpus.German.precision.count * 2)
+        #expect(score.precisionCases == EvalCorpus.German.precision.count * 3 + EvalCorpus.German.numbersUnchanged.count)
     }
 
     @Test("the summed score over every language is still zero")
