@@ -44,7 +44,7 @@ struct LanguagePack: Sendable {
         refineInstructions: FoundationModelsBackend.instructions)
 
     /// Every main language with more than transcription.
-    static let all: [LanguagePack] = [.turkish, .english, .german, .spanish]
+    static let all: [LanguagePack] = [.turkish, .english, .german, .spanish, .french]
 
     static func forLanguage(_ language: String) -> LanguagePack? {
         let code = language.lowercased()

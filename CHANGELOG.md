@@ -27,6 +27,13 @@ Notable changes to yaz. Format loosely follows
   ("quince mil euros" → "15.000 euros", "cincuenta por ciento" → "50 %"),
   commands ("nueva línea", "borra eso") with opening marks ("¿Vienes hoy?"),
   and Spanish model instructions. Accents are ignored when matching.
+- **French as a main language.** French needed its word list most: without
+  it, 10 of 30 everyday sentences changed ("cours" became Cursor, "docteur"
+  Docker, "rideaux" Redis); with it, none of 30 or of 20 held out. Elided
+  words count by what follows the apostrophe. Numbers counting in twenties
+  ("quatre-vingt-dix" → "90", "soixante et onze" → "71", "quinze mille
+  euros" → "15 000 euros"), commands with French spacing ("Tu viens ?"),
+  "euh" removal and French model instructions.
 - A spoken command after an article is a noun, not a command: "I need a new
   line.", "Da steht ein Fragezeichen." stay sentences, in every language.
 

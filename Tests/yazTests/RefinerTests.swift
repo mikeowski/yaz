@@ -292,7 +292,7 @@ struct RefinerLanguageTests {
 
     @Test(
         "languages without fillers are returned untouched",
-        arguments: ["fr", "ru", "ja"])
+        arguments: ["ru", "ja", "ko"])
     func skipsOtherLanguages(language: String) async {
         let text = "a lot of people say um I think we should merge this"
         let result = await Refiner(mode: .fillers, language: language).refine(text)

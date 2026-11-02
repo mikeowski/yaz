@@ -95,6 +95,7 @@ enum VoiceCommands {
                 case let .mark(mark):
                     if out.last == "," || out.last == "." || out.last == ";" { out.removeLast() }
                     if let opening = set.openings[mark] { open(&out, with: opening) }
+                    out += set.spaceBeforeMarks
                     out.append(mark)
                     glued = false
                 }
@@ -202,6 +203,8 @@ struct CommandSet: Sendable {
     var notAfter: Set<String> = []
     /// Marks that also open their sentence: Spanish "?" → "¿…?".
     var openings: [Character: Character] = [:]
+    /// Typed before ? and !: French puts a narrow no-break space there.
+    var spaceBeforeMarks = ""
     /// Turkish capitalisation (i → İ) after a command.
     var turkishCase = false
     /// Lowercasing for matching: Turkish needs its own (I → ı).
