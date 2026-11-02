@@ -395,3 +395,5 @@ kbd {
 .repairs-code td:last-child, .repairs-code th:last-child { text-align: left; color: var(--fix); padding-right: 0; }
 .repairs-code th:last-child { color: var(--muted); }
 .repairs-code td:first-child { width: 42%; }
+.dev-block-agent { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 32px; align-items: center; }
+@media (max-width: 860px) { .dev-block-agent { grid-template-columns: 1fr; } }

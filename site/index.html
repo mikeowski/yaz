@@ -232,7 +232,7 @@
     <section class="section section-dev" id="developers" aria-labelledby="dev-title">
       <div class="section-head">
         <h2 id="dev-title">For developers</h2>
-        <p>One JSON file, a CLI for everything the menu does, and a hook for what comes after.</p>
+        <p>One JSON file, a CLI for everything the menu does, a hook for what comes after, and an MCP server for your coding agent.</p>
       </div>
 
       <div class="dev-grid">
@@ -274,6 +274,21 @@ yaz doctor</code></pre>
               <tr><td>auth service dosyasına bak</td><td>@Sources/AuthService.swift dosyasına bak</td></tr>
             </tbody>
           </table>
+        </div>
+
+        <div class="dev-block dev-block-wide dev-block-agent">
+          <div>
+            <h3>Answer your agent by voice</h3>
+            <p><code>yaz mcp</code> plugs yaz into Claude Code, Cursor or Codex. The agent asks, you hold the key and answer, and your words go to the agent instead of into its input box. It can also read and search what you dictated. No socket, no port: the agent starts yaz over stdio.</p>
+          </div>
+          <pre class="code" tabindex="0" aria-label="Adding yaz to Claude Code"><code>claude mcp add yaz -- \
+  /Applications/yaz.app/Contents/MacOS/yaz mcp
+
+<span class="c"># tools the agent gets</span>
+wait_for_dictation  <span class="c"># you answer by voice</span>
+last_dictation
+recent_dictations
+search_dictations</code></pre>
         </div>
 
         <div class="dev-block">

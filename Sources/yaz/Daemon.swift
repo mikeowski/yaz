@@ -505,6 +505,9 @@ final class Daemon {
                 try capture.start()
                 readScreenTerms()
                 log("● recording")
+                if let wait = AgentHandoff.standard.pendingWait() {
+                    overlay?.setDetail(wait.prompt.map { "agent: \($0)" } ?? "the answer goes to the agent")
+                }
                 setIndicator(.recording)
                 startLivePreview()
             } catch {
@@ -681,13 +684,21 @@ final class Daemon {
             // in — which is the only moment that answer is correct.
             let target = AppEnvironment.frontmostApp()
 
-            TextInjector.inject(processed.text, mode: config.injectMode)
-            lastText = processed.text
-            runHook(with: processed.text)
-            if config.learn, Vocabulary.isSupported(language: config.language),
-               let bundleID = target?.bundleID {
-                scheduleReadBack(
-                    pasted: processed.text, corrections: processed.corrections, in: bundleID)
+            // A coding agent asked for this answer (`yaz mcp`,
+            // wait_for_dictation): it goes there, not into its input box.
+            if let wait = AgentHandoff.standard.pendingWait(),
+               (try? AgentHandoff.standard.deliver(processed.text, to: wait)) != nil {
+                log("→ sent to the waiting agent")
+                menuBar?.note("sent to the agent")
+            } else {
+                TextInjector.inject(processed.text, mode: config.injectMode)
+                lastText = processed.text
+                runHook(with: processed.text)
+                if config.learn, Vocabulary.isSupported(language: config.language),
+                   let bundleID = target?.bundleID {
+                    scheduleReadBack(
+                        pasted: processed.text, corrections: processed.corrections, in: bundleID)
+                }
             }
 
             let entry = HistoryEntry(

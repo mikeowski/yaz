@@ -194,6 +194,30 @@ rules are conservative:
 are part of the `yaz eval` score, together with the 30 everyday sentences,
 which must stay unchanged. Set `"numbers": false` to turn it off.
 
+### For coding agents (MCP)
+
+`yaz mcp` is a Model Context Protocol server over stdio. Claude Code,
+Cursor, Codex and other agents can start it:
+
+```sh
+claude mcp add yaz -- /Applications/yaz.app/Contents/MacOS/yaz mcp
+yaz mcp --print-config     # the JSON for other clients, with this copy's path
+```
+
+| Tool | What the agent gets |
+|---|---|
+| `wait_for_dictation` | Your **next** dictation, as the answer to a question it asked you. The text goes to the agent, not into its input box. |
+| `last_dictation` | What you dictated last, with the app and the time |
+| `recent_dictations` | The last 10 (up to 50) |
+| `search_dictations` | Dictations containing a word or sent to an app |
+
+So an agent can ask "Should I merge this?", and you hold the key and answer.
+While it waits, the pill says so and shows the agent's note. The hand-off
+uses two small files in yaz's support folder (mode 0600). A wait counts only
+while its deadline (at most 5 minutes) has not passed and the agent's process
+is alive. There is no socket and no port. The reading tools need the history
+to be on.
+
 ### Voice commands
 
 | Say | yaz does |

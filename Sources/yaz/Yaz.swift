@@ -9,7 +9,7 @@ struct Yaz: ParsableCommand {
         commandName: "yaz",
         abstract: "On-device dictation for macOS. Hold the key, speak, release — the text lands at your cursor.",
         version: AppEnvironment.version,
-        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self, Microphones.self, Projects.self, Eval.self, Learned.self, Numbers.self],
+        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self, Microphones.self, Projects.self, Eval.self, Learned.self, Numbers.self, Mcp.self],
         defaultSubcommand: Run.self
     )
 }
@@ -1225,5 +1225,40 @@ struct Numbers: ParsableCommand {
             print("  number: \(change.from) -> \(change.to)")
         }
         print(result.text)
+    }
+}
+
+struct Mcp: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "mcp",
+        abstract: "Serve yaz to a coding agent over the Model Context Protocol (stdio).",
+        discussion: """
+            Started by the agent, not by you. Claude Code: \
+            claude mcp add yaz -- "$(command -v yaz)" mcp
+            Tools: wait_for_dictation (your next dictation goes to the agent), \
+            last_dictation, recent_dictations, search_dictations.
+            """)
+
+    @Flag(help: "Print the MCP configuration for this copy of yaz and exit.")
+    var printConfig = false
+
+    func run() throws {
+        let path = Bundle.main.executablePath ?? CommandLine.arguments[0]
+        if printConfig {
+            let config: [String: Any] = ["mcpServers": ["yaz": ["command": path, "args": ["mcp"]]]]
+            let data = try JSONSerialization.data(
+                withJSONObject: config, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+            print(String(decoding: data, as: UTF8.self))
+            print("")
+            print("Claude Code: claude mcp add yaz -- \"\(path)\" mcp")
+            return
+        }
+        let config = Config.load()
+        let url = TranscriptHistory.defaultURL
+        AgentServer(
+            history: { Array(TranscriptHistory.read(from: url).reversed()) },
+            historyEnabled: config.history,
+            handoff: .standard
+        ).run()
     }
 }
