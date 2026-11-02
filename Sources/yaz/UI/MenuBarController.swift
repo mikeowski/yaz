@@ -15,6 +15,7 @@ final class MenuBarController {
     var onOpenHistory: (() -> Void)?
     var onFixPermission: (() -> Void)?
     var onUseFallbackHotkey: (() -> Void)?
+    var onPasteLast: (() -> Void)?
     /// Set only when Sparkle is running (the signed .app); otherwise the
     /// update items stay out of the menu.
     var onCheckForUpdates: (() -> Void)? {
@@ -118,6 +119,15 @@ final class MenuBarController {
 
         menu.addItem(.separator())
 
+        // The last dictation again, into whatever is focused: for the field
+        // that lost focus, or a second place the same text should go.
+        let pasteLast = NSMenuItem(
+            title: "Paste Last Dictation", action: #selector(pasteLastDictation), keyEquivalent: "")
+        pasteLast.target = self
+        menu.addItem(pasteLast)
+
+        menu.addItem(.separator())
+
         let settings = NSMenuItem(
             title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settings.target = self
@@ -166,6 +176,7 @@ final class MenuBarController {
     }
 
     @objc private func checkForUpdates() { onCheckForUpdates?() }
+    @objc private func pasteLastDictation() { onPasteLast?() }
     @objc private func useFallbackHotkey() { onUseFallbackHotkey?() }
     @objc private func fixPermission() { onFixPermission?() }
     @objc private func openSettings() { onOpenSettings?() }

@@ -25,6 +25,7 @@ final class RecordingOverlay {
         guard let panel else { return }
 
         if state == .recording { model.meter.reset() }
+        if state != .recording { setDetail(nil) }
 
         let appearing = !panel.isVisible
         if appearing {
@@ -49,6 +50,24 @@ final class RecordingOverlay {
         }
     }
 
+    /// A second line beside the label: "hands-free" while locked, or the live
+    /// transcript so far. Only ever shown; the pasted text is the final one.
+    func setDetail(_ text: String?) {
+        let text = text.flatMap { $0.isEmpty ? nil : $0 }
+        guard model.detail != text else { return }
+        model.detail = text
+        guard let panel else { return }
+        let width: CGFloat = text == nil ? Self.compactWidth : Self.wideWidth
+        guard panel.frame.width != width else { return }
+        var frame = panel.frame
+        frame.origin.x = frame.midX - width / 2
+        frame.size.width = width
+        panel.setFrame(frame, display: true)
+    }
+
+    private static let compactWidth: CGFloat = 148
+    private static let wideWidth: CGFloat = 440
+
     /// Feed a microphone peak. Safe from any thread — the audio tap calls this.
     nonisolated func pushLevel(_ level: Float) {
         Task { @MainActor [model] in model.push(level) }
@@ -60,7 +79,7 @@ final class RecordingOverlay {
         guard panel == nil else { return }
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 148, height: 44),
+            contentRect: NSRect(x: 0, y: 0, width: Self.compactWidth, height: 44),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -98,6 +117,7 @@ final class RecordingOverlay {
 final class OverlayModel: ObservableObject {
     @Published var state: IndicatorState = .idle
     @Published var meter = LevelMeter()
+    @Published var detail: String?
 
     func push(_ level: Float) {
         guard state == .recording else { return }
@@ -123,6 +143,16 @@ private struct OverlayView: View {
             Text(model.state.label)
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.85))
+
+            if let detail = model.detail {
+                // The newest words matter most: cut from the front.
+                Text(detail)
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.65))
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .frame(maxWidth: 260, alignment: .leading)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)

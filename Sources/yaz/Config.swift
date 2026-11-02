@@ -47,6 +47,14 @@ struct Config: Sendable, Equatable {
     var vad: Bool = false
     /// Window speech probability that counts as speech.
     var vadThreshold: Float = VoiceActivityGate.defaultThreshold
+    /// Tap the hotkey twice to keep recording with the key up; the next
+    /// press stops. See `PushToTalk`.
+    var handsFree: Bool = true
+    /// UID of the microphone to record from; nil follows the system default.
+    var microphone: String?
+    /// Show the transcript so far in the pill while recording. Costs an extra
+    /// Whisper pass about once a second, so it is opt-in.
+    var liveText: Bool = false
 
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/yaz/config.json")
@@ -111,6 +119,12 @@ struct Config: Sendable, Equatable {
         if let value = json["overlay"] as? Bool { overlay = value }
         if let value = json["menu_bar"] as? Bool { menuBar = value }
         if let value = json["vad"] as? Bool { vad = value }
+        if let value = json["hands_free"] as? Bool { handsFree = value }
+        if let value = json["live_text"] as? Bool { liveText = value }
+        if let raw = json["microphone"] {
+            if let uid = raw as? String, !uid.isEmpty { microphone = uid }
+            else if raw is NSNull { microphone = nil }
+        }
         if let raw = json["vad_threshold"] {
             if let value = (raw as? NSNumber)?.doubleValue, value > 0, value < 1 {
                 vadThreshold = Float(value)
@@ -191,7 +205,10 @@ struct Config: Sendable, Equatable {
             "history_limit": historyLimit,
             "vad": vad,
             "vad_threshold": Double(vadThreshold),
+            "hands_free": handsFree,
+            "live_text": liveText,
         ]
+        if let microphone { json["microphone"] = microphone }
         if let onTranscript { json["on_transcript"] = onTranscript }
         if !vocabulary.isEmpty {
             json["vocabulary"] = vocabulary.map { term -> Any in
@@ -235,7 +252,9 @@ struct Config: Sendable, Equatable {
           "history": true,
           "history_limit": 2000,
           "vad": false,
-          "vad_threshold": 0.3
+          "vad_threshold": 0.3,
+          "hands_free": true,
+          "live_text": false
         }
 
         """

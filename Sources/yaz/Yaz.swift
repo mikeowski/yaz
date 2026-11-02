@@ -9,7 +9,7 @@ struct Yaz: ParsableCommand {
         commandName: "yaz",
         abstract: "On-device dictation for macOS. Hold the key, speak, release — the text lands at your cursor.",
         version: AppEnvironment.version,
-        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self],
+        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self, Microphones.self],
         defaultSubcommand: Run.self
     )
 }
@@ -1015,3 +1015,29 @@ extension TextInjector.Mode: ExpressibleByArgument {}
 extension RefineMode: ExpressibleByArgument {}
 
 
+
+/// `yaz microphones`: the input devices, with the UID `microphone` takes.
+struct Microphones: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "List the microphones, with the UID the config file takes.")
+
+    func run() throws {
+        let inputs = AudioDevices.inputs()
+        guard !inputs.isEmpty else {
+            print("no input devices found")
+            return
+        }
+        let chosen = Config.load().microphone
+        for mic in inputs {
+            var marks: [String] = []
+            if mic.isDefault { marks.append("system default") }
+            if mic.uid == chosen { marks.append("yaz uses this") }
+            let suffix = marks.isEmpty ? "" : "  (" + marks.joined(separator: ", ") + ")"
+            print("\(mic.name)\(suffix)")
+            print("  \(mic.uid)")
+        }
+        if let chosen, !inputs.contains(where: { $0.uid == chosen }) {
+            print("note: the configured microphone \(chosen) is not connected — yaz uses the system default")
+        }
+    }
+}
