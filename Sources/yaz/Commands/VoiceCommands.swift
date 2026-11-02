@@ -125,6 +125,9 @@ enum VoiceCommands {
             guard span.dropLast().allSatisfy({ $0.trailing.isEmpty }),
                   span.dropFirst().allSatisfy({ $0.leading.isEmpty })
             else { continue }
+            if i > 0, tokens[i - 1].trailing.isEmpty, set.notAfter.contains(set.fold(tokens[i - 1].core)) {
+                continue
+            }
             let last = tokens[i + n - 1]
             let endsSentence = i + n == tokens.count
                 || last.trailing.contains(where: { ".!?…".contains($0) })
@@ -178,6 +181,9 @@ struct CommandSet: Sendable {
     let phrases: [Phrase]
     /// Whole dictations that are instructions to yaz.
     let controls: [String: VoiceCommands.Control]
+    /// Words that make a command phrase a noun instead: "I need a new
+    /// line.", "Da steht ein Fragezeichen." (an article before it).
+    var notAfter: Set<String> = []
     /// Turkish capitalisation (i → İ) after a command.
     var turkishCase = false
     /// Lowercasing for matching: Turkish needs its own (I → ı).
@@ -199,6 +205,7 @@ struct CommandSet: Sendable {
             "sonuncuyu sil": .undoLast,
             "son yazılanı sil": .undoLast,
         ],
+        notAfter: ["bir", "bu", "şu", "her"],
         turkishCase: true,
         fold: { PhoneticKey.lowercasedTurkish($0) })
 }

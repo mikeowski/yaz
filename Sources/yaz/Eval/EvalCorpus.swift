@@ -109,6 +109,39 @@ extension EvalCorpus {
 
         static let recall: [(heard: String, expected: String)] = []
 
+        static let numbersConvert: [(heard: String, expected: String)] = [
+            ("Wir hatten fünfundzwanzig Gäste.", "Wir hatten 25 Gäste."),
+            ("Das Budget liegt bei fünfzehntausend Euro.", "Das Budget liegt bei 15.000 Euro."),
+            ("Der Umsatz stieg um fünfzig Prozent.", "Der Umsatz stieg um 50 %."),
+            ("Es waren dreihundertzwölf Tests.", "Es waren 312 Tests."),
+            ("Zwei Millionen Nutzer haben sich angemeldet.", "2.000.000 Nutzer haben sich angemeldet."),
+            ("Warte fünfundvierzig Minuten.", "Warte 45 Minuten."),
+            ("Das Projekt endet zweitausendsechsundzwanzig.", "Das Projekt endet 2026."),
+            ("Wir treffen uns um fünfzehn Uhr dreißig.", "Wir treffen uns um 15:30 Uhr."),
+            ("Der Zug fährt um neun Uhr.", "Der Zug fährt um 9 Uhr."),
+            ("Setz das Timeout auf dreißig Sekunden.", "Setz das Timeout auf 30 Sekunden."),
+            ("Einhundertzwanzig Fehler sind behoben.", "120 Fehler sind behoben."),
+            ("Er ist zwölf Jahre alt.", "Er ist 12 Jahre alt."),
+        ]
+
+        /// The article "ein", "Gib Acht", ordinals, "hundertmal".
+        static let numbersUnchanged: [String] = [
+            "Ich habe eine Frage.",
+            "Gib Acht auf die Stufe.",
+            "Das ist ein guter Plan.",
+            "Gib mir fünf Minuten.",
+            "Wir haben zwei Kinder.",
+            "Sie kam als Erste an.",
+            "Am zweiten Tag regnete es.",
+            "Einer von ihnen hat zugestimmt.",
+            "Sieben von ihnen kamen.",
+            "Zwanzig ist nicht viel.",
+            "Wir haben uns um acht getroffen.",
+            "Das war einmal anders.",
+            "Er hat hundertmal angerufen.",
+            "Achtung, frisch gestrichen!",
+        ]
+
         /// Ordinary German with no technical term in it, the counterpart of
         /// the Turkish set. Any change is a false match.
         static let precision: [String] = [

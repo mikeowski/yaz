@@ -10,7 +10,7 @@ import Foundation
 /// a list of that language's own words, and without one it protects nothing.
 ///
 /// A part a pack does not have is nil or empty, and that layer is skipped:
-/// German has term repair and no numbers yet, and so on. Turkish is the
+/// a new pack can start with term repair and grow. Turkish is the
 /// reference pack; every other pack is measured the same way, against its own
 /// everyday sentences in `EvalCorpus`.
 struct LanguagePack: Sendable {
@@ -42,8 +42,6 @@ struct LanguagePack: Sendable {
         numbers: { TurkishNumbers.format($0) },
         commands: .turkish,
         refineInstructions: FoundationModelsBackend.instructions)
-
-    static let german = LanguagePack(code: "de", name: "German", lexicon: .german)
 
     /// Every main language with more than transcription.
     static let all: [LanguagePack] = [.turkish, .english, .german]

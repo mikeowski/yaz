@@ -19,7 +19,8 @@ extension CommandSet {
             "undo that": .undoLast,
             "delete that": .undoLast,
             "take that back": .undoLast,
-        ])
+        ],
+        notAfter: ["a", "an", "the", "another", "this", "that", "one", "my", "your", "our", "their", "his", "her", "each", "every", "no"])
 }
 
 extension Lexicon {

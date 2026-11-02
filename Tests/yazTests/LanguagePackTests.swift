@@ -38,15 +38,16 @@ struct LanguagePackTests {
         #expect(Lexicon.all.map(\.language) == LanguagePack.all.map(\.code))
     }
 
-    @Test("a layer a pack lacks is skipped: German has no fillers or numbers yet")
-    func missingLayersSkip() async {
+    @Test("German has every layer now")
+    func germanIsComplete() async {
+        #expect(LanguagePack.german.features == LanguagePack.turkish.features)
         var config = Config()
         config.language = "de"
         let output = await TranscriptPipeline(config: config).process("ähm das sind zwei Dinge.")
-        #expect(output.text == "ähm das sind zwei Dinge.")
+        #expect(output.text == "das sind zwei Dinge.")
         #expect(output.numberChanges.isEmpty)
-        #expect(!FillerFilter.isSupported(language: "de"))
-        #expect(!VoiceCommands.isSupported(language: "de"))
+        #expect(FillerFilter.isSupported(language: "de"))
+        #expect(VoiceCommands.isSupported(language: "de"))
     }
 
     @Test("without a pack, nothing but transcription")
