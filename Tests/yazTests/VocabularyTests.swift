@@ -445,7 +445,7 @@ struct VocabularyLanguageTests {
 
     @Test(
         "languages without a lexicon are not",
-        arguments: ["fr", "es", "ru", "ja", "ko"]
+        arguments: ["fr", "ru", "ja", "ko"]
     )
     func othersAreNot(_ language: String) {
         #expect(!Vocabulary.isSupported(language: language))

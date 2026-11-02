@@ -54,6 +54,11 @@ enum Evaluator {
             recall: EvalCorpus.German.recall, precision: EvalCorpus.German.precision,
             numberConvert: EvalCorpus.German.numbersConvert,
             numberUnchanged: EvalCorpus.German.numbersUnchanged),
+        LanguageSet(
+            language: EvalCorpus.Spanish.language, riskyTerms: EvalCorpus.Spanish.riskyTerms,
+            recall: EvalCorpus.Spanish.recall, precision: EvalCorpus.Spanish.precision,
+            numberConvert: EvalCorpus.Spanish.numbersConvert,
+            numberUnchanged: EvalCorpus.Spanish.numbersUnchanged),
     ]
 
     /// Score a vocabulary over the corpus: one language's set, or all of them

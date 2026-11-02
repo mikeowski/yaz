@@ -135,6 +135,10 @@ enum PhoneticKey {
         // German: Whisper writes an English `a` as `ä` ("Släck"), and `ß` is
         // one `s` sound (runs collapse anyway).
         "ä": "a", "ß": "s",
+        // Spanish and French accents: Whisper writes them or not, the sound
+        // is the same. None of these letters occurs in Turkish.
+        "á": "a", "à": "a", "é": "e", "è": "e", "ê": "e", "ë": "e", "í": "i", "ì": "i", "ï": "i",
+        "ó": "o", "ò": "o", "ô": "o", "ú": "u", "ù": "u", "ñ": "n", "ÿ": "y",
     ]
 
     /// English spellings rewritten to the Turkish letter carrying that sound.

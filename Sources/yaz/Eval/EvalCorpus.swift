@@ -336,3 +336,88 @@ extension EvalCorpus {
         ]
     }
 }
+
+extension EvalCorpus {
+
+    /// Spanish as the main language. Precision only for term repair: no
+    /// Spanish manglings have been measured yet.
+    enum Spanish {
+
+        static let language = "es"
+
+        /// Terms near Spanish words: "doctor", "curso", "carrera".
+        static let riskyTerms: [VocabularyTerm] = [
+            VocabularyTerm(canonical: "Docker"),
+            VocabularyTerm(canonical: "Redis"),
+            VocabularyTerm(canonical: "Vercel"),
+            VocabularyTerm(canonical: "Figma"),
+            VocabularyTerm(canonical: "Jira"),
+            VocabularyTerm(canonical: "Kafka"),
+            VocabularyTerm(canonical: "Sentry"),
+        ]
+
+        static let recall: [(heard: String, expected: String)] = []
+
+        static let precision: [String] = [
+            "Esta mañana me levanté temprano y preparé el desayuno.",
+            "Llamó el repartidor y dijo que el paquete llega hoy.",
+            "Los zapatos nuevos me quedan un poco apretados.",
+            "Este fin de semana vamos al pueblo a ver a mis abuelos.",
+            "Me queda poca batería y dejé el cargador en casa.",
+            "Para comer había sopa y arroz, nada mal.",
+            "Pagué el alquiler pero otra vez olvidé pedir el recibo.",
+            "¿Viste el partido anoche? Marcaron en el último minuto.",
+            "Mi ordenador va muy lento, creo que necesita una limpieza.",
+            "Llevé al gato al veterinario y le pusieron las vacunas.",
+            "Me apunté a un curso pero casi nunca voy a clase.",
+            "La factura de la luz salió muy cara este mes.",
+            "Mi hija tiene un papel en la obra del colegio.",
+            "No olvides regar las plantas del balcón, por favor.",
+            "Pedí un préstamo en el banco y estoy esperando respuesta.",
+            "Había mucho tráfico y llegué casi una hora tarde.",
+            "El doctor me dijo que tomara las pastillas cada mañana.",
+            "Los vecinos volvieron a hacer ruido anoche.",
+            "Cancelamos el viaje porque hay mucho trabajo.",
+            "Añadí leche, pan y queso a la lista de la compra.",
+            "Mi hermano aprobó el examen y nos alegramos mucho.",
+            "Lavé las cortinas y ahora tengo que plancharlas.",
+            "Discutimos pero luego hicimos las paces.",
+            "Cuando termine este libro te lo presto.",
+            "La reunión de la mañana se movió a la tarde.",
+            "Tengo hambre, ¿pedimos algo?",
+            "Me corté el pelo pero quedó demasiado corto.",
+            "Hay que podar los árboles del jardín.",
+            "Está lloviendo, no olvides el paraguas.",
+            "La ruta era muy dura, abandoné la carrera a mitad.",
+        ]
+
+        static let numbersConvert: [(heard: String, expected: String)] = [
+            ("Vinieron veinticinco personas al lanzamiento.", "Vinieron 25 personas al lanzamiento."),
+            ("El presupuesto es de quince mil euros.", "El presupuesto es de 15.000 euros."),
+            ("Las ventas subieron un cincuenta por ciento.", "Las ventas subieron un 50 %."),
+            ("Fueron trescientas doce pruebas.", "Fueron 312 pruebas."),
+            ("Dos millones de usuarios se registraron.", "2.000.000 de usuarios se registraron."),
+            ("Espera cuarenta y cinco minutos.", "Espera 45 minutos."),
+            ("El proyecto termina en dos mil veintiséis.", "El proyecto termina en 2026."),
+            ("Pon el tiempo de espera en treinta segundos.", "Pon el tiempo de espera en 30 segundos."),
+            ("Arreglamos ciento veinte errores.", "Arreglamos 120 errores."),
+            ("Tiene doce años.", "Tiene 12 años."),
+            ("Cuesta mil euros.", "Cuesta 1000 euros."),
+        ]
+
+        /// The article "un/una", small counts, "mil veces", "cien por cien".
+        static let numbersUnchanged: [String] = [
+            "Tengo una pregunta.",
+            "Es un buen plan.",
+            "Dame cinco minutos.",
+            "Tenemos dos hijos.",
+            "Llegó la primera.",
+            "Uno de ellos aceptó.",
+            "Siete de ellos vinieron.",
+            "Veinte no es mucho.",
+            "Nos vimos a las ocho.",
+            "Te lo he dicho mil veces.",
+            "Cien por cien seguro.",
+        ]
+    }
+}
