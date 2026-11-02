@@ -73,12 +73,14 @@ struct TranscriptPipeline: Sendable {
     }
 
     /// `code`: the text is going into an editor, a terminal or a coding agent.
-    func process(_ text: String, code: Bool = false) async -> Output {
+    /// `context`: terms for this dictation only, read from the screen
+    /// (`ScreenContext`).
+    func process(_ text: String, code: Bool = false, context: [VocabularyTerm] = []) async -> Output {
         // Vocabulary correction is Turkish-only, and unsafe rather than merely
         // useless elsewhere: its guard against replacing a real word is a
         // Turkish word list, so on English it turned "into main" into "Notion".
         // Skipping is the correct behaviour, not a limitation to work around.
-        let terms = code ? codeVocabulary : vocabulary
+        let terms = (code ? codeVocabulary : vocabulary).adding(context)
         let corrected = Vocabulary.isSupported(language: language)
             ? terms.correct(text)
             : Vocabulary.Result(text: text, corrections: [])

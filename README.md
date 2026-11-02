@@ -194,6 +194,21 @@ rules are conservative:
 are part of the `yaz eval` score, together with the 30 everyday sentences,
 which must stay unchanged. Set `"numbers": false` to turn it off.
 
+### Names on screen
+
+You usually dictate about something you are looking at: a pull request, a
+Slack thread, an error. When you press the key, yaz reads the visible text of
+the front window through Accessibility. It takes the words that look like names
+(`PaymentGateway`, `useState`, `CORS`, `Vercel`, "Pull Request") and adds them
+to the vocabulary for that one dictation. The reading takes at most 0.25 s
+and 1,500 elements, and runs while you speak.
+
+Nobody chose these words, so two guards apply. A screen term must sound
+closer than your own terms (0.86 instead of 0.78). And the list first goes
+through the everyday sentences of the fixed evaluation set: a word that would
+change one of them is dropped. Nothing is saved. Password fields are never
+read. Set `"screen_context": false` to turn this off.
+
 ### Learning from your fixes
 
 When you fix a term after a dictation, yaz learns from it, but only under
@@ -457,6 +472,7 @@ same file. Therefore you can also edit the file manually.
   "vad_threshold": 0.3,
   "learn": true,
   "numbers": true,
+  "screen_context": true,
   "on_transcript": "my-hook",
   "vocabulary": [
     "Slack", "pull request", "CI pipeline", "Kubernetes",

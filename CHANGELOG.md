@@ -10,6 +10,12 @@ Version 0.2.0 (build 2) in `Resources/AppInfo.plist`, not yet released.
 
 ### Added
 
+- **Names on screen.** When the key goes down, yaz reads the front window's
+  visible text through Accessibility and adds the words that look like names
+  (`PaymentGateway`, `CORS`, "Pull Request") to the vocabulary for that
+  dictation only. These terms need a closer match (0.86), and any that would
+  change one of the fixed set's everyday sentences is dropped first. Nothing
+  is saved. `"screen_context": false` turns it off.
 - **Your own test set.** Every fix you make after a dictation and every
   dictation you keep as pasted becomes a private case in `personal.json`.
   A learned rule must also leave these no worse, so it can never break one of

@@ -143,6 +143,11 @@
         </article>
 
         <article class="feature">
+          <h3>Knows what you are looking at</h3>
+          <p>Press the key in a pull request or a Slack thread and yaz reads the names on screen, <code>PaymentGateway</code>, <code>CORS</code>, <i>Vercel</i>, for that one dictation. Your own list still comes first; a screen word needs a closer match and must leave every everyday test sentence alone. Nothing is saved.</p>
+        </article>
+
+        <article class="feature">
           <h3>Wrong text is worse than none</h3>
           <p>A tap shorter than 0.35&nbsp;s or a silent recording never reaches the model. After it, the decoder's own signals catch invented text and repeat loops. An optional voice detector drops a fan, typing or a cough.</p>
         </article>
@@ -342,6 +347,10 @@ curl -s https://yaz.mike4.dev/downloads/latest.json</code></pre>
         <details>
           <summary>Does it work in English?</summary>
           <p>Yes: set <code>language</code> to <code>en</code>. Transcription works in every language Whisper supports. Term repair runs on Turkish and German, filler removal on Turkish, by design.</p>
+        </details>
+        <details>
+          <summary>What does yaz read on screen?</summary>
+          <p>When you press the key, the visible text of the front window, through Accessibility, for at most a quarter of a second. It keeps only the words that look like names, uses them for that dictation, and saves nothing. Password fields are never read. Set <code>"screen_context": false</code> to turn it off.</p>
         </details>
         <details>
           <summary>What does learning read, and can I turn it off?</summary>
