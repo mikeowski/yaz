@@ -1,7 +1,9 @@
 {
   // The landing page and the Sparkle update feed, served as static assets
-  // (no Worker script). Deploy: scripts/release.sh --deploy, or
-  // npx wrangler@4 deploy.
+  // (no Worker script). Cloudflare builds it from this repository on every
+  // push to main (Workers Builds; build command: sh scripts/site-build.sh).
+  // By hand: scripts/release.sh --deploy, or npx wrangler@4 deploy.
+  // The Worker's name in the Cloudflare dashboard must match "name" below.
   "name": "yaz",
   "compatibility_date": "2026-11-01",
   "assets": {

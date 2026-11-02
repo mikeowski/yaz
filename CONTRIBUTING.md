@@ -129,12 +129,12 @@ does not work is never published.
 The site is published two ways, to the same Worker (`wrangler.jsonc`: the
 Worker `yaz`, custom domain `yaz.mike4.dev`):
 
-- **From CI** (`.github/workflows/site.yml`): every push to `main` that touches
-  `site/` deploys it. It needs the repository secrets `CLOUDFLARE_API_TOKEN`
-  (template "Edit Cloudflare Workers", with the mike4.dev zone) and
-  `CLOUDFLARE_ACCOUNT_ID`. DMGs are not committed, so the job fetches the one
-  `latest.json` names from the GitHub release and checks its SHA-256 — release
-  with `--github` before you push the new manifest.
+- **By Cloudflare** (Workers Builds, connected to this repository): every push
+  to `main` that touches the site builds and deploys it on Cloudflare's own
+  build machines. No GitHub Actions minutes, no API token in this repository.
+  The build command is `sh scripts/site-build.sh`: DMGs are not committed, so
+  it fetches the one `latest.json` names from the GitHub release and checks
+  its SHA-256 — release with `--github` before you push the new manifest.
 - **From your Mac**: `--deploy`, after `npx wrangler login` once.
 
 After a release, commit `site/downloads/appcast.xml`, `latest.json` and
