@@ -9,9 +9,11 @@ yaz then writes the text at your cursor. No data goes out of your computer.
 
 **Website:** [yaz.mike4.dev](https://yaz.mike4.dev)
 
-yaz uses the structure of [parrot](https://github.com/digimata/parrot). It adds
-the three functions that parrot does not have: a default that operates in many
-languages, reliable text insertion, and post-processing.
+yaz works in Turkish, English, German, Spanish and French. Your main language
+gets the clean-up layers: English terms spelled right, numbers as digits,
+voice commands and learning from your fixes. Every other language Whisper
+speaks is transcribed as is. yaz started from [parrot](https://github.com/digimata/parrot)
+and from Turkish, which remains its reference language.
 
 **Requirements:** macOS 26 or a later version, on an Apple Silicon computer.
 
@@ -93,52 +95,48 @@ also installs a daemon that asks for TCC permissions. Read the script first.
 
 ## Which languages does yaz support?
 
-There are two different answers. The difference is important.
+**Transcription works in every language Whisper speaks.** Set `language`
+(or pick it in Settings) and Whisper decodes in it.
 
-**Transcription operates in many languages.** The engine is Whisper. Set
-`language` to a code that Whisper supports. This is a measurement in English.
-No Turkish function changed the text:
+**Five main languages get everything else.** For the main language you
+choose, yaz also repairs your terms, removes fillers, writes numbers as
+digits, carries out voice commands and gives Apple's model instructions in
+that language. Turkish is where yaz started and remains the reference:
 
-```
-$ yaz transcribe --language en sample.wav
-  latency 520 ms · RTF 0.107
-  Today I reviewed the pull request and merged it into main after the CI pipeline turned green.
-```
+| Language | Term repair guard | Fillers | Numbers | Commands |
+|---|---|---|---|---|
+| Turkish (`tr`) | `TurkishLexicon` | ıı, ee | `saat on beş otuzda` → `15.30'da` | `yeni satır`, `soru işareti`, `geri al` |
+| English (`en`) | `EnglishLexicon` | um, uh | `fifteen thousand dollars` → `15,000 dollars` | `new line`, `question mark`, `scratch that` |
+| German (`de`) | `GermanLexicon` | äh, ähm | `um fünfzehn Uhr dreißig` → `um 15:30 Uhr` | `neue Zeile`, `Fragezeichen`, `lösch das` |
+| Spanish (`es`) | `SpanishLexicon` | ehm, em | `quince mil euros` → `15.000 euros` | `nueva línea`, `signo de interrogación` → `¿…?` |
+| French (`fr`) | `FrenchLexicon` | euh, hum | `quatre-vingt-dix` → `90` | `à la ligne`, `point d'interrogation` → ` ?` |
 
-**Term repair operates in Turkish and German.** It needs a list of the usual
-words of the language. This is a safety limit, not a temporary condition.
-
-The guard that prevents an incorrect replacement is that list: a usual word is
-replaced only on near-exact evidence. In a language without a list, the guard
-protects nothing. These are measurements in English, from before the limit was
-in the code:
-
-```
-"into main"       → "Notion"
-"merged"          → "merge"
-"the CI pipeline" → "CI pipeline"
-```
-
-German was measured the same way before its list existed. Six of 30 ordinary
-sentences changed:
+Everything for one language lives in its `LanguagePack`
+(`Sources/yaz/Language/`). A language without a pack gets transcription only.
+That is a safety limit, not an oversight. The guard that prevents a wrong
+replacement is the language's own list of everyday words: an everyday word is
+replaced only on near-exact evidence. Without the list, the guard protects
+nothing. Measured with no list, ordinary sentences changed like this:
 
 ```
-"Morgen"   → "merge"       "Doktor"   → "Docker"
-"Reis"     → "Redis"       "war viel" → "Vercel"
-"Kurs"     → "Cursor"
+English  "doctor" → "Docker"   "into main" → "Notion"   "were all" → "Vercel"
+German   "Morgen" → "merge"    "Kurs" → "Cursor"        "Reis" → "Redis"
+Spanish  "curso" → "Cursor"    "vamos al" → "Vercel"
+French   "cours" → "Cursor"    "rideaux" → "Redis"      "déplacée" → "deploy"
 ```
 
-With `GermanLexicon` (about 650 frequent words), all 30 sentences are
-unchanged. So are 38 more sentences that were not used to make the list. A
-German spelling of a term is repaired: `Släck` → `Slack`, `Pullrequest` →
-`pull request`. The German evaluation set has no recall cases yet, because
-none are measured. Cases are added from real transcripts, not guessed.
+With the lists, none of the 30 everyday sentences per language changes, and
+neither do 20 to 38 more per language that were not used to build the lists.
+Numbers and commands are just as conservative: "one" the pronoun, "ein" the
+article, "mil veces", "Gib Acht" and "Yeni satır ekledim." stay words. A
+command after an article is a noun ("I need a new line."). The evaluation
+(`yaz eval`) covers all five languages. Only Turkish has measured recall
+cases so far; for the others they are added from real transcripts, never
+invented.
 
-For other languages yaz does not apply term repair. It reports this in the log.
-Support for a further language needs a list of its usual words
-(`Sources/yaz/Vocabulary/Lexicon.swift`) and a precision set in
-`EvalCorpus`. A flag is not sufficient. Filler removal (`refine: fillers`) is
-still Turkish only.
+Adding a language means a pack: a word list checked against everyday and
+held-out sentences, its numbers, commands, fillers and model instructions,
+and a set in `EvalCorpus`.
 
 ## Term repair
 

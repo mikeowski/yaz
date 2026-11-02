@@ -447,3 +447,15 @@ h3 { margin: 0; font-weight: 600; font-size: 19px; letter-spacing: -.02em; }
   .js .card .diff-fix { clip-path: none; transition: none; }
   .terminal.is-talking .t-wave i { animation: none; }
 }
+
+/* Languages */
+.langs { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.lang { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 4fr) minmax(0, 4fr); gap: 8px 32px; align-items: baseline; padding: 26px 0; border-bottom: 1px solid var(--line); }
+.lang p { margin: 0; }
+.lang-name { font-size: clamp(24px, 2.6vw, 34px); font-weight: 500; letter-spacing: -.03em; }
+.lang-name span { display: block; margin-top: 4px; font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-40); }
+.lang-raw { color: var(--ink-40); text-decoration: line-through; text-decoration-color: rgb(255 90 46 / .5); text-decoration-thickness: 1.5px; font-size: 18px; }
+.lang-fix { font-size: 18px; }
+.lang-fix mark { background: none; color: var(--accent); }
+@media (max-width: 860px) { .lang { grid-template-columns: minmax(0, 1fr); } }
+#languages .note { margin-top: 24px; }
