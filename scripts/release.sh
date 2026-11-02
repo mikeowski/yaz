@@ -200,5 +200,15 @@ fi
 if [[ " $* " == *" --deploy "* ]]; then
     printf '› deploying the site and the update feed\n'
     npx -y wrangler@4 deploy
-    note "commit site/downloads/appcast.xml, latest.json and site/_redirects"
+fi
+
+# The manifest, the signed feed and the redirects must reach main: Cloudflare
+# rebuilds the site from main on every push, and until they are committed
+# that build refuses to run (scripts/site-build.sh), so nothing else on the
+# site can ship either.
+if ! git diff --quiet -- site/downloads/latest.json site/downloads/appcast.xml site/_redirects; then
+    printf '\n› commit the release files now, or the next site deploy is blocked:\n\n'
+    printf '    git add site/downloads/latest.json site/downloads/appcast.xml site/_redirects\n'
+    printf '    git commit -m "Release %s: download manifest and update feed"\n' "$VERSION"
+    printf '    git push origin HEAD:main\n\n'
 fi
