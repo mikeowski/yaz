@@ -49,6 +49,25 @@ jobs:
         run: |
           ./dist/yaz.app/Contents/MacOS/yaz --help > /dev/null
           ./dist/yaz.app/Contents/MacOS/yaz models list
+          ./dist/yaz.app/Contents/MacOS/yaz updates
+
+      # scripts/install.sh installs the bare binary with no Sparkle.framework
+      # beside it. Sparkle is weak-linked so that this still starts; a strong
+      # link would fail here with a dyld "Library not loaded" error.
+      - name: Verify the CLI runs without Sparkle beside it
+        run: |
+          otool -l .build/release/yaz | grep -B1 -A3 LC_LOAD_WEAK_DYLIB | grep -q Sparkle \
+            || { echo "Sparkle is not weak-linked"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/cli"
+          cp .build/release/yaz "$RUNNER_TEMP/cli/yaz"
+          "$RUNNER_TEMP/cli/yaz" --help > /dev/null
+          "$RUNNER_TEMP/cli/yaz" updates | tee "$RUNNER_TEMP/cli/updates.txt"
+          grep -q "updates: off" "$RUNNER_TEMP/cli/updates.txt"
+
+      - name: Verify the bundle embeds Sparkle
+        run: |
+          test -d dist/yaz.app/Contents/Frameworks/Sparkle.framework
+          codesign --verify --deep --strict dist/yaz.app
 
   lint:
     runs-on: macos-26
