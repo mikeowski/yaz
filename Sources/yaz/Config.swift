@@ -55,6 +55,11 @@ struct Config: Sendable, Equatable {
     /// Show the transcript so far in the pill while recording. Costs an extra
     /// Whisper pass about once a second, so it is opt-in.
     var liveText: Bool = false
+    /// Project folders whose identifiers and file names dictation may spell,
+    /// in editors, terminals and coding agents. See `ProjectIndex`.
+    var projects: [String] = []
+    /// Extra bundle identifiers to treat as code apps (`CodeContext`).
+    var codeApps: [String] = []
 
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/yaz/config.json")
@@ -120,6 +125,12 @@ struct Config: Sendable, Equatable {
         if let value = json["menu_bar"] as? Bool { menuBar = value }
         if let value = json["vad"] as? Bool { vad = value }
         if let value = json["hands_free"] as? Bool { handsFree = value }
+        if let value = json["projects"] as? [String] {
+            projects = value.filter { !$0.isEmpty }
+        }
+        if let value = json["code_apps"] as? [String] {
+            codeApps = value.filter { !$0.isEmpty }
+        }
         if let value = json["live_text"] as? Bool { liveText = value }
         if let raw = json["microphone"] {
             if let uid = raw as? String, !uid.isEmpty { microphone = uid }
@@ -209,6 +220,8 @@ struct Config: Sendable, Equatable {
             "live_text": liveText,
         ]
         if let microphone { json["microphone"] = microphone }
+        if !projects.isEmpty { json["projects"] = projects }
+        if !codeApps.isEmpty { json["code_apps"] = codeApps }
         if let onTranscript { json["on_transcript"] = onTranscript }
         if !vocabulary.isEmpty {
             json["vocabulary"] = vocabulary.map { term -> Any in

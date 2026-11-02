@@ -16,6 +16,12 @@ struct TranscriptPipeline: Sendable {
 
     let vocabulary: Vocabulary
     let refiner: Refiner
+    /// For text going into code (`CodeContext`): the user's terms plus the
+    /// project's identifiers, the casing and file rules, and no language
+    /// model, which would "tidy" `getUserById` into words.
+    let codeVocabulary: Vocabulary
+    let formatter: CodeFormatter
+    let codeRefiner: Refiner
     /// The dictation language. Decides whether the Turkish-specific layers may
     /// run at all.
     let language: String
@@ -23,40 +29,60 @@ struct TranscriptPipeline: Sendable {
     struct Output: Sendable {
         let text: String
         let corrections: [Vocabulary.Correction]
+        /// Casing commands and file mentions applied (code context only).
+        var codeChanges: [CodeFormatter.Change] = []
         let refined: Bool
         /// Set when a refinement was produced and then thrown away.
         let refinementRejected: String?
     }
 
-    init(config: Config) {
+    init(config: Config, project: ProjectIndex = .empty) {
         self.vocabulary = Vocabulary(terms: config.vocabulary)
         self.refiner = Refiner(mode: config.refine, language: config.language)
         self.language = config.language
+        // The user's own terms first: they win a tie with a project name.
+        self.codeVocabulary = Vocabulary(terms: config.vocabulary + project.vocabularyTerms())
+        self.formatter = CodeFormatter(files: project.files)
+        self.codeRefiner = Refiner(
+            mode: config.refine == .llm ? .fillers : config.refine, language: config.language)
     }
 
-    init(vocabulary: Vocabulary, refiner: Refiner, language: String = Vocabulary.lexiconLanguage) {
+    init(
+        vocabulary: Vocabulary, refiner: Refiner, language: String = Vocabulary.lexiconLanguage,
+        codeVocabulary: Vocabulary? = nil, formatter: CodeFormatter = CodeFormatter()
+    ) {
         self.vocabulary = vocabulary
         self.refiner = refiner
         self.language = language
+        self.codeVocabulary = codeVocabulary ?? vocabulary
+        self.formatter = formatter
+        self.codeRefiner = refiner
     }
 
-    func process(_ text: String) async -> Output {
+    /// `code`: the text is going into an editor, a terminal or a coding agent.
+    func process(_ text: String, code: Bool = false) async -> Output {
         // Vocabulary correction is Turkish-only, and unsafe rather than merely
         // useless elsewhere: its guard against replacing a real word is a
         // Turkish word list, so on English it turned "into main" into "Notion".
         // Skipping is the correct behaviour, not a limitation to work around.
+        let terms = code ? codeVocabulary : vocabulary
         let corrected = Vocabulary.isSupported(language: language)
-            ? vocabulary.correct(text)
+            ? terms.correct(text)
             : Vocabulary.Result(text: text, corrections: [])
-        let result = await refiner.refine(corrected.text)
+        // Casing and file names do not depend on the language.
+        let formatted = code
+            ? formatter.format(corrected.text)
+            : CodeFormatter.Result(text: corrected.text, changes: [])
+        let result = await (code ? codeRefiner : refiner).refine(formatted.text)
 
         // A refinement that loses a repaired term is not an improvement.
         if result.changed, let lost = firstLostTerm(
             corrections: corrected.corrections, in: result.text
         ) {
             return Output(
-                text: corrected.text,
+                text: formatted.text,
                 corrections: corrected.corrections,
+                codeChanges: formatted.changes,
                 refined: false,
                 refinementRejected: "post-processing dropped the term \"\(lost)\"")
         }
@@ -64,6 +90,7 @@ struct TranscriptPipeline: Sendable {
         return Output(
             text: result.text,
             corrections: corrected.corrections,
+            codeChanges: formatted.changes,
             refined: result.changed,
             refinementRejected: result.rejection)
     }

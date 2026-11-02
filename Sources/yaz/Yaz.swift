@@ -9,7 +9,7 @@ struct Yaz: ParsableCommand {
         commandName: "yaz",
         abstract: "On-device dictation for macOS. Hold the key, speak, release — the text lands at your cursor.",
         version: AppEnvironment.version,
-        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self, Microphones.self],
+        subcommands: [Run.self, Settings.self, Doctor.self, ResetPermissions.self, Logs.self, History.self, Install.self, Transcribe.self, Models.self, Vocab.self, Preview.self, UpdatesStatus.self, Microphones.self, Projects.self],
         defaultSubcommand: Run.self
     )
 }
@@ -1038,6 +1038,50 @@ struct Microphones: ParsableCommand {
         }
         if let chosen, !inputs.contains(where: { $0.uid == chosen }) {
             print("note: the configured microphone \(chosen) is not connected — yaz uses the system default")
+        }
+    }
+}
+
+/// `yaz projects`: what the project index knows, and a dry run of code mode.
+struct Projects: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Show the names indexed from the project folders, or test code mode on a sentence.")
+
+    @Option(name: .long, help: "A sentence to run through code mode, as if dictated into an editor.")
+    var test: String?
+
+    @Option(name: .long, help: "How many names to list.")
+    var top: Int = 20
+
+    func run() throws {
+        try runBlocking {
+            let config = Config.load()
+            guard !config.projects.isEmpty else {
+                print("no projects — add folders to \"projects\" in \(Config.path.path)")
+                return
+            }
+            let started = Date()
+            let index = ProjectIndex.scan(config.projects)
+            print(String(format: "%d compound names, %d files, %.2f s",
+                         index.identifiers.count, index.files.count,
+                         Date().timeIntervalSince(started)))
+
+            if let test {
+                let pipeline = TranscriptPipeline(config: config, project: index)
+                let output = await pipeline.process(test, code: true)
+                for correction in output.corrections {
+                    print("  vocabulary: \(correction.from) → \(correction.to)")
+                }
+                for change in output.codeChanges {
+                    print("  code: \(change.from) → \(change.to)")
+                }
+                print(output.text)
+                return
+            }
+
+            for term in index.vocabularyTerms(limit: top) {
+                print("  \(term.canonical)  ← \"\(term.aliases.first ?? "")\"")
+            }
         }
     }
 }
