@@ -16,6 +16,14 @@ Notable changes to yaz. Format loosely follows
   "fifty percent" → "50%"), voice commands ("new line", "question mark",
   "scratch that"), and English instructions for the language model.
 
+- **German, complete.** German now has every layer: "äh"/"ähm" removal
+  ("mhm" means yes and stays), numbers taken apart from compound words
+  ("fünfzehntausend Euro" → "15.000 Euro", "um fünfzehn Uhr dreißig" →
+  "um 15:30 Uhr", "fünfzig Prozent" → "50 %"), voice commands ("neue Zeile",
+  "Fragezeichen", "lösch das") and German model instructions.
+- A spoken command after an article is a noun, not a command: "I need a new
+  line.", "Da steht ein Fragezeichen." stay sentences, in every language.
+
 ### Fixed
 
 - An English plural of a term ("pull requests") was cut back to the term.

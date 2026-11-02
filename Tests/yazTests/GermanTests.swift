@@ -16,7 +16,7 @@ struct GermanTests {
     func precisionSet() {
         let score = Evaluator.score(language: "de")
         #expect(score.falseMatches == 0, "\(score.offenders)")
-        #expect(score.precisionCases == EvalCorpus.German.precision.count * 2)
+        #expect(score.precisionCases == EvalCorpus.German.precision.count * 3 + EvalCorpus.German.numbersUnchanged.count)
     }
 
     @Test("the summed score over every language is still zero")
@@ -87,5 +87,46 @@ struct GermanTests {
     @Test("German has no recall cases until some are measured")
     func noInventedRecall() {
         #expect(EvalCorpus.German.recall.isEmpty)
+    }
+
+    @Test("numbers: each evaluation case", arguments: EvalCorpus.German.numbersConvert.map { [$0.heard, $0.expected] })
+    func numbers(_ pair: [String]) {
+        #expect(GermanNumbers.format(pair[0]).text == pair[1])
+    }
+
+    @Test("numbers: the article, Acht, ordinals and idioms stay words", arguments: EvalCorpus.German.numbersUnchanged)
+    func numberLookAlikes(_ sentence: String) {
+        #expect(GermanNumbers.format(sentence).text == sentence)
+    }
+
+    @Test("compound number words are taken apart")
+    func compounds() {
+        #expect(GermanNumbers.value(of: "zweitausendsechsundzwanzig") == 2026)
+        #expect(GermanNumbers.value(of: "Einhundertzwanzig") == 120)
+        #expect(GermanNumbers.value(of: "dreihundertzwölf") == 312)
+        #expect(GermanNumbers.value(of: "hundertmal") == nil)
+        #expect(GermanNumbers.value(of: "ein") == nil)
+    }
+
+    @Test("commands, with the article rule")
+    func commands() {
+        let set = CommandSet.german
+        #expect(VoiceCommands.apply("Kommst du heute Fragezeichen", set: set).text == "Kommst du heute?")
+        #expect(VoiceCommands.apply("Da steht ein Fragezeichen.", set: set).text == "Da steht ein Fragezeichen.")
+        #expect(VoiceCommands.apply("Danke, neue Zeile. Bis morgen.", set: set).text == "Danke\nBis morgen.")
+        #expect(VoiceCommands.control("Lösch das.", set: set) == .undoLast)
+    }
+
+    @Test("the article rule holds in English and Turkish too")
+    func articleRule() {
+        #expect(VoiceCommands.apply("I need a new line.", set: .english).text == "I need a new line.")
+        #expect(VoiceCommands.apply("Thanks, new line.", set: .english).text == "Thanks\n")
+        #expect(VoiceCommands.apply("Bu bir yeni satır.", set: .turkish).text == "Bu bir yeni satır.")
+    }
+
+    @Test("German fillers go, \"mhm\" (yes) stays")
+    func fillers() async {
+        let result = await Refiner(mode: .fillers, language: "de").refine("ähm ich glaube äh das passt, mhm")
+        #expect(result.text == "ich glaube das passt, mhm")
     }
 }
