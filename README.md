@@ -263,9 +263,18 @@ a rule taken from Karpathy's
 [autoresearch](https://github.com/karpathy/autoresearch): a fixed evaluation
 decides, and a change is kept only if the evaluation does not get worse.
 
-- About 12 seconds after a paste, yaz reads the field back through
-  Accessibility, if you are still in the same app. It finds the words you
-  replaced. Secure fields are never read, and no text leaves the Mac.
+- After a paste, yaz watches the field through Accessibility, about once a
+  second for up to a minute, while you stay in that app. The text before
+  and after the dictation anchors it, so a word you delete and retype is
+  found even in a two-word dictation. A fix followed by Return still counts,
+  because the last reading before the field emptied is the one used. Secure
+  fields are never read, and no text leaves the Mac.
+- Electron apps (Slack, VS Code, Notion, Discord, Cursor) expose their text
+  fields only when an assistive app asks, so yaz asks them
+  (`AXManualAccessibility`).
+- The menu shows each step: "noted: Sılacık → Slack, once more to learn it",
+  "learned", or "not learned". `yaz logs` has the same lines, including
+  "could not read the text field" for an app whose fields stay closed.
 - If you make the same fix twice, for example `Vörsel` → `Vercel`, it becomes a
   candidate rule. `Evaluator.gate` keeps the rule only if it repairs its
   own case and the score over `EvalCorpus` stays the same or improves. That

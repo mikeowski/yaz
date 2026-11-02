@@ -202,7 +202,7 @@
 
       <div class="learns-grid">
         <ol class="loop" aria-label="How a fix becomes a rule">
-          <li><b>You fix it.</b> About 12&nbsp;s after a paste, yaz reads the field back, if you are still in it. Secure fields never.</li>
+          <li><b>You fix it.</b> yaz follows the field for up to a minute while you edit, so a word you delete and retype counts, even if you press Return right after. Secure fields never.</li>
           <li><b>It is noted.</b> The replaced words must sound alike and must not be ordinary Turkish: an edit of meaning is not a mishearing.</li>
           <li><b>Twice, it is tested.</b> 7 measured manglings and 60 everyday sentences, scored as false matches&nbsp;×&nbsp;3 + misses. The rule stays only if the score does not rise.</li>
           <li><b>Undo is instant.</b> Put back a word yaz changed, and that replacement is blocked at once.</li>
@@ -379,7 +379,7 @@ curl -s https://yaz.mike4.dev/downloads/latest.json</code></pre>
         </details>
         <details>
           <summary>What does learning read, and can I turn it off?</summary>
-          <p>Once, about 12&nbsp;seconds after a paste, the text of the field you dictated into, through Accessibility, and only if that app is still in front. Password fields are never read. Nothing is sent anywhere. The learned word pairs are saved, and, while history is on, your fixed and kept dictations as private test cases. Set <code>"learn": false</code> to turn it off, <code>yaz learned --clear</code> to forget everything.</p>
+          <p>After a paste, the text of the field you dictated into, about once a second for up to a minute, through Accessibility, and only while that app is in front. Password fields are never read. Nothing is sent anywhere. The learned word pairs are saved, and, while history is on, your fixed and kept dictations as private test cases. Set <code>"learn": false</code> to turn it off, <code>yaz learned --clear</code> to forget everything.</p>
         </details>
         <details>
           <summary>How do I uninstall it?</summary>
