@@ -21,6 +21,12 @@ Notable changes to yaz. Format loosely follows
   ("fünfzehntausend Euro" → "15.000 Euro", "um fünfzehn Uhr dreißig" →
   "um 15:30 Uhr", "fünfzig Prozent" → "50 %"), voice commands ("neue Zeile",
   "Fragezeichen", "lösch das") and German model instructions.
+- **Spanish as a main language.** Term repair guarded by a Spanish word list
+  (without it, "curso" became Cursor and "doctor" Docker; with it, none of
+  30 everyday and 20 held-out sentences change), "ehm" removal, numbers
+  ("quince mil euros" → "15.000 euros", "cincuenta por ciento" → "50 %"),
+  commands ("nueva línea", "borra eso") with opening marks ("¿Vienes hoy?"),
+  and Spanish model instructions. Accents are ignored when matching.
 - A spoken command after an article is a noun, not a command: "I need a new
   line.", "Da steht ein Fragezeichen." stay sentences, in every language.
 

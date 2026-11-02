@@ -94,6 +94,7 @@ enum VoiceCommands {
                     glued = true
                 case let .mark(mark):
                     if out.last == "," || out.last == "." || out.last == ";" { out.removeLast() }
+                    if let opening = set.openings[mark] { open(&out, with: opening) }
                     out.append(mark)
                     glued = false
                 }
@@ -135,6 +136,21 @@ enum VoiceCommands {
             return (n, phrase.insert)
         }
         return nil
+    }
+
+    /// Spanish opens a question or an exclamation: put "¿" at the start of
+    /// the sentence being closed, and capitalise it.
+    private static func open(_ out: inout String, with opening: Character) {
+        let enders: Set<Character> = [".", "!", "?", "\n", "¿", "¡"]
+        var start = out.startIndex
+        if let last = out.lastIndex(where: { enders.contains($0) }) {
+            start = out.index(after: last)
+            if out[last] == opening { return }
+        }
+        while start < out.endIndex, out[start] == " " { start = out.index(after: start) }
+        guard start < out.endIndex else { return }
+        let first = out[start]
+        out.replaceSubrange(start...start, with: String(opening) + String(first).uppercased())
     }
 
     private static func trimEnd(_ out: inout String) {
@@ -184,6 +200,8 @@ struct CommandSet: Sendable {
     /// Words that make a command phrase a noun instead: "I need a new
     /// line.", "Da steht ein Fragezeichen." (an article before it).
     var notAfter: Set<String> = []
+    /// Marks that also open their sentence: Spanish "?" → "¿…?".
+    var openings: [Character: Character] = [:]
     /// Turkish capitalisation (i → İ) after a command.
     var turkishCase = false
     /// Lowercasing for matching: Turkish needs its own (I → ı).
