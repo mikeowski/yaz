@@ -6,6 +6,20 @@ Notable changes to yaz. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- **English as a main language.** Set `"language": "en"` and English gets
+  the full pack: term repair guarded by an English word list (without it,
+  "doctor" became Docker and "into main" Notion; with it, none of 30
+  everyday and 26 held-out sentences change), "um"/"uh" removal, numbers
+  Whisper left as words ("fifteen thousand dollars" → "15,000 dollars",
+  "fifty percent" → "50%"), voice commands ("new line", "question mark",
+  "scratch that"), and English instructions for the language model.
+
+### Fixed
+
+- An English plural of a term ("pull requests") was cut back to the term.
+
 ## [0.2.0] — 2026-11-02
 
 Build 2. Release notes: `release-notes/0.2.0.md`.

@@ -33,12 +33,22 @@ enum Evaluator {
         let riskyTerms: [VocabularyTerm]
         let recall: [(heard: String, expected: String)]
         let precision: [String]
+        /// Spoken numbers that must be written, and sentences that must stay,
+        /// for the language's number writer (`LanguagePack.numbers`).
+        var numberConvert: [(heard: String, expected: String)] = []
+        var numberUnchanged: [String] = []
     }
 
     static let sets: [LanguageSet] = [
         LanguageSet(
             language: "tr", riskyTerms: EvalCorpus.riskyTerms,
-            recall: EvalCorpus.recall, precision: EvalCorpus.precision),
+            recall: EvalCorpus.recall, precision: EvalCorpus.precision,
+            numberConvert: EvalCorpus.Numbers.convert, numberUnchanged: EvalCorpus.Numbers.unchanged),
+        LanguageSet(
+            language: EvalCorpus.English.language, riskyTerms: EvalCorpus.English.riskyTerms,
+            recall: EvalCorpus.English.recall, precision: EvalCorpus.English.precision,
+            numberConvert: EvalCorpus.English.numbersConvert,
+            numberUnchanged: EvalCorpus.English.numbersUnchanged),
         LanguageSet(
             language: EvalCorpus.German.language, riskyTerms: EvalCorpus.German.riskyTerms,
             recall: EvalCorpus.German.recall, precision: EvalCorpus.German.precision),
@@ -120,28 +130,31 @@ enum Evaluator {
                 }
             }
         }
-        if chosen.contains(where: { $0.language == TurkishNumbers.language }) {
-            addNumbers(to: &score)
+        for set in chosen where !set.numberConvert.isEmpty {
+            if let write = LanguagePack.forLanguage(set.language)?.numbers {
+                addNumbers(set, write: write, to: &score)
+            }
         }
         return score
     }
 
     /// Numbers: every Turkish sentence of the corpus plus the look-alikes
     /// must come through unchanged, and every spoken number must be written.
-    private static func addNumbers(to score: inout Score) {
-        let unchanged = EvalCorpus.precision + EvalCorpus.Numbers.unchanged
+    private static func addNumbers(
+        _ set: LanguageSet, write: (String) -> TurkishNumbers.Result, to score: inout Score
+    ) {
+        let unchanged = set.precision + set.numberUnchanged
         score.precisionCases += unchanged.count
         for sentence in unchanged {
-            let result = TurkishNumbers.format(sentence)
+            let result = write(sentence)
             if result.text != sentence {
                 score.falseMatches += 1
-                score.offenders.append("[numbers] " + result.changes.map { "\($0.from) → \($0.to)" }
+                score.offenders.append("[\(set.language) numbers] " + result.changes.map { "\($0.from) → \($0.to)" }
                     .joined(separator: ", "))
             }
         }
-        score.recallCases += EvalCorpus.Numbers.convert.count
-        for (heard, expected) in EvalCorpus.Numbers.convert
-        where TurkishNumbers.format(heard).text != expected {
+        score.recallCases += set.numberConvert.count
+        for (heard, expected) in set.numberConvert where write(heard).text != expected {
             score.misses += 1
         }
     }

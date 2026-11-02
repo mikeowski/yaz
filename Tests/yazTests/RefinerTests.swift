@@ -291,8 +291,8 @@ struct RefinerLanguageTests {
     }
 
     @Test(
-        "other languages are returned untouched",
-        arguments: ["en", "de", "fr", "en-US", "ru"])
+        "languages without fillers are returned untouched",
+        arguments: ["de", "fr", "ru", "ja"])
     func skipsOtherLanguages(language: String) async {
         let text = "a lot of people say um I think we should merge this"
         let result = await Refiner(mode: .fillers, language: language).refine(text)
@@ -300,17 +300,33 @@ struct RefinerLanguageTests {
         #expect(!result.changed)
     }
 
-    /// The expensive half of the boundary. The model is primed with
-    /// "Sen bir Türkçe dikte temizleme asistanısın", so English must not reach
-    /// it — and the stub proves the call never happens rather than merely that
-    /// the output was discarded afterwards.
-    @Test("the model is never called for a non-Turkish transcript")
-    func doesNotReachTheModelInEnglish() async {
+    /// The expensive half of the boundary. The model's instructions belong
+    /// to a language pack, so a language without one must not reach it, and
+    /// the stub proves the call never happens rather than merely that the
+    /// output was discarded afterwards.
+    @Test("the model is never called for a language without a pack")
+    func doesNotReachTheModelWithoutAPack() async {
         let backend = StubBackend(response: "MODEL WAS CALLED")
-        let refiner = Refiner(mode: .llm, language: "en", backend: backend)
+        let refiner = Refiner(mode: .llm, language: "ja", backend: backend)
         let result = await refiner.refine("um I think we should merge this")
         #expect(result.text == "um I think we should merge this")
         #expect(result.rejection == nil)
+    }
+
+    @Test("English hesitations go, English words stay")
+    func englishFillers() async {
+        let result = await Refiner(mode: .fillers, language: "en-US")
+            .refine("a lot of people say um I think uh we should merge this")
+        #expect(result.text == "a lot of people say I think we should merge this")
+    }
+
+    @Test("the model is called for English, with English instructions")
+    func reachesTheModelInEnglish() async {
+        let backend = StubBackend(response: "I think we should merge this.")
+        let result = await Refiner(mode: .llm, language: "en", backend: backend)
+            .refine("um I think we should merge this")
+        #expect(result.text == "I think we should merge this.")
+        #expect(LanguagePack.english.refineInstructions?.hasPrefix("You clean up dictated English") == true)
     }
 
     @Test("the model is still called for Turkish")
@@ -324,12 +340,12 @@ struct RefinerLanguageTests {
 
     /// The whole pipeline, not just the refiner: this is the path a real
     /// dictation takes.
-    @Test("the pipeline leaves an English transcript byte-identical")
+    @Test("the pipeline leaves a clean English transcript byte-identical")
     func pipelineLeavesEnglishAlone() async {
         let text = "I merged the pull request into main after CI turned green"
         let pipeline = TranscriptPipeline(
             vocabulary: Vocabulary(terms: ["Slack", "pull request", "Notion"]
-                .map { VocabularyTerm(canonical: $0) }),
+                .map { VocabularyTerm(canonical: $0) }, language: "en"),
             refiner: Refiner(mode: .fillers, language: "en"),
             language: "en")
         let output = await pipeline.process(text)
