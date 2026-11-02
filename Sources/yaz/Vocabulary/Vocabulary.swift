@@ -212,8 +212,11 @@ struct Vocabulary: Sendable {
         let original = window.map(\.core).joined(separator: " ")
 
         // Already correct — nothing to do, and reporting it as a correction
-        // would be noise.
-        if stems.compare(entry.surface, options: .caseInsensitive) == .orderedSame {
+        // would be noise. Compared with the canonical form, not the entry's
+        // spelling: an alias heard exactly is the clearest match there is,
+        // and skipping it meant a learned alias only ever worked when the
+        // canonical form caught the word anyway.
+        if stems.compare(entry.canonical, options: .caseInsensitive) == .orderedSame {
             return nil
         }
 
