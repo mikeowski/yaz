@@ -1,4 +1,3 @@
 # Stable download URLs. Rewritten by scripts/release.sh on every release.
-# Until the first release built by it (0.2.0), the DMG is on GitHub.
-/download          https://github.com/mikeowski/yaz/releases/download/v0.1.0/yaz-0.1.0.dmg   302
-/download/latest   /downloads/latest.json   302
+/download          /downloads/yaz-latest.dmg   302
+/download/latest   /downloads/latest.json      302
