@@ -103,7 +103,8 @@ SIZE=$(stat -f%z "$DMG")
 # --- the website's download folder --------------------------------------------
 #
 # Only the current version is served (older DMGs stay in dist/ and on GitHub).
-# DMGs are not committed; latest.json and appcast.xml are.
+# DMGs are not committed; latest.json and appcast.xml may be (the site build
+# copies all three over from the live site either way).
 
 mkdir -p "$DOWNLOADS"
 find "$DOWNLOADS" -name 'yaz-*.dmg' -delete
@@ -202,12 +203,11 @@ if [[ " $* " == *" --deploy "* ]]; then
     npx -y wrangler@4 deploy
 fi
 
-# The manifest, the signed feed and the redirects must reach main: Cloudflare
-# rebuilds the site from main on every push, and until they are committed
-# that build refuses to run (scripts/site-build.sh), so nothing else on the
-# site can ship either.
+# The site deploys itself on every push to main (scripts/site-build.sh copies
+# these files over from the live site), so committing them is only for the
+# record. It keeps the repository's copies in step with what is live.
 if ! git diff --quiet -- site/downloads/latest.json site/downloads/appcast.xml site/_redirects; then
-    printf '\n› commit the release files now, or the next site deploy is blocked:\n\n'
+    printf '\n› optional: commit the release files so the repository matches the live site:\n\n'
     printf '    git add site/downloads/latest.json site/downloads/appcast.xml site/_redirects\n'
     printf '    git commit -m "Release %s: download manifest and update feed"\n' "$VERSION"
     printf '    git push origin HEAD:main\n\n'
