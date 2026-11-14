@@ -27,9 +27,14 @@ final class Daemon {
     private let settings = SettingsWindowController()
     private let verbose: Bool
 
-    /// Set while a transcription is running so a second press cannot start a
-    /// recording that would land in the middle of the previous one's paste.
-    private var busy = false
+    /// Recordings stopped and not yet finished. A press while one is still
+    /// being transcribed starts a new recording (0.2 ignored it, and the
+    /// user spoke into nothing); finishing runs one at a time, in order,
+    /// through `finishing`, so pastes keep the order they were spoken in.
+    private let finishing = OrderedWork()
+    /// The last recording whose transcription failed, for "Retry Last
+    /// Recording". One only: a newer failure replaces it.
+    private var failedRecording: [Float]?
 
     /// False until the model is loaded. The event tap is installed before the
     /// load so permission failures surface immediately, which leaves a window
@@ -100,6 +105,7 @@ final class Daemon {
         menuBar?.onUseFallbackHotkey = { [weak self] in self?.switchToFallbackHotkey() }
         menuBar?.onPasteLast = { [weak self] in self?.pasteLast() }
         menuBar?.onUndoLast = { [weak self] in self?.undoLast() }
+        menuBar?.onRetryLast = { [weak self] in self?.retryLast() }
 
         // Sparkle runs only in the signed .app; `Updates` decides.
         if Updates.canUpdate {
@@ -539,10 +545,7 @@ final class Daemon {
                     log("  (model still loading)")
                     return
                 }
-                guard !busy else {
-                    if verbose { log("  (previous transcription still running — not recording)") }
-                    return
-                }
+                if finishing.pending > 0, verbose { log("  (previous transcription still running — queued after it)") }
             }
             apply(ptt.press(at: now))
         case .released:
@@ -598,9 +601,32 @@ final class Daemon {
         let sawSignal = capture.didSeeSignal
         let hitLimit = capture.didHitLimit
         if hitLimit { log("warning: recording hit the length limit and was truncated") }
+        let screen = screenTerms
+        screenTerms = nil
+        enqueue(samples, sawSignal: sawSignal, screen: screen)
+    }
+
+    /// Finish a recording after every earlier one.
+    private func enqueue(
+        _ samples: [Float], sawSignal: Bool, screen: Task<[VocabularyTerm], Never>?
+    ) {
         setIndicator(.transcribing)
-        busy = true
-        Task { await self.finish(samples, sawSignal: sawSignal) }
+        finishing.enqueue { [weak self] in
+            await self?.finish(samples, sawSignal: sawSignal, screen: screen)
+        }
+    }
+
+    /// Transcribe the kept failed recording again.
+    private func retryLast() {
+        guard let samples = failedRecording else { return }
+        guard ready else {
+            menuBar?.note("the model is not loaded yet")
+            return
+        }
+        failedRecording = nil
+        menuBar?.setRetryAvailable(false)
+        log("↻ retrying the last recording")
+        enqueue(samples, sawSignal: true, screen: nil)
     }
 
     // MARK: - Live preview
@@ -670,10 +696,13 @@ final class Daemon {
         if blocker == .noAccessibility { menuBar?.setNeedsPermission(true) }
     }
 
-    private func finish(_ samples: [Float], sawSignal: Bool) async {
+    private func finish(
+        _ samples: [Float], sawSignal: Bool, screen screenTerms: Task<[VocabularyTerm], Never>?
+    ) async {
         defer {
-            busy = false
-            setIndicator(.idle)
+            // A newer recording owns the indicator while it runs. This
+            // recording still counts in `pending` until it returns.
+            if !capture.isRecording { setIndicator(finishing.pending > 1 ? .transcribing : .idle) }
         }
 
         let started = Date()
@@ -682,6 +711,8 @@ final class Daemon {
         let (appConfig, activePipeline) = settings(for: AppEnvironment.frontmostApp()?.bundleID)
         do {
             var options = TranscribeOptions()
+            options.timeout = TranscribeOptions.timeout(
+                forAudioSeconds: Double(samples.count) / AudioLoader.sampleRate)
             options.voice = config.voiceCheck
             if appConfig.language != config.language { options.language = appConfig.language }
             let output = try await engine.transcribe(samples, options: options)
@@ -710,7 +741,6 @@ final class Daemon {
                let set = LanguagePack.forLanguage(appConfig.language)?.commands,
                let control = VoiceCommands.control(output.text, set: set) {
                 screenTerms?.cancel()
-                screenTerms = nil
                 switch control {
                 case .undoLast: undoLast()
                 }
@@ -719,10 +749,9 @@ final class Daemon {
 
             let code = appConfig.codeOverride ?? CodeContext.isCode(
                 bundleID: AppEnvironment.frontmostApp()?.bundleID, extra: config.codeApps)
-            if appConfig.refine == .llm && !code { setIndicator(.refining) }
+            if appConfig.refine == .llm && !code && !capture.isRecording { setIndicator(.refining) }
             let screen = await screenTerms?.value ?? []
             let context = appConfig.screenContext && appConfig.language == config.language ? screen : []
-            screenTerms = nil
             if verbose, !context.isEmpty {
                 log("  screen: \(context.count) terms (\(context.prefix(6).map(\.canonical).joined(separator: ", ")))")
             }
@@ -797,7 +826,12 @@ final class Daemon {
                 log("warning: no signal from the microphone — check the input device")
             }
         } catch {
+            // Keep the audio: a timeout or a model error must not cost the
+            // user what they said.
             log("✗ \(error)")
+            failedRecording = samples
+            menuBar?.setRetryAvailable(true)
+            menuBar?.note("transcription failed — Retry Last Recording")
         }
     }
 

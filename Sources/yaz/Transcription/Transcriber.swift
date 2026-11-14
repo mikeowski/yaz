@@ -82,6 +82,13 @@ struct TranscribeOptions: Sendable {
     /// profile (`AppProfile.language`). Whisper only.
     var language: String? = nil
 
+    /// The timeout for a recording of `seconds`: never under 120 s, and
+    /// never under the recording's own length. A fixed 120 s lost a long
+    /// hands-free take (up to ten minutes) on a slower Mac.
+    static func timeout(forAudioSeconds seconds: Double) -> Duration {
+        .seconds(max(120, seconds.rounded(.up)))
+    }
+
     /// Show whatever the model produced, however bad.
     static let raw = TranscribeOptions(
         gate: SpeechGate(minSeconds: 0, silencePeak: 0),
