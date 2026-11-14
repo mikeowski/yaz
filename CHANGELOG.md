@@ -44,6 +44,30 @@ Notable changes to yaz. Format loosely follows
 ### Fixed
 
 - An English plural of a term ("pull requests") was cut back to the term.
+- **A dictation that could not be pasted was lost.** With Accessibility
+  revoked or secure input on (a password field, a terminal's Secure Keyboard
+  Entry), the paste vanished and the old clipboard came back over it. The
+  text now stays on the clipboard and the menu says so.
+- **Speaking while the last dictation was still being transcribed did
+  nothing.** The new recording now starts and waits its turn; dictations
+  are pasted in the order they were spoken.
+- **A failed transcription lost the audio.** The menu now offers *Retry
+  Last Recording*, and the timeout grows with long recordings.
+- **A missed key-up recorded the room.** yaz checks the key while
+  recording and stops at the ten-minute limit.
+- **Learning and the names on screen saw nothing in Ghostty.** Ghostty
+  answers Accessibility only through its own element; yaz now asks it there.
+- **A typo in `config.json`, or an unreadable `learned.json` or
+  `personal.json`, could be saved over.** The file is now kept as
+  `<name>.broken-<date>`. `yaz learned --forget` sticks while yaz runs.
+- Reading the text field cannot stall the hotkey: it runs off the main
+  thread, with a short Accessibility timeout.
+
+### Changed
+
+- A dictation on the clipboard is marked transient and concealed, so
+  clipboard managers do not keep it, and does not go to other devices
+  through Universal Clipboard.
 
 ## [0.2.1] — 2026-11-14
 
