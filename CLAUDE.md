@@ -4,8 +4,9 @@ macOS push-to-talk dictation (hold the hotkey, speak, release; the text is writt
 English, German, Spanish and French language packs. Architecture: `docs/architecture.md`. Site: `site/`
 (yaz.mike4.dev).
 
-**Latest handoff:** `docs/handoff/2026-11-03.md`: release-feed state (0.2.0 is missing from the live update feed until a
-release deploy from the Mac), how site deploys work now, and the decisions still open. Read it before continuing.
+**Latest handoff:** `docs/handoff/2026-11-14.md`: the plan in force. 0.2.1 (term-repair precision; its release deploy
+also fixes the empty update feed), then 0.3.0 (runtime hardening, language packs after an audio check), then
+coding-agent dictation. Read it before continuing. Site deploys and the feed: `docs/handoff/2026-11-03.md`.
 
 ## Working here
 - CI: `.github/workflows/ci.yml` (`lint`, `test`) runs on pull requests; it can also be started by hand
