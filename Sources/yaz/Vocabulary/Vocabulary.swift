@@ -306,9 +306,13 @@ struct Vocabulary: Sendable {
         case .match(let value, let kind):
             // The stem explains the word better than the whole word does:
             // "Körsır" (0.999) under "Körsırda" (0.799).
+            // On a tie the ending explains nothing either way: one word
+            // keeps it ("Sılacıka" → "Slack'a"); across several words only
+            // when the stem is the term's last word, since there the end is
+            // usually the term's own ("C.I.P. eline").
             if let cut,
                cut.kind == .normalized || cut.score > value
-                || (cutCompletesTerm && abs(cut.score - value) < 1e-9) {
+                || (abs(cut.score - value) < 1e-9 && (window.count == 1 || cutCompletesTerm)) {
                 return cut
             }
             // A skeleton guess on a word wearing a Turkish ending that the
@@ -341,6 +345,10 @@ struct Vocabulary: Sendable {
             if matches { covered.insert(integersIn: start..<(start + words.count)) }
         }
         return covered
+    }
+
+    private static func isVowel(_ letter: Character) -> Bool {
+        "aeıioöuü".contains(letter)
     }
 
     /// Lowercase, without diacritics or the dotless ı.
@@ -408,6 +416,14 @@ struct Vocabulary: Sendable {
         // separates "Redis"/"neredeyse" (r vs n — reject) from
         // "Slack"/"Sılacık" (s vs s — allow), which score identically.
         guard windowSkeleton.first == entry.skeleton.first else { return .none }
+        // The skeleton drops a leading vowel too, so "inputun" (i…) reads
+        // as n-p-t-n next to Notion (n…). Epenthesis adds vowels between
+        // consonants, not before the first one: a word that opens with a
+        // vowel is not a term that opens with a consonant.
+        if let heard = normalizedWindow.first, let term = entry.normalized.first,
+           Self.isVowel(heard) != Self.isVowel(term) {
+            return .none
+        }
 
         let skeletal = EditDistance.similarity(windowSkeleton, entry.skeleton)
         let skeletonLimit = entry.minSimilarity ?? skeletonThreshold

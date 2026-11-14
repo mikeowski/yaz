@@ -250,6 +250,7 @@ struct VocabularyBareSuffixTests {
             ("Claude Code", "Cloud koda sor.", "Claude Code'a sor."),
             ("Claude", "Cloudu aç.", "Claude'u aç."),
             ("Claude", "Cloud koda sor.", "Claude koda sor."),
+            ("Slack", "Sılacıka yazdım.", "Slack'a yazdım."),
         ])
     func vowelEnding(term: String, heard: String, expected: String) {
         let vocabulary = Vocabulary(terms: [VocabularyTerm(canonical: term)])
