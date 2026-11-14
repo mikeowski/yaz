@@ -652,13 +652,22 @@ final class Daemon {
     /// user was in is still the one that receives it.
     private func pasteLast() {
         if let lastText {
-            TextInjector.inject(lastText, mode: config.injectMode)
+            report(TextInjector.inject(lastText, mode: config.injectMode))
             return
         }
         Task { [history] in
             guard let text = await history.entries(limit: 1).first?.text else { return }
-            await MainActor.run { TextInjector.inject(text, mode: Config.load().injectMode) }
+            await MainActor.run { self.report(TextInjector.inject(text, mode: Config.load().injectMode)) }
         }
+    }
+
+    /// Say so when a dictation could not be inserted: the text is on the
+    /// clipboard, and nothing on screen would tell the user otherwise.
+    private func report(_ outcome: TextInjector.Outcome) {
+        guard case .onClipboard(let blocker) = outcome else { return }
+        log("! not pasted: \(blocker.reason) — the text is on the clipboard")
+        menuBar?.note("not pasted, on the clipboard: press ⌘V")
+        if blocker == .noAccessibility { menuBar?.setNeedsPermission(true) }
     }
 
     private func finish(_ samples: [Float], sawSignal: Bool) async {
@@ -749,10 +758,12 @@ final class Daemon {
                 log("→ sent to the waiting agent")
                 menuBar?.note("sent to the agent")
             } else {
-                TextInjector.inject(processed.text, mode: config.injectMode)
+                let outcome = TextInjector.inject(processed.text, mode: config.injectMode)
+                report(outcome)
                 lastText = processed.text
                 runHook(with: processed.text)
-                if config.learn, Vocabulary.isSupported(language: appConfig.language),
+                if outcome == .inserted, config.learn,
+                   Vocabulary.isSupported(language: appConfig.language),
                    appConfig.language == config.language,
                    let bundleID = target?.bundleID {
                     scheduleReadBack(

@@ -68,6 +68,15 @@ final class PasteboardRestore<Board: RestorablePasteboard> {
         return generation
     }
 
+    /// Leave the dictation on the pasteboard as the user's own: the paste
+    /// could not happen, so the pasteboard is where the text survives. What
+    /// was there before is given up, as an ordinary copy would.
+    func leave() {
+        original = nil
+        insertedChangeCount = nil
+        generation += 1
+    }
+
     /// Give the user's contents back, if nothing newer is there.
     @discardableResult
     func restore(after token: Int) -> Outcome {

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import CoreGraphics
 import Foundation
 
@@ -34,18 +35,58 @@ enum TextInjector {
         }
     }
 
-    /// Insert `text` at the current cursor position.
+    /// Why a synthetic paste or keystroke would vanish without a trace.
+    enum Blocker: Equatable, Sendable {
+        /// Accessibility was revoked: macOS drops events yaz posts.
+        case noAccessibility
+        /// A password field, or a terminal's Secure Keyboard Entry, holds
+        /// secure input: macOS keeps synthetic events away from every app.
+        case secureInput
+
+        var reason: String {
+            switch self {
+            case .noAccessibility: "yaz has no Accessibility permission"
+            case .secureInput: "secure input is on (a password field or Secure Keyboard Entry)"
+            }
+        }
+    }
+
+    enum Outcome: Equatable, Sendable {
+        case inserted
+        /// Not inserted; the text is on the clipboard instead.
+        case onClipboard(Blocker)
+        case empty
+    }
+
+    /// The first thing that would stop an insertion, if any.
+    static func blocker(trusted: Bool, secureInput: Bool) -> Blocker? {
+        if !trusted { return .noAccessibility }
+        if secureInput { return .secureInput }
+        return nil
+    }
+
+    /// Insert `text` at the current cursor position. When macOS would drop
+    /// the events, the text is left on the clipboard instead of being lost
+    /// (0.2 pasted into nothing, then restored the old clipboard over it).
     @MainActor
-    static func inject(_ text: String, mode: Mode = .paste) {
+    @discardableResult
+    static func inject(_ text: String, mode: Mode = .paste) -> Outcome {
         // Spaces only: a line break at either end is a "yeni paragraf"
         // (`VoiceCommands`); Whisper's own output never has one.
         let trimmed = text.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { return .empty }
+
+        if let blocker = blocker(trusted: AXIsProcessTrusted(), secureInput: IsSecureEventInputEnabled()) {
+            _ = pasteboard.put(trimmed)
+            pasteboard.leave()
+            return .onClipboard(blocker)
+        }
 
         switch mode {
         case .paste: paste(trimmed)
         case .type: type(trimmed)
         }
+        return .inserted
     }
 
     // MARK: - Paste
