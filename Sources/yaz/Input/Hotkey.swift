@@ -164,8 +164,15 @@ final class HotkeyMonitor: @unchecked Sendable {
     /// not held. Sleep, the screen locking or secure input can swallow the
     /// release; the recording then ran on until the ten-minute cap and the
     /// next press pasted the room.
-    static func missedRelease(isDown: Bool, flagHeld: Bool, keyHeld: Bool?) -> Bool {
-        isDown && !(flagHeld && (keyHeld ?? true))
+    ///
+    /// Only the modifier flag decides, not the per-key state: the key state
+    /// table is not updated for every source (an injected `flagsChanged`, as
+    /// remote-control and accessibility tools send, leaves it unset while the
+    /// tap sees a press), and a wrong "not held" cuts a dictation short. The
+    /// flag alone can only err the other way: the other Option key held keeps
+    /// a missed release waiting until it is let go.
+    static func missedRelease(isDown: Bool, flagHeld: Bool) -> Bool {
+        isDown && !flagHeld
     }
 
     /// Compare with the keyboard as it is now, and deliver a missed release.
@@ -175,9 +182,7 @@ final class HotkeyMonitor: @unchecked Sendable {
     /// dictation short.
     func resync() {
         let flags = CGEventSource.flagsState(.combinedSessionState)
-        let keyHeld = hotkey.keyCode.map { CGEventSource.keyState(.combinedSessionState, key: $0) }
-        guard Self.missedRelease(isDown: isDown, flagHeld: flags.contains(hotkey.flag), keyHeld: keyHeld)
-        else {
+        guard Self.missedRelease(isDown: isDown, flagHeld: flags.contains(hotkey.flag)) else {
             looksReleased = false
             return
         }
