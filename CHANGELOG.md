@@ -6,6 +6,29 @@ Notable changes to yaz. Format loosely follows
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-11-14
+
+Build 3. Release notes: `release-notes/0.2.1.md`.
+
+### Fixed
+
+- **Term repair changed ordinary Turkish.** In real use, 4 of 5 replacements
+  were wrong: "inputuna" became Notion, "mergele" merge, "koda sor" Cursor,
+  and a name on screen dropped an ending ("Kreatini" → Kreatin) or a word
+  ("Fitbit Air'ın" → Fitbit'ın). The matcher now tries a word without its
+  Turkish ending: a name gets the ending back after an apostrophe
+  ("Notiona" → "Notion'a"), a lowercase term used as a Turkish word stays,
+  and a guess the stem does not support is dropped. A word of the language
+  needs a near-exact written match, not only a phonetic one ("kursör").
+  A term already written is never stretched over the next word.
+- The evaluation could not see this: it now has developer Turkish and
+  suffixed names (0.2.0 scores 30 on it; 0.2.1 scores 0).
+
+### Added
+
+- `yaz eval --history` replays your dictations through today's term repair:
+  what changed then, what changes now. Local only.
+
 ## [0.2.0] — 2026-11-02
 
 Build 2. Release notes: `release-notes/0.2.0.md`.
