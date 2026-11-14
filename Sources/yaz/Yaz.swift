@@ -1109,12 +1109,19 @@ struct Eval: ParsableCommand {
     @Flag(help: "Score your own cases instead: your fixes and the dictations you kept.")
     var personal = false
 
+    @Flag(help: "Replay your history: what term repair changed then, and what it changes now. Local only.")
+    var history = false
+
     @Flag(help: "Print only the score, for scripts.")
     var quiet = false
 
     func run() throws {
         if personal {
             try runPersonal()
+            return
+        }
+        if history {
+            runHistory()
             return
         }
         let rules = learned ? LearnedRules.load() : LearnedRules()
@@ -1158,6 +1165,45 @@ struct Eval: ParsableCommand {
         for offender in score.offenders {
             print("  false match: \(offender)")
         }
+    }
+}
+
+extension Eval {
+
+    /// Your past dictations through today's term repair. History keeps the
+    /// text as pasted and each replacement made, so the text as heard is
+    /// the pasted text with those replacements undone. Screen terms are not
+    /// kept, so a replacement they made shows as gone.
+    private func runHistory() {
+        let config = Config.load()
+        let rules = LearnedRules.load()
+        let vocabulary = Vocabulary(
+            terms: config.vocabulary + rules.terms,
+            threshold: threshold ?? Vocabulary.defaultThreshold,
+            skeletonThreshold: skeletonThreshold ?? Vocabulary.defaultSkeletonThreshold,
+            blocked: rules.blocks, language: config.language)
+        let entries = TranscriptHistory.read(from: TranscriptHistory.defaultURL)
+        var then = 0
+        var now = 0
+        var differ = 0
+        for entry in entries {
+            var heard = entry.text
+            for correction in entry.corrections.reversed() {
+                let parts = correction.components(separatedBy: " → ")
+                guard parts.count == 2, let range = heard.range(of: parts[1]) else { continue }
+                heard.replaceSubrange(range, with: parts[0])
+            }
+            let before = entry.corrections
+            let after = vocabulary.correct(heard).corrections.map { "\($0.from) → \($0.to)" }
+            then += before.count
+            now += after.count
+            guard before != after else { continue }
+            differ += 1
+            print("then: \(before.isEmpty ? "—" : before.joined(separator: ", "))")
+            print("now:  \(after.isEmpty ? "—" : after.joined(separator: ", "))")
+            print("")
+        }
+        print("\(entries.count) dictations · replacements then \(then), now \(now) · \(differ) differ")
     }
 }
 
