@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import yaz
@@ -57,5 +58,33 @@ struct MissedReleaseTests {
         #expect(!HotkeyMonitor.missedRelease(isDown: true, flagHeld: true, keyHeld: nil))
         #expect(!HotkeyMonitor.missedRelease(isDown: true, flagHeld: true, keyHeld: true))
         #expect(!HotkeyMonitor.missedRelease(isDown: false, flagHeld: false, keyHeld: false))
+    }
+}
+
+@Suite("withDeadline — a call that ignores cancellation still ends")
+struct DeadlineTests {
+
+    @Test("work that never returns and ignores cancellation times out")
+    func neverReturns() async {
+        let started = Date()
+        await #expect(throws: YazError.self) {
+            _ = try await withDeadline(.milliseconds(100), {
+                // Not cancellable: a semaphore wait that nothing signals,
+                // like a Core ML call that hangs.
+                await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
+                return 1
+            }, onTimeout: { YazError.transcriptionTimedOut(engine: "test", seconds: 0.1) })
+        }
+        // Ends, rather than never: under the full suite the pool is busy and
+        // the 100 ms deadline fires late, so the bound is loose.
+        #expect(Date().timeIntervalSince(started) < 30)
+    }
+
+    @Test("a result before the deadline is returned")
+    func returns() async throws {
+        let value = try await withDeadline(.seconds(5), { 42 }, onTimeout: {
+            YazError.transcriptionTimedOut(engine: "test", seconds: 5)
+        })
+        #expect(value == 42)
     }
 }

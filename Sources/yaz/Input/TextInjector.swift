@@ -40,13 +40,19 @@ enum TextInjector {
         /// Accessibility was revoked: macOS drops events yaz posts.
         case noAccessibility
         /// A password field, or a terminal's Secure Keyboard Entry, holds
-        /// secure input: macOS keeps synthetic events away from every app.
+        /// secure input. Whether macOS then drops a synthetic ⌘V is not
+        /// measured, and any app can leave secure input on by mistake, so
+        /// yaz still pastes, but keeps the text on the clipboard.
         case secureInput
+        /// The user moved to another app while the dictation was being
+        /// transcribed: it is not pasted into whatever is in front now.
+        case focusMoved
 
         var reason: String {
             switch self {
             case .noAccessibility: "yaz has no Accessibility permission"
             case .secureInput: "secure input is on (a password field or Secure Keyboard Entry)"
+            case .focusMoved: "another app is in front now"
             }
         }
     }
@@ -55,7 +61,19 @@ enum TextInjector {
         case inserted
         /// Not inserted; the text is on the clipboard instead.
         case onClipboard(Blocker)
+        /// Pasted, and kept on the clipboard in case the paste was dropped.
+        case pastedAndKept(Blocker)
         case empty
+    }
+
+    /// Put `text` on the clipboard without pasting it.
+    @MainActor
+    static func leaveOnClipboard(_ text: String, because blocker: Blocker) -> Outcome {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return .empty }
+        _ = pasteboard.put(trimmed)
+        pasteboard.leave()
+        return .onClipboard(blocker)
     }
 
     /// The first thing that would stop an insertion, if any.
@@ -76,10 +94,16 @@ enum TextInjector {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return .empty }
 
-        if let blocker = blocker(trusted: AXIsProcessTrusted(), secureInput: IsSecureEventInputEnabled()) {
+        switch blocker(trusted: AXIsProcessTrusted(), secureInput: IsSecureEventInputEnabled()) {
+        case .noAccessibility:
+            return leaveOnClipboard(trimmed, because: .noAccessibility)
+        case .secureInput:
             _ = pasteboard.put(trimmed)
+            postCommandV()
             pasteboard.leave()
-            return .onClipboard(blocker)
+            return .pastedAndKept(.secureInput)
+        case .focusMoved, nil:
+            break
         }
 
         switch mode {

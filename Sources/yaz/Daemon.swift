@@ -32,6 +32,9 @@ final class Daemon {
     /// user spoke into nothing); finishing runs one at a time, in order,
     /// through `finishing`, so pastes keep the order they were spoken in.
     private let finishing = OrderedWork()
+    /// Recordings waiting or running at most. Each holds its audio (3.7 MB a
+    /// minute); past this, a stuck transcription would queue without end.
+    private static let maxQueued = 3
     /// The last recording whose transcription failed, for "Retry Last
     /// Recording". One only: a newer failure replaces it.
     private var failedRecording: [Float]?
@@ -61,13 +64,15 @@ final class Daemon {
     /// The project names (`projects`) and what was learned from the user's
     /// fixes (`learn`): the pipeline is rebuilt from these when either changes.
     private var projectIndex = ProjectIndex.empty
-    private var learned = LearnedRules.load()
+    private var learned = LearnedRules.load(repairing: true)
+    /// learned.json's modification date when it was last read.
+    private var learnedStamp = Daemon.stamp(of: LearnedRules.path)
     /// Terms read from the screen when the key went down, for this dictation.
     private var screenTerms: Task<[VocabularyTerm], Never>?
     /// Pipelines for apps with a profile (`AppProfile`), by bundle id.
     private var profilePipelines: [String: TranscriptPipeline] = [:]
     /// The user's own evaluation cases (`PersonalCorpus`).
-    private var personal = PersonalCorpus.load()
+    private var personal = PersonalCorpus.load(repairing: true)
     /// Read-backs learn one at a time.
     private let learning = OrderedWork()
     /// How long a dictation is watched for fixes at most.
@@ -362,12 +367,8 @@ final class Daemon {
     private func learn(
         from tracker: EditTracker, pasted: String, corrections: [Vocabulary.Correction]
     ) async {
-        let onDisk = LearnedRules.load()
-        if onDisk != self.learned {
-            self.learned = onDisk
-            self.rebuildPipeline()
-        }
-        self.personal = PersonalCorpus.load()
+        refreshLearned()
+        self.personal = PersonalCorpus.load(repairing: true)
 
         // The personal set keeps sentences, so it follows the history
         // switch: no history, no stored text.
@@ -392,18 +393,29 @@ final class Daemon {
             return
         }
 
-        // The gate scores the whole evaluation set: off the main thread.
-        let learner = Learner(
-            rules: self.learned, language: self.config.language,
-            personal: keepsCases ? self.personal : PersonalCorpus())
+        // The gate scores the whole evaluation set: off the main thread. It
+        // takes seconds; if the file changed meanwhile (`yaz learned
+        // --forget`), the lesson is drawn again from the new file, so the
+        // save cannot write the forgotten rule back.
         let userTerms = self.config.vocabulary
-        let (rules, personal, events) = await Task.detached(priority: .utility) {
-            var learner = learner
-            let events = learner.observe(
-                edits: edits, corrections: corrections, userTerms: userTerms,
-                sentence: keepsCases ? trimmed : nil)
-            return (learner.rules, learner.personal, events)
-        }.value
+        var rules = self.learned
+        var personal = self.personal
+        var events: [Learner.Event] = []
+        for _ in 0..<2 {
+            let start = self.learned
+            let learner = Learner(
+                rules: start, language: self.config.language,
+                personal: keepsCases ? self.personal : PersonalCorpus())
+            (rules, personal, events) = await Task.detached(priority: .utility) {
+                var learner = learner
+                let events = learner.observe(
+                    edits: edits, corrections: corrections, userTerms: userTerms,
+                    sentence: keepsCases ? trimmed : nil)
+                return (learner.rules, learner.personal, events)
+            }.value
+            refreshLearned()
+            if self.learned == start { break }
+        }
         if keepsCases, personal != self.personal {
             self.personal = personal
             try? personal.save()
@@ -412,6 +424,7 @@ final class Daemon {
         self.learned = rules
         do {
             try self.learned.save()
+            self.learnedStamp = Self.stamp(of: LearnedRules.path)
         } catch {
             log("! could not save learned rules: \(error.localizedDescription)")
         }
@@ -436,6 +449,22 @@ final class Daemon {
             }
         }
         if changed { self.rebuildPipeline() }
+    }
+
+    /// Pick up a change made to learned.json from outside (`yaz learned
+    /// --forget`, `--clear`): before each dictation and each lesson.
+    private func refreshLearned() {
+        let stamp = Self.stamp(of: LearnedRules.path)
+        guard stamp != learnedStamp else { return }
+        learnedStamp = stamp
+        let onDisk = LearnedRules.load(repairing: true)
+        guard onDisk != learned else { return }
+        learned = onDisk
+        rebuildPipeline()
+    }
+
+    private static func stamp(of url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
     }
 
     /// Index the project folders in the background, then swap in a pipeline
@@ -569,6 +598,11 @@ final class Daemon {
                     log("  (model still loading)")
                     return
                 }
+                if finishing.pending >= Self.maxQueued {
+                    log("  (\(finishing.pending) recordings still being transcribed — not recording)")
+                    menuBar?.note("still transcribing — wait a moment")
+                    return
+                }
                 if finishing.pending > 0, verbose { log("  (previous transcription still running — queued after it)") }
             }
             apply(ptt.press(at: now))
@@ -605,7 +639,7 @@ final class Daemon {
             stopRecordingWatch()
             stopLivePreview()
             _ = capture.stop()
-            setIndicator(.idle)
+            setIndicator(finishing.pending > 0 ? .transcribing : .idle)
             if verbose { log("○ a single tap — dropped") }
         case .none:
             break
@@ -630,16 +664,19 @@ final class Daemon {
         if hitLimit { log("warning: recording hit the length limit and was truncated") }
         let screen = screenTerms
         screenTerms = nil
-        enqueue(samples, sawSignal: sawSignal, screen: screen)
+        enqueue(samples, sawSignal: sawSignal, screen: screen, target: AppEnvironment.frontmostApp())
     }
 
-    /// Finish a recording after every earlier one.
+    /// Finish a recording after every earlier one. `target` is the app in
+    /// front when the key came up: its settings apply, and the text is only
+    /// pasted if it is still in front.
     private func enqueue(
-        _ samples: [Float], sawSignal: Bool, screen: Task<[VocabularyTerm], Never>?
+        _ samples: [Float], sawSignal: Bool, screen: Task<[VocabularyTerm], Never>?,
+        target: (name: String, bundleID: String?)?
     ) {
-        setIndicator(.transcribing)
+        if !capture.isRecording { setIndicator(.transcribing) }
         finishing.enqueue { [weak self] in
-            await self?.finish(samples, sawSignal: sawSignal, screen: screen)
+            await self?.finish(samples, sawSignal: sawSignal, screen: screen, target: target)
         }
     }
 
@@ -653,7 +690,7 @@ final class Daemon {
         failedRecording = nil
         menuBar?.setRetryAvailable(false)
         log("↻ retrying the last recording")
-        enqueue(samples, sawSignal: true, screen: nil)
+        enqueue(samples, sawSignal: true, screen: nil, target: AppEnvironment.frontmostApp())
     }
 
     // MARK: - Recording watch
@@ -747,14 +784,22 @@ final class Daemon {
     /// Say so when a dictation could not be inserted: the text is on the
     /// clipboard, and nothing on screen would tell the user otherwise.
     private func report(_ outcome: TextInjector.Outcome) {
-        guard case .onClipboard(let blocker) = outcome else { return }
-        log("! not pasted: \(blocker.reason) — the text is on the clipboard")
-        menuBar?.note("not pasted, on the clipboard: press ⌘V")
-        if blocker == .noAccessibility { menuBar?.setNeedsPermission(true) }
+        switch outcome {
+        case .onClipboard(let blocker):
+            log("! not pasted: \(blocker.reason) — the text is on the clipboard")
+            menuBar?.note("not pasted, on the clipboard: press ⌘V")
+            if blocker == .noAccessibility { menuBar?.setNeedsPermission(true) }
+        case .pastedAndKept(let blocker):
+            log("! \(blocker.reason): pasted, and kept on the clipboard")
+            menuBar?.note("secure input is on: if nothing appeared, press ⌘V")
+        case .inserted, .empty:
+            break
+        }
     }
 
     private func finish(
-        _ samples: [Float], sawSignal: Bool, screen screenTerms: Task<[VocabularyTerm], Never>?
+        _ samples: [Float], sawSignal: Bool, screen screenTerms: Task<[VocabularyTerm], Never>?,
+        target: (name: String, bundleID: String?)?
     ) async {
         defer {
             // A newer recording owns the indicator while it runs. This
@@ -763,16 +808,26 @@ final class Daemon {
         }
 
         let started = Date()
-        // The app being dictated into decides the settings: the overlay never
-        // takes focus, so the front app is still the target.
-        let (appConfig, activePipeline) = settings(for: AppEnvironment.frontmostApp()?.bundleID)
+        refreshLearned()
+        // The app being dictated into decides the settings: the one in front
+        // when the key came up (the overlay never takes focus).
+        let (appConfig, activePipeline) = settings(for: target?.bundleID)
         do {
             var options = TranscribeOptions()
             options.timeout = TranscribeOptions.timeout(
                 forAudioSeconds: Double(samples.count) / AudioLoader.sampleRate)
             options.voice = config.voiceCheck
             if appConfig.language != config.language { options.language = appConfig.language }
-            let output = try await engine.transcribe(samples, options: options)
+            // A deadline the engine cannot ignore: a call stuck in Core ML
+            // must fail this recording visibly (kept for Retry), not hold
+            // every later one in the queue.
+            let engine = self.engine
+            let deadline = options.timeout + .seconds(30)
+            let output = try await withDeadline(deadline, { [options] in
+                try await engine.transcribe(samples, options: options)
+            }, onTimeout: { [name = engine.name] in
+                YazError.transcriptionTimedOut(engine: name, seconds: Double(deadline.components.seconds))
+            })
             let elapsed = Date().timeIntervalSince(started)
 
             switch output.quality.verdict {
@@ -805,7 +860,7 @@ final class Daemon {
             }
 
             let code = appConfig.codeOverride ?? CodeContext.isCode(
-                bundleID: AppEnvironment.frontmostApp()?.bundleID, extra: config.codeApps)
+                bundleID: target?.bundleID, extra: config.codeApps)
             if appConfig.refine == .llm && !code && !capture.isRecording { setIndicator(.refining) }
             let screen = await screenTerms?.value ?? []
             let context = appConfig.screenContext && appConfig.language == config.language ? screen : []
@@ -832,10 +887,10 @@ final class Daemon {
             let total = Date().timeIntervalSince(started)
             log(String(format: "→ %.2f s (transcribe %.2f) · %@", total, elapsed, processed.text))
 
-            // Read the frontmost app *before* pasting: the overlay never takes
-            // focus, so at this instant it is still the window the cursor is
-            // in — which is the only moment that answer is correct.
-            let target = AppEnvironment.frontmostApp()
+            // Pasted only into the app it was spoken for: a dictation that
+            // waited behind a long one must not land in whatever is in front
+            // by now.
+            let front = AppEnvironment.frontmostApp()
 
             // A coding agent asked for this answer (`yaz mcp`,
             // wait_for_dictation): it goes there, not into its input box.
@@ -844,7 +899,9 @@ final class Daemon {
                 log("→ sent to the waiting agent")
                 menuBar?.note("sent to the agent")
             } else {
-                let outcome = TextInjector.inject(processed.text, mode: config.injectMode)
+                let outcome = front?.bundleID == target?.bundleID
+                    ? TextInjector.inject(processed.text, mode: config.injectMode)
+                    : TextInjector.leaveOnClipboard(processed.text, because: .focusMoved)
                 report(outcome)
                 lastText = processed.text
                 runHook(with: processed.text)
