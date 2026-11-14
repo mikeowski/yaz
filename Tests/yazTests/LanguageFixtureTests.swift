@@ -21,7 +21,7 @@ struct LanguageFixtureTests {
             ["de", "Kommst du um 15.30 Uhr?", "Kommst du um 15.30 Uhr?"],
             ["de", "Das kostet 15.000 Euro, 50% sind schon bezahlt.", "Das kostet 15.000 Euro, 50% sind schon bezahlt."],
             ["de", "Der Doktor hat gesagt, ich soll mich ausruhen. Neue Zeile, danke.",
-             "Der Doktor hat gesagt, ich soll mich ausruhen. Neue Zeile, danke."],
+             "Der Doktor hat gesagt, ich soll mich ausruhen.\nDanke."],
             ["es", "Vienes a las 5 signo de interrogación.", "¿Vienes a las 5?"],
             ["es", "El doctor dijo que tengo que descansar. Nueva línea era. Gracias.",
              "El doctor dijo que tengo que descansar. Nueva línea era. Gracias."],

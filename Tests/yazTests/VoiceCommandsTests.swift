@@ -94,4 +94,24 @@ struct VoiceCommandsTests {
         try Data(#"{ "voice_commands": false }"#.utf8).write(to: url)
         #expect(Config.load(from: url).voiceCommands == false)
     }
+
+    @Test(
+        "a line break said as its own sentence, joined to the next by a comma, is carried out",
+        arguments: [
+            ("Tamam. Yeni satır, görüşürüz.", "Tamam.\nGörüşürüz."),
+            ("Bu yeni satır, değil mi?", "Bu yeni satır, değil mi?"),
+        ])
+    func breakBeforeComma(said: String, written: String) {
+        #expect(VoiceCommands.apply(said, set: .turkish).text == written)
+    }
+
+    @Test("the same in German and English, and a mark is not")
+    func breakBeforeCommaOtherLanguages() {
+        #expect(VoiceCommands.apply("Ich soll mich ausruhen. Neue Zeile, danke.", set: .german).text
+            == "Ich soll mich ausruhen.\nDanke.")
+        #expect(VoiceCommands.apply("Ich schreibe eine neue Zeile, danke.", set: .german).text
+            == "Ich schreibe eine neue Zeile, danke.")
+        #expect(VoiceCommands.apply("Thanks. New line, see you.", set: .english).text == "Thanks.\nSee you.")
+        #expect(VoiceCommands.apply("Fragezeichen, bitte.", set: .german).text == "Fragezeichen, bitte.")
+    }
 }

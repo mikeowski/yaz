@@ -1280,13 +1280,17 @@ vocabulary. `LanguageFixtureTests` pins the transcripts and the results.
   "¿"), "nouvelle ligne" (French) are carried out.
 - **Fillers:** "Um" and "Euh" go.
 
-Known gaps, not fixed in 0.3.0:
+What the pass found:
 
-- **German "Neue Zeile" before a comma stays text.** Whisper wrote "Neue Zeile. Danke." as "Neue Zeile,
-  danke."; a command is only recognised at the end of a sentence.
-- **Spanish "Eh" written as "E,"** is not a filler the pack knows.
-- **French spacing is not added to Whisper's own punctuation:** "point d'interrogation" came out as "Tu
-  viens ce soir?" from Whisper itself, without the space the pack writes for a spoken command.
+- **Fixed: a line break before a comma.** Whisper wrote "Neue Zeile. Danke." as "Neue Zeile, danke.", and a
+  command was only recognised at the end of a sentence. A line-break command that starts a sentence and is
+  the whole clause before a comma is now carried out, in every language ("Tamam. Yeni satır, görüşürüz.").
+  Inside a sentence it stays text ("Bu yeni satır, değil mi?"); punctuation commands are unchanged.
+- **Left: Spanish "Eh" written as "E,".** The pack leaves "eh" out on purpose (it can be "hey"), and a lone
+  "e" is also the conjunction ("padres e hijos"). One synthetic sample is not a reason to change that.
+- **Left: French spacing on Whisper's own punctuation.** "point d'interrogation" came out as "Tu viens ce
+  soir?" from Whisper itself; the pack writes the narrow space only for a spoken command. Retyping Whisper's
+  punctuation is a typographic choice for later.
 
 The voices are synthetic; real speakers in these languages have not been measured.
 

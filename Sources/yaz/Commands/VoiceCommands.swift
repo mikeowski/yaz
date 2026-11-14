@@ -34,7 +34,16 @@ enum VoiceCommands {
 
     // MARK: - Inline
 
-    enum Insert: Sendable { case newline, paragraph, mark(Character) }
+    enum Insert: Sendable {
+        case newline, paragraph, mark(Character)
+
+        var isBreak: Bool {
+            switch self {
+            case .newline, .paragraph: true
+            case .mark: false
+            }
+        }
+    }
 
     struct Result: Sendable, Equatable {
         let text: String
@@ -133,7 +142,13 @@ enum VoiceCommands {
             let last = tokens[i + n - 1]
             let endsSentence = i + n == tokens.count
                 || last.trailing.contains(where: { ".!?…".contains($0) })
-            guard endsSentence else { continue }
+            // A line break said as a sentence of its own that Whisper joined
+            // to the next one with a comma: "Neue Zeile. Danke." came out as
+            // "Neue Zeile, danke." The phrase starts the sentence and is the
+            // whole clause, so it is still the command.
+            let startsSentence = i == 0 || tokens[i - 1].trailing.contains(where: { ".!?…".contains($0) })
+            let wholeClause = startsSentence && last.trailing.hasPrefix(",") && phrase.insert.isBreak
+            guard endsSentence || wholeClause else { continue }
             return (n, phrase.insert)
         }
         return nil
