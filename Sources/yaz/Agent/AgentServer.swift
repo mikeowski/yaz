@@ -21,8 +21,11 @@ struct AgentServer: Sendable {
 
     static let supportedProtocols = ["2025-06-18", "2025-03-26", "2024-11-05"]
 
-    /// Answer one message, or nil for a notification.
-    func handle(_ message: [String: Any]) -> [String: Any]? {
+    /// Answer one message, or nil for a notification. `isCancelled` ends a
+    /// `wait_for_dictation` the agent gave up on.
+    func handle(
+        _ message: [String: Any], isCancelled: @escaping @Sendable () -> Bool = { false }
+    ) -> [String: Any]? {
         let id = message["id"]
         guard let method = message["method"] as? String else {
             return id.map { error($0, code: -32600, "invalid request") }
@@ -48,7 +51,7 @@ struct AgentServer: Sendable {
         case "tools/call":
             let name = params["name"] as? String ?? ""
             let arguments = params["arguments"] as? [String: Any] ?? [:]
-            return result(id, call(name, arguments))
+            return result(id, call(name, arguments, isCancelled: isCancelled))
         default:
             return error(id, code: -32601, "method not found: \(method)")
         }
@@ -98,11 +101,14 @@ struct AgentServer: Sendable {
         ],
     ] }
 
-    private func call(_ name: String, _ arguments: [String: Any]) -> [String: Any] {
+    private func call(
+        _ name: String, _ arguments: [String: Any], isCancelled: @escaping @Sendable () -> Bool
+    ) -> [String: Any] {
         switch name {
         case "wait_for_dictation":
             let timeout = (arguments["timeout_seconds"] as? NSNumber)?.doubleValue ?? 120
-            return waitForDictation(timeout: timeout, prompt: arguments["prompt"] as? String)
+            return waitForDictation(
+                timeout: timeout, prompt: arguments["prompt"] as? String, isCancelled: isCancelled)
         case "last_dictation":
             guard historyEnabled else { return historyOff() }
             guard let entry = history().first else { return text("No dictation yet.") }
@@ -127,7 +133,9 @@ struct AgentServer: Sendable {
         }
     }
 
-    private func waitForDictation(timeout: TimeInterval, prompt: String?) -> [String: Any] {
+    private func waitForDictation(
+        timeout: TimeInterval, prompt: String?, isCancelled: @Sendable () -> Bool
+    ) -> [String: Any] {
         let wait: AgentHandoff.Wait
         do {
             wait = try handoff.beginWait(timeout: timeout, prompt: prompt)
@@ -137,6 +145,9 @@ struct AgentServer: Sendable {
         defer { handoff.end(wait) }
         while Date() < wait.deadline {
             if let reply = handoff.reply(for: wait) { return text(reply.text) }
+            // The agent cancelled, or went away: stop waiting, so the next
+            // dictation is pasted as usual instead of going to nobody.
+            if isCancelled() { return failure("cancelled") }
             Thread.sleep(forTimeInterval: pollInterval)
         }
         if let reply = handoff.reply(for: wait) { return text(reply.text) }
@@ -179,19 +190,76 @@ struct AgentServer: Sendable {
 
     /// Read messages from stdin until it closes, answering each on stdout.
     func run() {
-        while let line = readLine(strippingNewline: true) {
-            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-            let response: [String: Any]?
-            if let data = line.data(using: .utf8),
-               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                response = handle(object)
-            } else {
-                response = ["jsonrpc": "2.0", "id": NSNull(), "error": ["code": -32700, "message": "parse error"]]
-            }
-            guard let response,
-                  let data = try? JSONSerialization.data(withJSONObject: response, options: [.withoutEscapingSlashes])
-            else { continue }
-            FileHandle.standardOutput.write(data + Data([0x0A]))
-        }
+        serve(read: { readLine(strippingNewline: true) },
+              write: { FileHandle.standardOutput.write($0 + Data([0x0A])) })
     }
+
+    /// The message loop. A tool call runs on its own thread, so the loop
+    /// keeps reading while `wait_for_dictation` waits: 0.2 blocked it, never
+    /// saw `notifications/cancelled`, and a wait the agent had given up on
+    /// took the user's next dictation to a reply nobody read. A cancelled
+    /// call gets no answer (MCP); when the input closes, every wait ends
+    /// before this returns.
+    func serve(read: () -> String?, write: @escaping @Sendable (Data) -> Void) {
+        let cancelled = Cancellations()
+        let running = DispatchGroup()
+        let output = NSLock()
+        let send: @Sendable ([String: Any]) -> Void = { response in
+            guard let data = try? JSONSerialization.data(withJSONObject: response, options: [.withoutEscapingSlashes])
+            else { return }
+            output.withLock { write(data) }
+        }
+
+        while let line = read() {
+            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+            guard let data = line.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
+                send(["jsonrpc": "2.0", "id": NSNull(), "error": ["code": -32700, "message": "parse error"]])
+                continue
+            }
+            let method = object["method"] as? String
+            if method == "notifications/cancelled" {
+                let params = object["params"] as? [String: Any]
+                if let request = params?["requestId"] { cancelled.cancel(Self.key(request)) }
+                continue
+            }
+            guard method == "tools/call", let id = object["id"] else {
+                if let response = handle(object) { send(response) }
+                continue
+            }
+            let key = Self.key(id)
+            let message = UncheckedMessage(object)
+            running.enter()
+            DispatchQueue.global().async {
+                let response = handle(message.value, isCancelled: { cancelled.isCancelled(key) })
+                if let response, !cancelled.isCancelled(key) { send(response) }
+                running.leave()
+            }
+        }
+        cancelled.cancelAll()
+        running.wait()
+    }
+
+    private static func key(_ id: Any) -> String {
+        (id as? String).map { "s:\($0)" } ?? "n:\(id)"
+    }
+}
+
+/// Request ids the agent cancelled; all of them once the input closes.
+private final class Cancellations: @unchecked Sendable {
+    private let lock = NSLock()
+    private var ids = Set<String>()
+    private var everything = false
+
+    func cancel(_ id: String) { lock.withLock { _ = ids.insert(id) } }
+    func cancelAll() { lock.withLock { everything = true } }
+    func isCancelled(_ id: String) -> Bool { lock.withLock { everything || ids.contains(id) } }
+}
+
+/// A parsed JSON message crossing to the worker thread. It is not mutated
+/// after parsing.
+private struct UncheckedMessage: @unchecked Sendable {
+    let value: [String: Any]
+    init(_ value: [String: Any]) { self.value = value }
 }

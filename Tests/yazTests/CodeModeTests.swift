@@ -130,6 +130,8 @@ struct CodeContextTests {
         #expect(CodeContext.isCode(bundleID: "com.apple.Terminal"))
         #expect(CodeContext.isCode(bundleID: "com.microsoft.VSCode"))
         #expect(CodeContext.isCode(bundleID: "com.jetbrains.fleet"))
+        #expect(CodeContext.isCode(bundleID: "com.anysphere.sand"))
+        #expect(CodeContext.isCode(bundleID: "com.mitchellh.ghostty"))
         #expect(!CodeContext.isCode(bundleID: "com.apple.mail"))
         #expect(!CodeContext.isCode(bundleID: nil))
         #expect(CodeContext.isCode(bundleID: "com.example.mine", extra: ["com.example.mine"]))
