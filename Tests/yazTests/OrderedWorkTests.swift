@@ -49,15 +49,13 @@ struct MissedReleaseTests {
 
     @Test("down but no longer held is a missed release")
     func missed() {
-        #expect(HotkeyMonitor.missedRelease(isDown: true, flagHeld: false, keyHeld: nil))
-        #expect(HotkeyMonitor.missedRelease(isDown: true, flagHeld: true, keyHeld: false))
+        #expect(HotkeyMonitor.missedRelease(isDown: true, flagHeld: false))
     }
 
     @Test("held, or already up, is not")
     func notMissed() {
-        #expect(!HotkeyMonitor.missedRelease(isDown: true, flagHeld: true, keyHeld: nil))
-        #expect(!HotkeyMonitor.missedRelease(isDown: true, flagHeld: true, keyHeld: true))
-        #expect(!HotkeyMonitor.missedRelease(isDown: false, flagHeld: false, keyHeld: false))
+        #expect(!HotkeyMonitor.missedRelease(isDown: true, flagHeld: true))
+        #expect(!HotkeyMonitor.missedRelease(isDown: false, flagHeld: false))
     }
 }
 
