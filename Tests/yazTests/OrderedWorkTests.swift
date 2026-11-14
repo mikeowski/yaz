@@ -42,3 +42,20 @@ struct TimeoutScalingTests {
         #expect(TranscribeOptions.timeout(forAudioSeconds: 600) == .seconds(600))
     }
 }
+
+@Suite("HotkeyMonitor — a key-up the tap missed")
+struct MissedReleaseTests {
+
+    @Test("down but no longer held is a missed release")
+    func missed() {
+        #expect(HotkeyMonitor.missedRelease(isDown: true, flagHeld: false, keyHeld: nil))
+        #expect(HotkeyMonitor.missedRelease(isDown: true, flagHeld: true, keyHeld: false))
+    }
+
+    @Test("held, or already up, is not")
+    func notMissed() {
+        #expect(!HotkeyMonitor.missedRelease(isDown: true, flagHeld: true, keyHeld: nil))
+        #expect(!HotkeyMonitor.missedRelease(isDown: true, flagHeld: true, keyHeld: true))
+        #expect(!HotkeyMonitor.missedRelease(isDown: false, flagHeld: false, keyHeld: false))
+    }
+}

@@ -51,6 +51,9 @@ final class Daemon {
     /// The last text pasted, for "Paste Last Dictation".
     private var lastText: String?
 
+    /// While recording: catches a missed key-up and the length cap.
+    private var recordingWatch: Timer?
+
     /// Live preview while recording (`live_text`).
     private var liveTimer: Timer?
     private var liveInFlight = false
@@ -565,6 +568,7 @@ final class Daemon {
                 }
                 setIndicator(.recording)
                 startLivePreview()
+                startRecordingWatch()
             } catch {
                 ptt.reset()
                 log("couldn't start recording: \(error)")
@@ -577,6 +581,7 @@ final class Daemon {
         case .stop:
             stopRecording()
         case .discard:
+            stopRecordingWatch()
             stopLivePreview()
             _ = capture.stop()
             setIndicator(.idle)
@@ -595,6 +600,7 @@ final class Daemon {
     }
 
     private func stopRecording() {
+        stopRecordingWatch()
         stopLivePreview()
         guard capture.isRecording else { return }
         let samples = capture.stop()
@@ -627,6 +633,36 @@ final class Daemon {
         menuBar?.setRetryAvailable(false)
         log("↻ retrying the last recording")
         enqueue(samples, sawSignal: true, screen: nil)
+    }
+
+    // MARK: - Recording watch
+
+    /// Twice a second while recording: deliver a key-up the tap missed, and
+    /// stop at the length cap instead of recording the room until the next
+    /// press.
+    private func startRecordingWatch() {
+        recordingWatch?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            MainActor.assumeIsolated { self.checkRecording() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        recordingWatch = timer
+    }
+
+    private func stopRecordingWatch() {
+        recordingWatch?.invalidate()
+        recordingWatch = nil
+    }
+
+    private func checkRecording() {
+        guard capture.isRecording else { return stopRecordingWatch() }
+        monitor.resync()
+        guard capture.isRecording, capture.didHitLimit else { return }
+        let minutes = Int(AudioCapture.maxSeconds / 60)
+        log("! the recording reached \(minutes) minutes — stopped")
+        menuBar?.note("stopped at \(minutes) minutes")
+        ptt.reset()
+        stopRecording()
     }
 
     // MARK: - Live preview

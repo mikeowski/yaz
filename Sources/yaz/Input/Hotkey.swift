@@ -160,6 +160,26 @@ final class HotkeyMonitor: @unchecked Sendable {
         isDown = false
     }
 
+    /// A key-up the tap never delivered: the key is recorded as down but is
+    /// not held. Sleep, the screen locking or secure input can swallow the
+    /// release; the recording then ran on until the ten-minute cap and the
+    /// next press pasted the room.
+    static func missedRelease(isDown: Bool, flagHeld: Bool, keyHeld: Bool?) -> Bool {
+        isDown && !(flagHeld && (keyHeld ?? true))
+    }
+
+    /// Compare with the keyboard as it is now, and deliver a missed release.
+    /// Called while recording.
+    func resync() {
+        let flags = CGEventSource.flagsState(.combinedSessionState)
+        let keyHeld = hotkey.keyCode.map { CGEventSource.keyState(.combinedSessionState, key: $0) }
+        guard Self.missedRelease(isDown: isDown, flagHeld: flags.contains(hotkey.flag), keyHeld: keyHeld)
+        else { return }
+        isDown = false
+        log("hotkey up (missed: the key is no longer held)")
+        handler?(.released)
+    }
+
     /// Watch for a tap that is alive but deaf.
     ///
     /// The worst failure this project hit: `AXIsProcessTrusted()` true,
