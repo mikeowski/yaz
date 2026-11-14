@@ -26,7 +26,11 @@ enum CodeContext {
     static func isCode(bundleID: String?, extra: [String] = []) -> Bool {
         guard let bundleID else { return false }
         if knownApps.contains(bundleID) || extra.contains(bundleID) { return true }
-        // every JetBrains IDE
-        return bundleID.hasPrefix("com.jetbrains.")
+        // Every JetBrains IDE, and Anysphere's coding apps (Cursor's
+        // makers): "com.anysphere.sand" ships as "Grok Bot", a coding agent
+        // where 15 of the owner's first 57 dictations went, without code mode.
+        return Self.knownPrefixes.contains { bundleID.hasPrefix($0) }
     }
+
+    static let knownPrefixes = ["com.jetbrains.", "com.anysphere."]
 }
