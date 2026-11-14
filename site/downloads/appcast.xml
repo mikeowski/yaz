@@ -2,5 +2,34 @@
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>yaz</title>
+        <item>
+            <title>0.2.0</title>
+            <pubDate>Mon, 02 Nov 2026 23:39:38 +0300</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<!doctype html><meta charset=utf-8><body style='font: 13px -apple-system'><h3>yaz learns from your fixes</h3>
+<ul>
+<li><b>Fix a word once, twice, and yaz writes it right from then on.</b> It follows the field while you edit, even if you press Return straight after, and works in Slack, VS Code, Notion and other Electron apps. The menu says what it noted and learned.</li>
+<li>A rule is kept only if a fixed test set, and your own past dictations, stay correct. Put back a word yaz changed, and that change is never made again. <code>yaz learned</code> shows everything.</li>
+</ul>
+<h3>New</h3>
+<ul>
+<li><b>Numbers the Turkish way:</b> &quot;saat on beş otuzda&quot; → <code>saat 15.30&#x27;da</code>, &quot;yüzde elli&quot; → <code>%50</code>, &quot;on beş bin dolar&quot; → <code>15.000 dolar</code>.</li>
+<li><b>Voice commands:</b> end a sentence with &quot;yeni satır&quot;, &quot;yeni paragraf&quot; or &quot;soru işareti&quot;. Say just &quot;geri al&quot; to remove the last dictation.</li>
+<li><b>Names on screen:</b> the terms in the window you are looking at (<code>PaymentGateway</code>, <code>CORS</code>) are spelled right for that dictation.</li>
+<li><b>Code mode:</b> project names, &quot;camel case user name&quot; → <code>userName</code>, and &quot;auth service dosyası&quot; → <code>@Sources/AuthService.swift</code> in editors, terminals and coding agents.</li>
+<li><b>For coding agents:</b> <code>yaz mcp</code> lets Claude Code or Cursor ask you something you answer by voice.</li>
+<li><b>Per-app settings:</b> Turkish in Slack, English in GitHub, a chat style that drops a one-line message&#x27;s full stop.</li>
+<li><b>German</b> term repair, <b>hands-free</b> recording (tap the key twice), <b>live text</b> in the pill, a <b>microphone</b> picker, and <b>Paste Last Dictation</b>.</li>
+<li>A new icon in every macOS appearance, and automatic updates.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Your clipboard comes back after a dictation, unless you copied something newer.</li>
+</ul>]]></description>
+            <enclosure url="https://yaz.mike4.dev/downloads/yaz-0.2.0.dmg" length="8644061" type="application/octet-stream" sparkle:edSignature="q1pqD1JY9jQ6p/UrUC6cMwU9iAtVKNRuZNjRTKKcLVilU6rUscM741t5zyuwaR+8+Un8i/+nGQSfa9UTeoFaCA=="/>
+        </item>
     </channel>
 </rss>
