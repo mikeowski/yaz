@@ -294,7 +294,8 @@ struct Config: Sendable, Equatable {
         // A file that does not parse was loaded as defaults; writing now
         // would replace the user's whole config with them. Keep it.
         if FileManager.default.fileExists(atPath: url.path),
-           (try? Data(contentsOf: url)).flatMap({ try? JSONSerialization.jsonObject(with: $0) }) == nil {
+           (try? Data(contentsOf: url))
+            .flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) == nil {
             DataFile.setAside(url)
         }
         let data = try JSONSerialization.data(

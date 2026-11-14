@@ -48,7 +48,7 @@ struct DataFileTests {
         let url = dir.appending(path: "learned.json")
         try #"{"rules": [{"heard": "#.write(to: url, atomically: true, encoding: .utf8)
 
-        let rules = LearnedRules.load(from: url)
+        let rules = LearnedRules.load(from: url, repairing: true)
         #expect(rules == LearnedRules())
         #expect(!FileManager.default.fileExists(atPath: url.path))
         #expect(try broken(in: dir, name: "learned.json").count == 1)
@@ -60,8 +60,41 @@ struct DataFileTests {
         let url = dir.appending(path: "personal.json")
         try "not json".write(to: url, atomically: true, encoding: .utf8)
 
-        #expect(PersonalCorpus.load(from: url).isEmpty)
+        #expect(PersonalCorpus.load(from: url, repairing: true).isEmpty)
         #expect(try broken(in: dir, name: "personal.json").count == 1)
+    }
+
+    @Test("a read-only load leaves an unreadable file where it is")
+    func readOnlyLeavesFile() throws {
+        let dir = try scratch()
+        let url = dir.appending(path: "learned.json")
+        try #"{"rules": "a newer format"}"#.write(to: url, atomically: true, encoding: .utf8)
+        #expect(LearnedRules.load(from: url) == LearnedRules())
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        #expect(try broken(in: dir, name: "learned.json").isEmpty)
+    }
+
+    @Test("a second unreadable file in the same second gets its own copy")
+    func twoInOneSecond() throws {
+        let dir = try scratch()
+        let url = dir.appending(path: "learned.json")
+        let now = Date()
+        try "one".write(to: url, atomically: true, encoding: .utf8)
+        DataFile.setAside(url, now: now)
+        try "two".write(to: url, atomically: true, encoding: .utf8)
+        DataFile.setAside(url, now: now)
+        let kept = try broken(in: dir, name: "learned.json")
+        #expect(kept.count == 2)
+        #expect(Set(try kept.map { try String(contentsOf: $0, encoding: .utf8) }) == ["one", "two"])
+    }
+
+    @Test("a config that is JSON but not an object is kept too")
+    func configNotAnObject() throws {
+        let dir = try scratch()
+        let url = dir.appending(path: "config.json")
+        try "[1, 2]".write(to: url, atomically: true, encoding: .utf8)
+        try Config.load(from: url).save(to: url)
+        #expect(try broken(in: dir, name: "config.json").count == 1)
     }
 
     @Test("a missing file is not an unreadable one")

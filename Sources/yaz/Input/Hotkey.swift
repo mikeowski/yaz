@@ -170,15 +170,27 @@ final class HotkeyMonitor: @unchecked Sendable {
 
     /// Compare with the keyboard as it is now, and deliver a missed release.
     /// Called while recording.
+    /// Two readings in a row must agree (a second apart at the daemon's
+    /// pace) before a release is delivered: one odd reading must not cut a
+    /// dictation short.
     func resync() {
         let flags = CGEventSource.flagsState(.combinedSessionState)
         let keyHeld = hotkey.keyCode.map { CGEventSource.keyState(.combinedSessionState, key: $0) }
         guard Self.missedRelease(isDown: isDown, flagHeld: flags.contains(hotkey.flag), keyHeld: keyHeld)
-        else { return }
+        else {
+            looksReleased = false
+            return
+        }
+        guard looksReleased else {
+            looksReleased = true
+            return
+        }
+        looksReleased = false
         isDown = false
-        log("hotkey up (missed: the key is no longer held)")
+        log("hotkey up (missed: the key is no longer held; flags=\(String(flags.rawValue, radix: 16)))")
         handler?(.released)
     }
+    private var looksReleased = false
 
     /// Watch for a tap that is alive but deaf.
     ///

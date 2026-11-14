@@ -15,10 +15,14 @@ enum DataFile {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let target = url.deletingLastPathComponent()
-            .appending(path: "\(url.lastPathComponent).broken-\(formatter.string(from: now))")
+        let base = "\(url.lastPathComponent).broken-\(formatter.string(from: now))"
+        var target = url.deletingLastPathComponent().appending(path: base)
+        var counter = 2
+        while manager.fileExists(atPath: target.path) {
+            target = url.deletingLastPathComponent().appending(path: "\(base)-\(counter)")
+            counter += 1
+        }
         do {
-            try? manager.removeItem(at: target)
             try manager.moveItem(at: url, to: target)
             log("! \(url.lastPathComponent) could not be read — kept as \(target.lastPathComponent)")
             return target
