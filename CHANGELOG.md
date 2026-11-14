@@ -68,6 +68,15 @@ Notable changes to yaz. Format loosely follows
 - Reading the text field cannot stall the hotkey: it runs off the main
   thread, with a short Accessibility timeout.
 
+- **`yaz mcp`: cancelling a question in the coding agent took your next
+  dictation.** The wait now ends when the agent cancels or goes away, and
+  the server answers other requests while it waits.
+- **Code mode was off in Grok Bot** (`com.anysphere.sand`): Anysphere's
+  apps now count as coding apps.
+- "Neue Zeile, danke." (Whisper joining two sentences with a comma) is a
+  line break again; a line-break command that is a whole clause before a
+  comma is carried out in every language.
+
 ### Changed
 
 - A dictation on the clipboard is marked transient and concealed, so
