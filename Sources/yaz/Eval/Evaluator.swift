@@ -33,12 +33,16 @@ enum Evaluator {
         let riskyTerms: [VocabularyTerm]
         let recall: [(heard: String, expected: String)]
         let precision: [String]
+        /// Whole-sentence expectations: unchanged is a miss, any other
+        /// change a false match.
+        var exact: [(heard: String, expected: String)] = []
     }
 
     static let sets: [LanguageSet] = [
         LanguageSet(
             language: "tr", riskyTerms: EvalCorpus.riskyTerms,
-            recall: EvalCorpus.recall, precision: EvalCorpus.precision),
+            recall: EvalCorpus.recall, precision: EvalCorpus.precision + EvalCorpus.developer,
+            exact: EvalCorpus.suffixed),
         LanguageSet(
             language: EvalCorpus.German.language, riskyTerms: EvalCorpus.German.riskyTerms,
             recall: EvalCorpus.German.recall, precision: EvalCorpus.German.precision),
@@ -106,6 +110,17 @@ enum Evaluator {
             for (heard, expected) in set.recall
             where !vocabulary.correct(heard).text.contains(expected) {
                 score.misses += 1
+            }
+            score.recallCases += set.exact.count
+            for (heard, expected) in set.exact {
+                let result = vocabulary.correct(heard)
+                if result.text == expected { continue }
+                if result.didChange {
+                    score.falseMatches += 1
+                    score.offenders.append("[\(set.language)] \(heard) → \(result.text) (want \(expected))")
+                } else {
+                    score.misses += 1
+                }
             }
             for sentence in set.precision {
                 for vocab in [vocabulary, risky] {

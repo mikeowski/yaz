@@ -85,6 +85,58 @@ enum EvalCorpus {
 
 extension EvalCorpus {
 
+    /// Turkish as a developer dictates it to a coding agent, already right:
+    /// loanwords with Turkish suffixes, terms spelled right, "Claude Code"
+    /// (not a corpus term). **Any change is a false match.**
+    ///
+    /// From the false matches of 0.2.0 in real use (2–11 Nov 2026: `inputuna`
+    /// → Notion, `mergele` → merge, `koda sor` → Cursor), reworded: the real
+    /// dictations are private and stay on the user's Mac. The first five
+    /// sentences changed under 0.2.0; the rest did not and must stay so.
+    static let developer: [String] = [
+        "Bu inputuna bakar mısın, boş geliyor galiba.",
+        "Testler geçince mergele, sonra deployla.",
+        "Cloud koda sor, dosyayı o bulur.",
+        "Cloud Code'a sor, o bilir.",
+        "Kursörü satırın sonuna götür.",
+        "Branchi maine mergeledim, sen de çekersin.",
+        "Değişiklikleri commitle ve pushla.",
+        "Outputu loga yazdırdım ama bir şey çıkmadı.",
+        "Slack'e yazdım, kimse cevap vermedi.",
+        "Pull request'i açtım, review bekliyor.",
+        "Notion'daki notları güncelledim.",
+        "Cursor'da açınca hata vermedi.",
+        "Kodu refactorladım, fonksiyonları böldüm.",
+        "Sunucuyu restartladım, şimdi çalışıyor.",
+        "Config dosyasını düzenledim, envleri ekledim.",
+        "Endpointi değiştirdim, istemci tarafını da güncelle.",
+        "Bu bugı fixledim, PR'a ekledim.",
+        "Loglara baktım, timeout hatası veriyor.",
+        "Debuglarken breakpoint koydum.",
+        "Kubernetes'e deploy ettim, podlar ayakta.",
+        "Migrationı çalıştırdım, tablolar oluştu.",
+        "Cachei temizleyince düzeldi.",
+        "Deploylamadan önce testleri çalıştır.",
+        "Mergelemeden önce bir bak istersen.",
+        "Inputları kontrol et, biri boş kalmış.",
+        "Bunu Cloud koduna sor.",
+    ]
+
+    /// A term heard with a Turkish case suffix and no apostrophe, and the
+    /// exact text it must become: the suffix is the user's, so it stays,
+    /// after an apostrophe. 0.2.0 dropped it ("Notiona" → "Notion"), which
+    /// is how a screen term turned "Kreatini" into "Kreatin".
+    ///
+    /// Scored on the whole sentence: unchanged is a miss, changed to
+    /// anything else is a false match.
+    static let suffixed: [(heard: String, expected: String)] = [
+        ("Notiona ekledim.", "Notion'a ekledim."),
+        ("Notionu açtım, oradan bak.", "Notion'u açtım, oradan bak."),
+        ("Körsırda açtım.", "Cursor'da açtım."),
+        ("Kubernetese deploy ettim.", "Kubernetes'e deploy ettim."),
+        ("Taypskripte çevirdim.", "TypeScript'e çevirdim."),
+    ]
+
     /// A German speaker who mixes in English terms, scored with the same
     /// developer `terms`.
     ///
