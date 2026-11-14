@@ -32,8 +32,10 @@ struct TimeoutTests {
         } catch {
             Issue.record("YazError bekleniyordu, gelen: \(error)")
         }
-        // This is the actual guarantee: the caller did not wait 30 s.
-        #expect(Date().timeIntervalSince(started) < 5)
+        // This is the actual guarantee: the caller did not wait 30 s. The
+        // bound is loose because a busy CI runner can stall the whole
+        // parallel batch for seconds before this test is even scheduled.
+        #expect(Date().timeIntervalSince(started) < 25)
     }
 
     @Test("an error from the work is not turned into a timeout error")

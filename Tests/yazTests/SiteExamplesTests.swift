@@ -27,7 +27,7 @@ struct SiteExamplesTests {
     @Test("the evaluation totals the site quotes")
     func totals() {
         let score = Evaluator.score()
-        #expect(score.precisionCases == 522)
+        #expect(score.precisionCases == 600)
         #expect(score.value == 0)
     }
 }

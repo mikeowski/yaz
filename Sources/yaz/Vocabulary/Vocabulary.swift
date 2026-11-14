@@ -174,6 +174,10 @@ struct Vocabulary: Sendable {
 
         var candidates: [Match] = []
         for entry in entries {
+            // Where the term is already written as it should be. No window
+            // may overlap one: "Fitbit Air'ın" is not a mangled "Fitbit",
+            // and "Fitbit" before "Air" is not a short "Fitbit Air".
+            let written = Self.occurrences(of: entry.canonical, in: tokens)
             // How many transcript words a term may surface as.
             //
             // Whisper splits and joins freely, so a multi-word term needs
@@ -191,6 +195,7 @@ struct Vocabulary: Sendable {
             for span in lower...upper {
                 guard tokens.count >= span else { continue }
                 for start in 0...(tokens.count - span) {
+                    guard !written.intersects(integersIn: start..<(start + span)) else { continue }
                     let window = Array(tokens[start..<(start + span)])
                     if let match = score(window: window, start: start, span: span, entry: entry) {
                         candidates.append(match)
@@ -215,23 +220,156 @@ struct Vocabulary: Sendable {
         let score: Double
         let kind: Correction.Kind
         let original: String
+        /// Replaces the last token's apostrophe suffix: a Turkish ending the
+        /// transcript wrote without one ("Notiona" → "Notion'a").
+        var suffix: String? = nil
     }
+
+    /// What one spelling of a window says about one entry.
+    private enum Evidence {
+        /// The window already is the term.
+        case same
+        case match(score: Double, kind: Correction.Kind)
+        case none
+    }
+
+    /// Case endings Turkish writes after an apostrophe on a proper noun, and
+    /// a transcript often writes without one. Longest first.
+    private static let turkishEndings = [
+        "nın", "nin", "nun", "nün", "dan", "den", "tan", "ten", "yla", "yle",
+        "ya", "ye", "yı", "yi", "yu", "yü", "da", "de", "ta", "te", "la", "le",
+        "ın", "in", "un", "ün", "na", "ne", "a", "e", "ı", "i", "u", "ü",
+    ]
 
     private func score(
         window: [Tokenizer.Token], start: Int, span: Int, entry: Entry
     ) -> Match? {
-        let stems = window.map(\.stem).joined(separator: " ")
-        guard !stems.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let stems = window.map(\.stem)
+        guard !stems.joined().trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
 
         let original = window.map(\.core).joined(separator: " ")
-
+        // Protection is decided on the words as heard: cutting an ending off
+        // "sonra" must not turn it into something the lexicon does not know.
+        let isProtected = lexicon.containsCommonWord(stems)
+        let full = evidence(stems, entry: entry, isProtected: isProtected)
         // Already correct — nothing to do, and reporting it as a correction
-        // would be noise. Compared with the canonical form, not the entry's
-        // spelling: an alias heard exactly is the clearest match there is,
-        // and skipping it meant a learned alias only ever worked when the
-        // canonical form caught the word anyway.
+        // would be noise.
+        if case .same = full { return nil }
+
+        // A Turkish ending without an apostrophe: the term may be the stem
+        // under it. Only in Turkish, and only when the transcript wrote no
+        // apostrophe suffix of its own.
+        let last = window[window.count - 1]
+        var endsInSuffix = false
+        var cut: Match?
+        // The cut stem is, on its own, the term's last word: "kod" under
+        // "koda" for Claude Code, "Cloud" under "Cloudu" for Claude. A vowel
+        // ending leaves the skeleton as it was, so only this tells a real
+        // ending from the term's own last letters ("C.I.P. eline").
+        var cutCompletesTerm = false
+        let lastWordSkeleton = PhoneticKey.skeleton(
+            entry.canonical.split(whereSeparator: \.isWhitespace).last.map(String.init) ?? "")
+        if lexicon.language == "tr", last.suffix.isEmpty {
+            let lower = PhoneticKey.lowercasedTurkish(last.stem)
+            for ending in Self.turkishEndings
+            where lower.hasSuffix(ending) && lower.count - ending.count >= Vocabulary.minimumTermLength {
+                endsInSuffix = true
+                let stem = String(last.stem.dropLast(ending.count))
+                let written = String(last.stem.suffix(ending.count))
+                switch evidence(Array(stems.dropLast()) + [stem], entry: entry, isProtected: isProtected) {
+                case .same:
+                    // The term itself with a Turkish ending. A lowercase term
+                    // is used as a Turkish word ("mergele", "deployla") and is
+                    // already right; a name gets its apostrophe.
+                    guard entry.canonical.first?.isUppercase == true else { return nil }
+                    return Match(
+                        start: start, span: span, canonical: entry.canonical, score: 1.0,
+                        kind: .exact, original: original, suffix: "'" + written)
+                case .match(let value, let kind):
+                    // The full-form reading of a stem beats a skeleton one,
+                    // whatever the numbers: "Taypskript" (normalized) is the
+                    // stem of "Taypskripte", not "Taypskrip" (skeleton).
+                    let candidate = Match(
+                        start: start, span: span, canonical: entry.canonical, score: value,
+                        kind: kind, original: original, suffix: "'" + written)
+                    if let current = cut, Self.rank(current) >= Self.rank(candidate) { break }
+                    cut = candidate
+                    let stemSkeleton = PhoneticKey.skeleton(stem)
+                    cutCompletesTerm = stemSkeleton.count >= 2 && stemSkeleton == lastWordSkeleton
+                case .none:
+                    break
+                }
+            }
+        }
+
+        switch full {
+        case .match(let value, let kind):
+            // The stem explains the word better than the whole word does:
+            // "Körsır" (0.999) under "Körsırda" (0.799).
+            // On a tie the ending explains nothing either way: one word
+            // keeps it ("Sılacıka" → "Slack'a"); across several words only
+            // when the stem is the term's last word, since there the end is
+            // usually the term's own ("C.I.P. eline").
+            if let cut,
+               cut.kind == .normalized || cut.score > value
+                || (abs(cut.score - value) < 1e-9 && (window.count == 1 || cutCompletesTerm)) {
+                return cut
+            }
+            // A skeleton guess on a word wearing a Turkish ending that the
+            // stem does not explain: "inputuna" is not Notion, and neither
+            // is "inputun". One word only: across several, the last one's
+            // ending is usually the term's own mangled end ("C.I.P. eline",
+            // "Puhrıkı Esti").
+            if kind == .skeleton, endsInSuffix, window.count == 1 { return nil }
+            return Match(
+                start: start, span: span, canonical: entry.canonical, score: value,
+                kind: kind, original: original)
+        case .same, .none:
+            // A stem alone may find a term only on full-form evidence: on a
+            // skeleton, "satır" under "satırın" became Sentry.
+            guard let cut, cut.kind == .normalized else { return nil }
+            return cut
+        }
+    }
+
+    /// Token positions covered by `canonical` written exactly (ignoring
+    /// case), word for word.
+    private static func occurrences(of canonical: String, in tokens: [Tokenizer.Token]) -> IndexSet {
+        let words = canonical.split(whereSeparator: \.isWhitespace).map(String.init)
+        var covered = IndexSet()
+        guard !words.isEmpty, tokens.count >= words.count else { return covered }
+        for start in 0...(tokens.count - words.count) {
+            let matches = words.indices.allSatisfy {
+                tokens[start + $0].stem.compare(words[$0], options: .caseInsensitive) == .orderedSame
+            }
+            if matches { covered.insert(integersIn: start..<(start + words.count)) }
+        }
+        return covered
+    }
+
+    private static func isVowel(_ letter: Character) -> Bool {
+        "aeıioöuü".contains(letter)
+    }
+
+    /// Lowercase, without diacritics or the dotless ı.
+    private static func letters(_ text: String) -> String {
+        PhoneticKey.lowercasedTurkish(text).replacingOccurrences(of: "ı", with: "i")
+            .folding(options: .diacriticInsensitive, locale: nil)
+    }
+
+    private static func rank(_ match: Match) -> (Int, Double) {
+        (match.kind == .skeleton ? 0 : 1, match.score)
+    }
+
+    private func evidence(_ window: [String], entry: Entry, isProtected: Bool) -> Evidence {
+        let stems = window.joined(separator: " ")
+
+        // Compared with the canonical form, not the entry's spelling: an
+        // alias heard exactly is the clearest match there is, and skipping
+        // it meant a learned alias only ever worked when the canonical form
+        // caught the word anyway.
         if stems.compare(entry.canonical, options: .caseInsensitive) == .orderedSame {
-            return nil
+            return .same
         }
         // The term with an English plural ending is the term too: "pull
         // requests" must not lose its "s". (Turkish puts suffixes behind an
@@ -239,61 +377,71 @@ struct Vocabulary: Sendable {
         let lower = stems.lowercased()
         let canonical = entry.canonical.lowercased()
         if lower == canonical + "s" || lower == canonical + "es" {
-            return nil
+            return .same
         }
 
         let normalizedWindow = PhoneticKey.normalize(stems)
-        guard !normalizedWindow.isEmpty else { return nil }
+        guard !normalizedWindow.isEmpty else { return .none }
 
         // The user undid this exact replacement before.
         if !blockedKeys.isEmpty,
            blockedKeys.contains(Self.blockKey(heard: stems, term: entry.canonical)) {
-            return nil
+            return .none
         }
 
         // A window holding an ordinary word of the language is something the
         // user plainly said. It may still be replaced, but only on near-exact
         // evidence — never on a skeleton guess, which is what turned "Doktor"
         // into "Docker" and "sonra" into "Sentry".
-        let isProtected = lexicon.containsCommonWord(window.map(\.stem))
-
         let limit = max(
             entry.minSimilarity ?? threshold,
             isProtected ? lexicon.protectedWordThreshold : 0)
 
         let full = EditDistance.similarity(normalizedWindow, entry.normalized)
         if full >= limit {
-            return Match(
-                start: start, span: span, canonical: entry.canonical,
-                score: full, kind: .normalized, original: original)
+            // For a word of the language, near-exact means as written, not
+            // only as it sounds: "kursör" sounds exactly like Cursor and is
+            // the Turkish word for the pointer. Letters count, their marks
+            // do not ("kahvaltı" is still "Kahvalti").
+            if isProtected {
+                let written = EditDistance.similarity(Self.letters(stems), Self.letters(entry.canonical))
+                guard written >= lexicon.protectedWordThreshold else { return .none }
+            }
+            return .match(score: full, kind: .normalized)
         }
 
         // Skeleton evidence is never enough to overrule a real Turkish word.
-        guard !isProtected else { return nil }
+        guard !isProtected else { return .none }
 
         // Skeleton comparison only where there are enough consonants to carry
         // meaning; a two-letter skeleton matches almost anything.
         let windowSkeleton = PhoneticKey.skeleton(stems)
-        guard entry.skeleton.count >= 3, windowSkeleton.count >= 3 else { return nil }
+        guard entry.skeleton.count >= 3, windowSkeleton.count >= 3 else { return .none }
 
         // The leading consonant is the most stable part of the signal:
         // epenthesis inserts vowels and doubles consonants, but it does not
         // change what the word starts with. Requiring it to agree is what
         // separates "Redis"/"neredeyse" (r vs n — reject) from
         // "Slack"/"Sılacık" (s vs s — allow), which score identically.
-        guard windowSkeleton.first == entry.skeleton.first else { return nil }
+        guard windowSkeleton.first == entry.skeleton.first else { return .none }
+        // The skeleton drops a leading vowel too, so "inputun" (i…) reads
+        // as n-p-t-n next to Notion (n…). Epenthesis adds vowels between
+        // consonants, not before the first one: a word that opens with a
+        // vowel is not a term that opens with a consonant.
+        if let heard = normalizedWindow.first, let term = entry.normalized.first,
+           Self.isVowel(heard) != Self.isVowel(term) {
+            return .none
+        }
 
         let skeletal = EditDistance.similarity(windowSkeleton, entry.skeleton)
         let skeletonLimit = entry.minSimilarity ?? skeletonThreshold
         if skeletal >= skeletonLimit {
-            return Match(
-                start: start, span: span, canonical: entry.canonical,
-                // Report the skeleton score, but keep it below a full-form
-                // match of the same value so overlap resolution prefers the
-                // better-evidenced one.
-                score: skeletal - 0.001, kind: .skeleton, original: original)
+            // Report the skeleton score, but keep it below a full-form match
+            // of the same value so overlap resolution prefers the
+            // better-evidenced one.
+            return .match(score: skeletal - 0.001, kind: .skeleton)
         }
-        return nil
+        return .none
     }
 
     /// Greedy best-first selection of non-overlapping matches. Longer spans
@@ -331,7 +479,8 @@ struct Vocabulary: Sendable {
             let last = tokens[match.start + match.span - 1]
             let range = first.range.lowerBound..<last.range.upperBound
 
-            let replacement = first.leading + match.canonical + last.suffix + last.trailing
+            let replacement = first.leading + match.canonical + (match.suffix ?? last.suffix)
+                + last.trailing
             let before = String(text[range])
             result.replaceSubrange(range, with: replacement)
 

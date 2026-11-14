@@ -2,5 +2,22 @@
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>yaz</title>
+        <item>
+            <title>0.2.1</title>
+            <pubDate>Sat, 14 Nov 2026 20:29:11 +0300</pubDate>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>0.2.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<!doctype html><meta charset=utf-8><body style='font: 13px -apple-system'><h3>Term repair leaves your Turkish alone</h3>
+<ul>
+<li><b>Turkish endings stay yours.</b> yaz no longer reads a Turkish ending as part of a term: &quot;inputuna&quot; stays &quot;inputuna&quot; (it was &quot;Notion&quot;), &quot;mergele&quot; and &quot;deployla&quot; stay as you said them.</li>
+<li><b>A name keeps its ending.</b> When a term is heard with an ending and no apostrophe, the ending comes back after one: &quot;Notiona&quot; → <code>Notion&#x27;a</code>, &quot;Körsırda&quot; → <code>Cursor&#x27;da</code>, &quot;Cloud koda sor&quot; → <code>Claude Code&#x27;a sor</code>. Before, the ending was dropped.</li>
+<li><b>Words that only sound like a term stay.</b> &quot;kursörü&quot; is the pointer, not Cursor; &quot;Code&#x27;a sor&quot; is not Cursor either.</li>
+<li>A name on screen no longer swallows the word after it: &quot;Fitbit Air&#x27;ın&quot; keeps its &quot;Air&quot;.</li>
+</ul>
+<p>The test set now has 26 sentences of developer Turkish and 5 names with endings; 0.2.0 got 10 of them wrong. <code>yaz eval --history</code> replays your own dictations through the new rules, on your Mac only.</p>]]></description>
+            <enclosure url="https://yaz.mike4.dev/downloads/yaz-0.2.1.dmg" length="8650153" type="application/octet-stream" sparkle:edSignature="/xWsFGTsuQjhGG9DtxBIx81M/PthJ39UO8rA3JyGY3oPidEomNVRUyr6UXK5GSZfKB7GB/GTXTz88n0SDjxPCw=="/>
+        </item>
     </channel>
 </rss>
