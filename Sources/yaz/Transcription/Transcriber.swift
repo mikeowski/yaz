@@ -82,6 +82,13 @@ struct TranscribeOptions: Sendable {
     /// profile (`AppProfile.language`). Whisper only.
     var language: String? = nil
 
+    /// The timeout for a recording of `seconds`: never under 120 s, and
+    /// never under the recording's own length. A fixed 120 s lost a long
+    /// hands-free take (up to ten minutes) on a slower Mac.
+    static func timeout(forAudioSeconds seconds: Double) -> Duration {
+        .seconds(max(120, seconds.rounded(.up)))
+    }
+
     /// Show whatever the model produced, however bad.
     static let raw = TranscribeOptions(
         gate: SpeechGate(minSeconds: 0, silencePeak: 0),
@@ -125,5 +132,47 @@ func withTranscriptionTimeout<T: Sendable>(
         }
         group.cancelAll()
         return result
+    }
+}
+
+/// Wait for `work` at most `deadline`, even if it never ends and ignores
+/// cancellation (unlike `withTranscriptionTimeout`, whose task group waits
+/// for its children). The work is cancelled and left to finish on its own;
+/// its result, if it ever comes, is dropped.
+func withDeadline<T: Sendable>(
+    _ deadline: Duration,
+    _ work: @escaping @Sendable () async throws -> T,
+    onTimeout: @escaping @Sendable () -> Error
+) async throws -> T {
+    let once = Once()
+    return try await withCheckedThrowingContinuation { continuation in
+        let worker = Task {
+            do {
+                let value = try await work()
+                if once.claim() { continuation.resume(returning: value) }
+            } catch {
+                if once.claim() { continuation.resume(throwing: error) }
+            }
+        }
+        Task {
+            try? await Task.sleep(for: deadline)
+            if once.claim() {
+                worker.cancel()
+                continuation.resume(throwing: onTimeout())
+            }
+        }
+    }
+}
+
+/// True for the first caller only.
+private final class Once: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+    func claim() -> Bool {
+        lock.withLock {
+            if claimed { return false }
+            claimed = true
+            return true
+        }
     }
 }

@@ -128,3 +128,41 @@ struct PasteboardRestoreTests {
         #expect(board.contents == "later")
     }
 }
+
+@Suite("TextInjector — a paste that cannot happen leaves the text on the clipboard")
+@MainActor
+struct BlockedPasteTests {
+
+    @Test("no Accessibility, or secure input, blocks the paste")
+    func blockers() {
+        #expect(TextInjector.blocker(trusted: true, secureInput: false) == nil)
+        #expect(TextInjector.blocker(trusted: false, secureInput: false) == .noAccessibility)
+        #expect(TextInjector.blocker(trusted: true, secureInput: true) == .secureInput)
+        #expect(TextInjector.blocker(trusted: false, secureInput: true) == .noAccessibility)
+    }
+
+    @Test("a dictation left on the pasteboard is not restored away")
+    func leftDictationStays() {
+        let board = FakePasteboard("user's text")
+        let restore = PasteboardRestore(board: board)
+
+        let token = restore.put("dictation")
+        restore.leave()
+
+        #expect(restore.restore(after: token) == .superseded)
+        #expect(board.contents == "dictation")
+    }
+
+    @Test("after a left dictation, the next one gives it back as the user's")
+    func nextDictationRestoresTheLeftOne() {
+        let board = FakePasteboard("user's text")
+        let restore = PasteboardRestore(board: board)
+
+        _ = restore.put("first")
+        restore.leave()
+        let token = restore.put("second")
+
+        #expect(restore.restore(after: token) == .restored)
+        #expect(board.contents == "first")
+    }
+}

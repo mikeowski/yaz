@@ -68,6 +68,15 @@ final class PasteboardRestore<Board: RestorablePasteboard> {
         return generation
     }
 
+    /// Leave the dictation on the pasteboard as the user's own: the paste
+    /// could not happen, so the pasteboard is where the text survives. What
+    /// was there before is given up, as an ordinary copy would.
+    func leave() {
+        original = nil
+        insertedChangeCount = nil
+        generation += 1
+    }
+
     /// Give the user's contents back, if nothing newer is there.
     @discardableResult
     func restore(after token: Int) -> Outcome {
@@ -110,11 +119,22 @@ final class SystemPasteboard: RestorablePasteboard {
         }
     }
 
+    /// The dictation is marked transient and concealed (the nspasteboard.org
+    /// convention clipboard managers follow, so they do not keep a history
+    /// of everything said) and stays on this Mac: Universal Clipboard does
+    /// not send it to the user's other devices. It is there to be pasted, or
+    /// when a paste is blocked (secure input, perhaps a password field), to
+    /// be pasted by hand.
     func write(_ text: String) -> Int {
-        pasteboard.clearContents()
+        pasteboard.prepareForNewContents(with: .currentHostOnly)
         pasteboard.setString(text, forType: .string)
+        pasteboard.setData(Data(), forType: Self.transient)
+        pasteboard.setData(Data(), forType: Self.concealed)
         return pasteboard.changeCount
     }
+
+    private static let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+    private static let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
 
     func restore(_ snapshot: [NSPasteboardItem]) {
         pasteboard.clearContents()

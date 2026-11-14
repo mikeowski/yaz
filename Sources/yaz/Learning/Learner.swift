@@ -195,11 +195,18 @@ struct LearnedRules: Codable, Sendable, Equatable {
 
     static var path: URL { AppEnvironment.supportDirectory.appending(path: "learned.json") }
 
-    static func load(from url: URL = LearnedRules.path) -> LearnedRules {
+    /// `repairing`: move an unreadable file aside (the daemon, which saves
+    /// next). A read-only command leaves it where it is: it may be a newer
+    /// format, for a newer yaz running beside an older CLI.
+    static func load(from url: URL = LearnedRules.path, repairing: Bool = false) -> LearnedRules {
         guard let data = try? Data(contentsOf: url) else { return LearnedRules() }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode(LearnedRules.self, from: data)) ?? LearnedRules()
+        if let decoded = try? decoder.decode(LearnedRules.self, from: data) { return decoded }
+        // Unreadable: start empty, but keep the file, or the next save
+        // writes the empty set over everything that was in it.
+        if repairing { DataFile.setAside(url) }
+        return LearnedRules()
     }
 
     func save(to url: URL = LearnedRules.path) throws {

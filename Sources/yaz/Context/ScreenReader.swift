@@ -14,9 +14,7 @@ enum ScreenReader {
 
     static func frontWindowText() -> String {
         let started = Date()
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.1)
-        guard let app = element(system, kAXFocusedApplicationAttribute),
+        guard let app = AXFocus.application(timeout: 0.1),
               let window = element(app, kAXFocusedWindowAttribute)
         else { return "" }
         AXUIElementSetMessagingTimeout(window, 0.1)

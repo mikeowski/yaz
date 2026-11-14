@@ -46,7 +46,8 @@ final class AudioCapture: @unchecked Sendable {
     /// modifier key grows the buffer until the machine swaps — 16 kHz mono
     /// Float32 is 3.7 MB per minute, so ten minutes is a deliberate stop, not
     /// a limit anyone will hit by speaking.
-    private let maxSamples = Int(10 * 60 * AudioLoader.sampleRate)
+    static let maxSeconds: Double = 10 * 60
+    private let maxSamples = Int(AudioCapture.maxSeconds * AudioLoader.sampleRate)
     private var hitLimit = false
 
     var isRecording: Bool { lock.withLock { running } }

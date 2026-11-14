@@ -83,11 +83,18 @@ struct PersonalCorpus: Codable, Sendable, Equatable {
 
     static var path: URL { AppEnvironment.supportDirectory.appending(path: "personal.json") }
 
-    static func load(from url: URL = PersonalCorpus.path) -> PersonalCorpus {
+    /// `repairing`: move an unreadable file aside (the daemon, which saves
+    /// next). A read-only command leaves it where it is: it may be a newer
+    /// format, for a newer yaz running beside an older CLI.
+    static func load(from url: URL = PersonalCorpus.path, repairing: Bool = false) -> PersonalCorpus {
         guard let data = try? Data(contentsOf: url) else { return PersonalCorpus() }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode(PersonalCorpus.self, from: data)) ?? PersonalCorpus()
+        if let decoded = try? decoder.decode(PersonalCorpus.self, from: data) { return decoded }
+        // Unreadable: start empty, but keep the file, or the next save
+        // writes the empty set over everything that was in it.
+        if repairing { DataFile.setAside(url) }
+        return PersonalCorpus()
     }
 
     func save(to url: URL = PersonalCorpus.path) throws {

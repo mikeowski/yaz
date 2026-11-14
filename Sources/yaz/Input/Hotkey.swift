@@ -160,6 +160,49 @@ final class HotkeyMonitor: @unchecked Sendable {
         isDown = false
     }
 
+    /// A key-up the tap never delivered: the key is recorded as down but is
+    /// not held. Sleep, the screen locking or secure input can swallow the
+    /// release; the recording then ran on until the ten-minute cap and the
+    /// next press pasted the room.
+    ///
+    /// Only the modifier flag decides, not the per-key state: the key state
+    /// table is not updated for every source (an injected `flagsChanged`, as
+    /// remote-control and accessibility tools send, leaves it unset while the
+    /// tap sees a press), and a wrong "not held" cuts a dictation short. The
+    /// flag alone can only err the other way: the other Option key held keeps
+    /// a missed release waiting until it is let go.
+    ///
+    /// The flags are read from the HID state, not the session's combined
+    /// state: our own ⌘V carries only the Command flag and replaces the
+    /// combined flags, so a dictation started while the previous one was
+    /// pasted looked released a second later and was cut off (seen on the
+    /// running app, 2026-11-14).
+    static func missedRelease(isDown: Bool, flagHeld: Bool) -> Bool {
+        isDown && !flagHeld
+    }
+
+    /// Compare with the keyboard as it is now, and deliver a missed release.
+    /// Called while recording.
+    /// Two readings in a row must agree (a second apart at the daemon's
+    /// pace) before a release is delivered: one odd reading must not cut a
+    /// dictation short.
+    func resync() {
+        let flags = CGEventSource.flagsState(.hidSystemState)
+        guard Self.missedRelease(isDown: isDown, flagHeld: flags.contains(hotkey.flag)) else {
+            looksReleased = false
+            return
+        }
+        guard looksReleased else {
+            looksReleased = true
+            return
+        }
+        looksReleased = false
+        isDown = false
+        log("hotkey up (missed: the key is no longer held; flags=\(String(flags.rawValue, radix: 16)))")
+        handler?(.released)
+    }
+    private var looksReleased = false
+
     /// Watch for a tap that is alive but deaf.
     ///
     /// The worst failure this project hit: `AXIsProcessTrusted()` true,

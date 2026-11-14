@@ -17,6 +17,7 @@ final class MenuBarController {
     var onUseFallbackHotkey: (() -> Void)?
     var onPasteLast: (() -> Void)?
     var onUndoLast: (() -> Void)?
+    var onRetryLast: (() -> Void)?
     /// Set only when Sparkle is running (the signed .app); otherwise the
     /// update items stay out of the menu.
     var onCheckForUpdates: (() -> Void)? {
@@ -25,6 +26,9 @@ final class MenuBarController {
 
     private let item: NSStatusItem
     private let statusLine = NSMenuItem(title: "starting…", action: nil, keyEquivalent: "")
+    /// Shown while a recording whose transcription failed is kept.
+    private let retryItem = NSMenuItem(
+        title: "Retry Last Recording", action: #selector(retryLastRecording), keyEquivalent: "")
     private let permissionItem = NSMenuItem(
         title: "⚠︎  Grant Accessibility permission…", action: nil, keyEquivalent: "")
     private let hotkeyConflictItem = NSMenuItem(
@@ -122,6 +126,10 @@ final class MenuBarController {
 
         // The last dictation again, into whatever is focused: for the field
         // that lost focus, or a second place the same text should go.
+        retryItem.target = self
+        retryItem.isHidden = true
+        menu.addItem(retryItem)
+
         let pasteLast = NSMenuItem(
             title: "Paste Last Dictation", action: #selector(pasteLastDictation), keyEquivalent: "")
         pasteLast.target = self
@@ -176,6 +184,11 @@ final class MenuBarController {
         }
     }
 
+    /// Show or hide "Retry Last Recording".
+    func setRetryAvailable(_ available: Bool) {
+        retryItem.isHidden = !available
+    }
+
     /// Show or clear "Update to x.y…".
     func setUpdateAvailable(_ version: String?) {
         updateAvailableItem.isHidden = version == nil
@@ -184,6 +197,7 @@ final class MenuBarController {
 
     @objc private func checkForUpdates() { onCheckForUpdates?() }
     @objc private func pasteLastDictation() { onPasteLast?() }
+    @objc private func retryLastRecording() { onRetryLast?() }
     @objc private func undoLastDictation() { onUndoLast?() }
     @objc private func useFallbackHotkey() { onUseFallbackHotkey?() }
     @objc private func fixPermission() { onFixPermission?() }

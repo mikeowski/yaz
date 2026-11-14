@@ -1265,6 +1265,31 @@ deterministic layer stays.
 The one thing still outstanding is a live dictation round: microphone permission
 needs the user's approval.
 
+## The language packs on audio (2026-11-14)
+
+The English, German, Spanish and French packs were written and tested on text. Before 0.3.0 they went through
+audio once: three sentences per language, spoken by macOS `say` (Flo; Anna for German) into
+`fixtures/languages/`, transcribed by Whisper large-v3-turbo, then run through the pipeline with a developer
+vocabulary. `LanguageFixtureTests` pins the transcripts and the results.
+
+- **No term false match in any language.** "doctor", "Doktor", "docteur" stay; Docker and Redis are in the
+  vocabulary.
+- **Whisper writes most numbers itself** ("$15,000", "15.000 Euro", "15 000 euros", "50%"), so the number
+  layers rarely fire on clean speech. They are for what Whisper leaves as words.
+- **Commands:** "question mark", "new line" (English), "signo de interrogación" (Spanish, with the opening
+  "¿"), "nouvelle ligne" (French) are carried out.
+- **Fillers:** "Um" and "Euh" go.
+
+Known gaps, not fixed in 0.3.0:
+
+- **German "Neue Zeile" before a comma stays text.** Whisper wrote "Neue Zeile. Danke." as "Neue Zeile,
+  danke."; a command is only recognised at the end of a sentence.
+- **Spanish "Eh" written as "E,"** is not a filler the pack knows.
+- **French spacing is not added to Whisper's own punctuation:** "point d'interrogation" came out as "Tu
+  viens ce soir?" from Whisper itself, without the space the pack writes for a spoken command.
+
+The voices are synthetic; real speakers in these languages have not been measured.
+
 ## Measurement discipline
 
 `yaz transcribe` was written before the daemon, deliberately. Every change —
