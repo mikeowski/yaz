@@ -788,14 +788,24 @@ final class Daemon {
         case .onClipboard(let blocker):
             log("! not pasted: \(blocker.reason) — the text is on the clipboard")
             menuBar?.note("not pasted, on the clipboard: press ⌘V")
-            if blocker == .noAccessibility { menuBar?.setNeedsPermission(true) }
+            if blocker == .noAccessibility {
+                menuBar?.setNeedsPermission(true)
+                pasteLostPermission = true
+            }
         case .pastedAndKept(let blocker):
             log("! \(blocker.reason): pasted, and kept on the clipboard")
             menuBar?.note("secure input is on: if nothing appeared, press ⌘V")
-        case .inserted, .empty:
+        case .inserted:
+            // The paste went through, so Accessibility is back.
+            if pasteLostPermission {
+                pasteLostPermission = false
+                menuBar?.setNeedsPermission(false)
+            }
+        case .empty:
             break
         }
     }
+    private var pasteLostPermission = false
 
     private func finish(
         _ samples: [Float], sawSignal: Bool, screen screenTerms: Task<[VocabularyTerm], Never>?,
