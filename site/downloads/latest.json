@@ -1,13 +1,13 @@
 {
   "name": "yaz",
-  "version": "0.1.0",
-  "build": "1",
-  "file": "yaz-0.1.0.dmg",
-  "url": "https://github.com/mikeowski/yaz/releases/download/v0.1.0/yaz-0.1.0.dmg",
-  "sha256": "3665b911faaf763c1c582f1523e6ff63a7af5f33547b8c548e7d8a70c70d2d90",
-  "size": 6349515,
+  "version": "0.2.1",
+  "build": "3",
+  "file": "yaz-0.2.1.dmg",
+  "url": "/downloads/yaz-0.2.1.dmg",
+  "sha256": "a5eb15dc49e5ac0ee955814e03a2d95cb27459cc600836e6c8d9ee0da01dfff2",
+  "size": 8650153,
   "minimumSystemVersion": "26.0",
   "architectures": ["arm64"],
   "notarized": true,
-  "releasedAt": "2026-08-05T10:34:33Z"
+  "releasedAt": "2026-11-14T17:29:11Z"
 }
