@@ -87,7 +87,11 @@ struct PersonalCorpus: Codable, Sendable, Equatable {
         guard let data = try? Data(contentsOf: url) else { return PersonalCorpus() }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode(PersonalCorpus.self, from: data)) ?? PersonalCorpus()
+        if let decoded = try? decoder.decode(PersonalCorpus.self, from: data) { return decoded }
+        // Unreadable: start empty, but keep the file, or the next save
+        // writes the empty set over everything that was in it.
+        DataFile.setAside(url)
+        return PersonalCorpus()
     }
 
     func save(to url: URL = PersonalCorpus.path) throws {

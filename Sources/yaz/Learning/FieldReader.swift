@@ -29,15 +29,23 @@ enum FieldReader {
         }
     }
 
-    @MainActor
+    /// How long one Accessibility call may wait for the app. The default is
+    /// 6 s; an app that hangs would hold the caller that long, every second
+    /// of the read-back.
+    static let timeout: Float = 0.25
+
+    /// Not main-actor bound: the read-back calls it off the main thread, where
+    /// a slow app cannot stall the hotkey.
     static func focusedText() -> String? {
         let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, timeout)
         var focused: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
             system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
             let focused, CFGetTypeID(focused) == AXUIElementGetTypeID()
         else { return nil }
         let element = focused as! AXUIElement
+        AXUIElementSetMessagingTimeout(element, timeout)
 
         var role: CFTypeRef?
         if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role) == .success,
@@ -59,12 +67,14 @@ enum FieldReader {
     @MainActor
     static func deleteBeforeCaret(_ pasted: String) -> Bool {
         let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, timeout)
         var focused: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
             system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
             let focused, CFGetTypeID(focused) == AXUIElementGetTypeID()
         else { return false }
         let element = focused as! AXUIElement
+        AXUIElementSetMessagingTimeout(element, timeout)
 
         var value: CFTypeRef?
         var rangeValue: CFTypeRef?

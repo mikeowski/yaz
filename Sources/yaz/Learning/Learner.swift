@@ -199,7 +199,11 @@ struct LearnedRules: Codable, Sendable, Equatable {
         guard let data = try? Data(contentsOf: url) else { return LearnedRules() }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode(LearnedRules.self, from: data)) ?? LearnedRules()
+        if let decoded = try? decoder.decode(LearnedRules.self, from: data) { return decoded }
+        // Unreadable: start empty, but keep the file, or the next save
+        // writes the empty set over everything that was in it.
+        DataFile.setAside(url)
+        return LearnedRules()
     }
 
     func save(to url: URL = LearnedRules.path) throws {

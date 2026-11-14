@@ -68,6 +68,8 @@ final class Daemon {
     private var profilePipelines: [String: TranscriptPipeline] = [:]
     /// The user's own evaluation cases (`PersonalCorpus`).
     private var personal = PersonalCorpus.load()
+    /// Read-backs learn one at a time.
+    private let learning = OrderedWork()
     /// How long a dictation is watched for fixes at most.
     private static let watchLimit: TimeInterval = 60
     /// Edits are done once the field has not changed for this long.
@@ -329,7 +331,7 @@ final class Daemon {
             try? await Task.sleep(for: .milliseconds(600))
             while Date().timeIntervalSince(started) < Self.watchLimit {
                 guard AppEnvironment.frontmostApp()?.bundleID == bundleID else { break }
-                let field = FieldReader.focusedText()
+                let field = await Task.detached(priority: .utility) { FieldReader.focusedText() }.value
                 if field != nil { readAnything = true }
                 let status = tracker.observe(field)
                 if status == .gone { break }
@@ -347,74 +349,93 @@ final class Daemon {
                 log("○ learning: could not read the text field in \(bundleID) through Accessibility")
                 return
             }
-            // The personal set keeps sentences, so it follows the history
-            // switch: no history, no stored text.
-            let keepsCases = self.config.history
-
-            // Left exactly as pasted: it was right, and must stay right.
-            let trimmed = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
-            if tracker.wasKept {
-                guard keepsCases else { return }
-                var personal = self.personal
-                personal.recordKept(trimmed)
-                if personal != self.personal {
-                    self.personal = personal
-                    try? personal.save()
-                }
-                return
-            }
-
-            let edits = tracker.edits
-            guard !edits.isEmpty else {
-                if self.verbose { log("  learning: no word replaced") }
-                return
-            }
-
-            // The gate scores the whole evaluation set: off the main thread.
-            let learner = Learner(
-                rules: self.learned, language: self.config.language,
-                personal: keepsCases ? self.personal : PersonalCorpus())
-            let userTerms = self.config.vocabulary
-            let (rules, personal, events) = await Task.detached(priority: .utility) {
-                var learner = learner
-                let events = learner.observe(
-                    edits: edits, corrections: corrections, userTerms: userTerms,
-                    sentence: keepsCases ? trimmed : nil)
-                return (learner.rules, learner.personal, events)
+            await self.learning.enqueue { [weak self] in
+                await self?.learn(from: tracker, pasted: pasted, corrections: corrections)
             }.value
-            if keepsCases, personal != self.personal {
+        }
+    }
+
+    /// One read-back's lesson. Runs one at a time (`learning`), starting from
+    /// what is on disk: `yaz learned --forget` changes the file while the
+    /// daemon runs, and saving the copy in memory wrote the forgotten rule
+    /// back; two read-backs at once each saved over the other's update.
+    private func learn(
+        from tracker: EditTracker, pasted: String, corrections: [Vocabulary.Correction]
+    ) async {
+        let onDisk = LearnedRules.load()
+        if onDisk != self.learned {
+            self.learned = onDisk
+            self.rebuildPipeline()
+        }
+        self.personal = PersonalCorpus.load()
+
+        // The personal set keeps sentences, so it follows the history
+        // switch: no history, no stored text.
+        let keepsCases = self.config.history
+
+        // Left exactly as pasted: it was right, and must stay right.
+        let trimmed = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
+        if tracker.wasKept {
+            guard keepsCases else { return }
+            var personal = self.personal
+            personal.recordKept(trimmed)
+            if personal != self.personal {
                 self.personal = personal
                 try? personal.save()
             }
-            guard rules != self.learned else { return }
-            self.learned = rules
-            do {
-                try self.learned.save()
-            } catch {
-                log("! could not save learned rules: \(error.localizedDescription)")
-            }
-
-            var changed = false
-            for event in events {
-                switch event {
-                case let .noted(heard, meant, count):
-                    log("• noted your fix: \(heard) -> \(meant) (\(count) of \(Learner.promoteAfter))")
-                    self.menuBar?.note("noted: \(heard) → \(meant), once more to learn it")
-                case let .learned(heard, meant):
-                    log("✓ learned: \(heard) -> \(meant)")
-                    self.menuBar?.note("learned: \(heard) → \(meant)")
-                    changed = true
-                case let .rejected(heard, meant, reason):
-                    log("○ not learned: \(heard) -> \(meant), \(reason)")
-                    self.menuBar?.note("not learned: \(heard) → \(meant)")
-                case let .blocked(heard, term):
-                    log("✓ will not turn \(heard) into \(term) again")
-                    self.menuBar?.note("won't write \(term) for \(heard) again")
-                    changed = true
-                }
-            }
-            if changed { self.rebuildPipeline() }
+            return
         }
+
+        let edits = tracker.edits
+        guard !edits.isEmpty else {
+            if self.verbose { log("  learning: no word replaced") }
+            return
+        }
+
+        // The gate scores the whole evaluation set: off the main thread.
+        let learner = Learner(
+            rules: self.learned, language: self.config.language,
+            personal: keepsCases ? self.personal : PersonalCorpus())
+        let userTerms = self.config.vocabulary
+        let (rules, personal, events) = await Task.detached(priority: .utility) {
+            var learner = learner
+            let events = learner.observe(
+                edits: edits, corrections: corrections, userTerms: userTerms,
+                sentence: keepsCases ? trimmed : nil)
+            return (learner.rules, learner.personal, events)
+        }.value
+        if keepsCases, personal != self.personal {
+            self.personal = personal
+            try? personal.save()
+        }
+        guard rules != self.learned else { return }
+        self.learned = rules
+        do {
+            try self.learned.save()
+        } catch {
+            log("! could not save learned rules: \(error.localizedDescription)")
+        }
+
+        var changed = false
+        for event in events {
+            switch event {
+            case let .noted(heard, meant, count):
+                log("• noted your fix: \(heard) -> \(meant) (\(count) of \(Learner.promoteAfter))")
+                self.menuBar?.note("noted: \(heard) → \(meant), once more to learn it")
+            case let .learned(heard, meant):
+                log("✓ learned: \(heard) -> \(meant)")
+                self.menuBar?.note("learned: \(heard) → \(meant)")
+                changed = true
+            case let .rejected(heard, meant, reason):
+                log("○ not learned: \(heard) -> \(meant), \(reason)")
+                self.menuBar?.note("not learned: \(heard) → \(meant)")
+            case let .blocked(heard, term):
+                log("✓ will not turn \(heard) into \(term) again")
+                self.menuBar?.note("won't write \(term) for \(heard) again")
+                changed = true
+            }
+        }
+        if changed { self.rebuildPipeline() }
     }
 
     /// Index the project folders in the background, then swap in a pipeline
