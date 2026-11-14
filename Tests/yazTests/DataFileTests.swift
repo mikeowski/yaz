@@ -94,3 +94,15 @@ struct FieldReaderTimeoutTests {
         #expect(FieldReader.timeout <= 0.5)
     }
 }
+
+@Suite("FieldReader — a long field keeps its end")
+struct FieldReaderTailTests {
+    @Test("a short value is read whole, a long one by its end")
+    func tail() {
+        #expect(FieldReader.tail(of: "kısa") == "kısa")
+        let long = String(repeating: "a", count: FieldReader.maxLength) + "son satır"
+        let read = FieldReader.tail(of: long)
+        #expect(read.count == FieldReader.maxLength)
+        #expect(read.hasSuffix("son satır"))
+    }
+}

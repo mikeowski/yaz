@@ -7,8 +7,8 @@ import Foundation
 /// see what the user fixed. Secure fields never expose a value.
 enum FieldReader {
 
-    /// Fields longer than this are documents, not inputs: aligning against
-    /// them is slow and rarely right.
+    /// Longer than this, only the end is read: aligning against a whole
+    /// document is slow and rarely right.
     static let maxLength = 20_000
 
     @MainActor private static var enabled = Set<pid_t>()
@@ -37,15 +37,7 @@ enum FieldReader {
     /// Not main-actor bound: the read-back calls it off the main thread, where
     /// a slow app cannot stall the hotkey.
     static func focusedText() -> String? {
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, timeout)
-        var focused: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(
-            system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
-            let focused, CFGetTypeID(focused) == AXUIElementGetTypeID()
-        else { return nil }
-        let element = focused as! AXUIElement
-        AXUIElementSetMessagingTimeout(element, timeout)
+        guard let element = AXFocus.focusedElement(timeout: timeout) else { return nil }
 
         var role: CFTypeRef?
         if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role) == .success,
@@ -56,9 +48,17 @@ enum FieldReader {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
             element, kAXValueAttribute as CFString, &value) == .success,
-            let text = value as? String, !text.isEmpty, text.count <= maxLength
+            let text = value as? String, !text.isEmpty
         else { return nil }
-        return text
+        return tail(of: text)
+    }
+
+    /// A long value keeps its end. A terminal's text area is its whole
+    /// scrollback, with the prompt being typed into at the bottom; a long
+    /// document without the dictation near the end reads as "gone", which
+    /// learns nothing, as no reading did before.
+    static func tail(of text: String) -> String {
+        text.count <= maxLength ? text : String(text.suffix(maxLength))
     }
 
     /// Delete `pasted` from the focused field if it ends exactly at the caret
@@ -66,15 +66,7 @@ enum FieldReader {
     /// that does not support setting the selection is left untouched.
     @MainActor
     static func deleteBeforeCaret(_ pasted: String) -> Bool {
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, timeout)
-        var focused: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(
-            system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
-            let focused, CFGetTypeID(focused) == AXUIElementGetTypeID()
-        else { return false }
-        let element = focused as! AXUIElement
-        AXUIElementSetMessagingTimeout(element, timeout)
+        guard let element = AXFocus.focusedElement(timeout: timeout) else { return false }
 
         var value: CFTypeRef?
         var rangeValue: CFTypeRef?
