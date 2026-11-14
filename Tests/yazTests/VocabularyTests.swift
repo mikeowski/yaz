@@ -207,6 +207,62 @@ struct VocabularySuffixTests {
     }
 }
 
+/// Whisper often writes a Turkish ending without the apostrophe. 0.2.0 then
+/// replaced the whole word and lost the ending, or read the ending as part
+/// of a term ("inputuna" → Notion).
+@Suite("Vocabulary — a Turkish ending without an apostrophe")
+struct VocabularyBareSuffixTests {
+
+    @Test(
+        "a name keeps its ending, after an apostrophe",
+        arguments: [
+            ("Notiona ekledim.", "Notion'a ekledim."),
+            ("Körsırda açtım.", "Cursor'da açtım."),
+            ("Kubernetese deploy ettim.", "Kubernetes'e deploy ettim."),
+            ("Taypskripte çevirdim.", "TypeScript'e çevirdim."),
+        ])
+    func nameKeepsEnding(heard: String, expected: String) {
+        #expect(vocab().correct(heard).text == expected)
+    }
+
+    @Test(
+        "a lowercase term used as a Turkish word is already right",
+        arguments: ["Testler geçince mergele.", "Sonra deployla.", "Mergelemeden önce bak."])
+    func termAsTurkishWord(sentence: String) {
+        #expect(!vocab().correct(sentence).didChange)
+    }
+
+    @Test("an ending the stem does not explain is not part of a term")
+    func endingNotPartOfTerm() {
+        #expect(!vocab().correct("Bu inputuna bakar mısın?").didChange)
+    }
+
+    @Test("cutting an ending off an ordinary word does not unprotect it")
+    func cutWordStaysProtected() {
+        let risky = Vocabulary(terms: [VocabularyTerm(canonical: "Sentry")])
+        #expect(!risky.correct("Bunu sonra yaparız.").didChange)
+        #expect(!risky.correct("Satırın sonuna git.").didChange)
+    }
+
+    @Test(
+        "a vowel ending after the term's last word is an ending",
+        arguments: [
+            ("Claude Code", "Cloud koda sor.", "Claude Code'a sor."),
+            ("Claude", "Cloudu aç.", "Claude'u aç."),
+            ("Claude", "Cloud koda sor.", "Claude koda sor."),
+        ])
+    func vowelEnding(term: String, heard: String, expected: String) {
+        let vocabulary = Vocabulary(terms: [VocabularyTerm(canonical: term)])
+        #expect(vocabulary.correct(heard).text == expected)
+    }
+
+    @Test("a Turkish word that sounds like a term is left alone")
+    func soundAlikeWord() {
+        #expect(!vocab().correct("Kursörü satırın sonuna götür.").didChange)
+        #expect(!vocab().correct("Cloud Code'a sor, o bilir.").didChange)
+    }
+}
+
 @Suite("Vocabulary — guarding against a false match")
 struct VocabularyPrecisionTests {
 
@@ -490,5 +546,21 @@ struct VocabularyLanguageTests {
     func fillerFilterDeclaresItsLanguage() {
         #expect(FillerFilter.isSupported(language: "tr"))
         #expect(!FillerFilter.isSupported(language: "en"))
+    }
+}
+
+@Suite("Vocabulary — a term already written is left alone")
+struct VocabularyWrittenTermTests {
+
+    @Test("a one-word term does not swallow the word after it")
+    func oneWordTerm() {
+        let fitbit = Vocabulary(terms: [VocabularyTerm(canonical: "Fitbit")])
+        #expect(!fitbit.correct("Google Fitbit Air'ın fiyatı ne?").didChange)
+    }
+
+    @Test("part of a longer term is not stretched into the whole of it")
+    func partOfLongerTerm() {
+        let fitbitAir = Vocabulary(terms: [VocabularyTerm(canonical: "Fitbit Air")])
+        #expect(!fitbitAir.correct("Google Fitbit Air'ın fiyatı ne?").didChange)
     }
 }

@@ -94,7 +94,7 @@ enum TurkishLexicon {
         "kaldı", "kalır", "çıkmak", "çıktı", "çıkar", "girmek", "girdi",
         "başlamak", "başladı", "bitmek", "bitti", "durmak", "durdu",
         "koymak", "koydu", "açmak", "açtı", "kapatmak", "kapattı",
-        "sormak", "sordu", "söylemek", "söyledi", "anlamak", "anladı",
+        "sormak", "sordu", "sor", "söylemek", "söyledi", "anlamak", "anladı",
         "çalışmak", "çalıştı", "çalışıyor", "beklemek", "bekledi", "bekliyor",
         "unutmak", "unuttu", "unuttum", "hatırlamak", "sevmek", "sevdi",
         "yazmak", "yazdı", "okumak", "okudu", "dinlemek", "izlemek", "izledi",
@@ -119,6 +119,9 @@ enum TurkishLexicon {
         "hava", "yağmur", "kar", "güneş", "rüzgar", "deniz", "dağ", "ağaç",
         "çiçek", "kedi", "köpek", "kuş", "hayvan", "renk", "ses", "yüz",
         "göz", "el", "ayak", "baş", "kalp", "isim", "ad", "soru", "cevap",
+        // Words a developer says that a term's skeleton reaches ("sor" →
+        // Cursor, "kursör" → Cursor).
+        "kursör",
         "sorun", "problem", "konu", "fikir", "plan", "karar", "sonuç",
         "durum", "yer", "taraf", "yön", "boyut", "parça", "tane", "kargo",
         "paket", "sipariş", "teslim", "toplantı", "sunum", "rapor", "proje",
