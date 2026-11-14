@@ -3,6 +3,37 @@
     <channel>
         <title>yaz</title>
         <item>
+            <title>0.3.0</title>
+            <pubDate>Sun, 15 Nov 2026 01:04:19 +0300</pubDate>
+            <sparkle:version>4</sparkle:version>
+            <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<!doctype html><meta charset=utf-8><body style='font: 13px -apple-system'><h3>Five main languages</h3>
+<ul>
+<li><b>English, German, Spanish and French</b> get what Turkish has: term repair guarded by the language&#x27;s own word list (&quot;doctor&quot; stays doctor, &quot;cours&quot; stays cours), hesitation removal, numbers (&quot;fifteen thousand dollars&quot; → <code>15,000 dollars</code>, &quot;quatre-vingt-dix&quot; → <code>90</code>), voice commands (&quot;new line&quot;, &quot;neue Zeile&quot;, &quot;nueva línea&quot;) and model instructions in that language. Pick it under Settings → Main language.</li>
+<li>A command after an article stays a word: &quot;I need a new line.&quot; is a sentence.</li>
+</ul>
+<h3>No dictation lost</h3>
+<ul>
+<li><b>Speak while the last one is still being written.</b> The new recording starts at once and waits its turn; dictations land in the order you said them.</li>
+<li><b>A blocked paste stays on the clipboard.</b> With secure input on (a password field, a terminal&#x27;s Secure Keyboard Entry) or Accessibility revoked, the text is kept on the clipboard and the menu says so.</li>
+<li><b>Retry Last Recording</b> in the menu when a transcription fails, and a stuck transcription now gives up instead of holding every later one.</li>
+<li><b>A dictation that waited lands only where you said it.</b> If you switched apps meanwhile, it stays on the clipboard.</li>
+<li><b>A missed key-up no longer records the room</b> until the ten-minute limit.</li>
+<li>A dictation on the clipboard is kept out of clipboard managers and off your other devices.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><b>Learning and the names on screen now work in Ghostty</b>, which answers Accessibility only through its own window.</li>
+<li>A typo in <code>config.json</code>, or an unreadable <code>learned.json</code>, is kept aside as <code>.broken-&lt;date&gt;</code> instead of being saved over.</li>
+<li><b>Code mode in Grok Bot</b> and other Anysphere apps.</li>
+<li><code>yaz mcp</code>: cancelling a question in the coding agent no longer takes your next dictation.</li>
+<li>&quot;Neue Zeile, danke.&quot; is a line break again when Whisper joins the sentences with a comma.</li>
+</ul>]]></description>
+            <enclosure url="https://yaz.mike4.dev/downloads/yaz-0.3.0.dmg" length="8744455" type="application/octet-stream" sparkle:edSignature="jyIm7hxfkTY5dJ93LKPPFVdoxF5PL5ZUJ/IFQv/aOjqjXKgD2DroDD+fRj1kZLgLfpBxZiPZRIQ6cifYs592BA=="/>
+        </item>
+        <item>
             <title>0.2.1</title>
             <pubDate>Sat, 14 Nov 2026 20:29:11 +0300</pubDate>
             <sparkle:version>3</sparkle:version>
