@@ -171,6 +171,12 @@ final class HotkeyMonitor: @unchecked Sendable {
     /// tap sees a press), and a wrong "not held" cuts a dictation short. The
     /// flag alone can only err the other way: the other Option key held keeps
     /// a missed release waiting until it is let go.
+    ///
+    /// The flags are read from the HID state, not the session's combined
+    /// state: our own ⌘V carries only the Command flag and replaces the
+    /// combined flags, so a dictation started while the previous one was
+    /// pasted looked released a second later and was cut off (seen on the
+    /// running app, 2026-11-14).
     static func missedRelease(isDown: Bool, flagHeld: Bool) -> Bool {
         isDown && !flagHeld
     }
@@ -181,7 +187,7 @@ final class HotkeyMonitor: @unchecked Sendable {
     /// pace) before a release is delivered: one odd reading must not cut a
     /// dictation short.
     func resync() {
-        let flags = CGEventSource.flagsState(.combinedSessionState)
+        let flags = CGEventSource.flagsState(.hidSystemState)
         guard Self.missedRelease(isDown: isDown, flagHeld: flags.contains(hotkey.flag)) else {
             looksReleased = false
             return
