@@ -6,6 +6,10 @@ Notable changes to yaz. Format loosely follows
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-11-14
+
+Build 4. Release notes: `release-notes/0.3.0.md`.
+
 ### Added
 
 - **Five main languages.** Settings has a main-language picker (Turkish,
