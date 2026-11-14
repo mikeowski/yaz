@@ -232,13 +232,14 @@ struct RefinerTests {
     func fallsBackOnTimeout() async {
         // The model takes 30 s; the refiner must give up long before. The
         // margin is wide on purpose: tests run in parallel on a shared pool,
-        // and a loaded CI runner has delayed this wake-up past 3 s.
+        // and a loaded CI runner has stalled the batch for 15 s. Anything
+        // under the 30 s of the model still proves the refiner gave up.
         let slow = StubBackend(response: "geç kaldı", delay: .seconds(30))
         let refiner = Refiner(mode: .llm, timeout: .milliseconds(120), backend: slow)
 
         let started = Date()
         let result = await refiner.refine(Self.messy)
-        #expect(Date().timeIntervalSince(started) < 10)
+        #expect(Date().timeIntervalSince(started) < 25)
         #expect(result.text == FillerFilter.strip(Self.messy))
         #expect(result.rejection != nil)
     }
