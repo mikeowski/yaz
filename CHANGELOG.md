@@ -52,7 +52,12 @@ Notable changes to yaz. Format loosely follows
   nothing.** The new recording now starts and waits its turn; dictations
   are pasted in the order they were spoken.
 - **A failed transcription lost the audio.** The menu now offers *Retry
-  Last Recording*, and the timeout grows with long recordings.
+  Last Recording*, and the timeout grows with long recordings. A
+  transcription stuck in the model fails at a deadline instead of holding
+  every later one.
+- **A dictation that waited could land in the wrong app.** It is pasted only
+  if the app it was spoken in is still in front; otherwise it stays on the
+  clipboard.
 - **A missed key-up recorded the room.** yaz checks the key while
   recording and stops at the ten-minute limit.
 - **Learning and the names on screen saw nothing in Ghostty.** Ghostty
