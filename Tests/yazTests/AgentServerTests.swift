@@ -175,4 +175,77 @@ struct AgentServerTests {
         try data.write(to: url)
         #expect(TranscriptHistory.read(from: url).map(\.text) == Self.entries.reversed().map(\.text))
     }
+
+    // MARK: - The message loop
+
+    /// Feed `serve` these lines; a nil entry means "wait until the wait file
+    /// exists". Returns what was written, off the shared pool.
+    private func serve(_ dir: URL, _ script: [String?]) async -> [[String: Any]] {
+        let handoff = AgentHandoff(directory: dir)
+        let server = AgentServer(
+            history: { [] }, historyEnabled: true, handoff: handoff, pollInterval: 0.05, version: "9.9.9")
+        let written = Written()
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                var index = 0
+                server.serve(read: {
+                    while index < script.count {
+                        defer { index += 1 }
+                        if let line = script[index] { return line }
+                        for _ in 0..<100 where handoff.pendingWait() == nil { Thread.sleep(forTimeInterval: 0.02) }
+                    }
+                    return nil
+                }, write: { written.append($0) })
+                continuation.resume(returning: written.messages)
+            }
+        }
+    }
+
+    private static let waitCall = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"wait_for_dictation","arguments":{"timeout_seconds":60}}}"#
+
+    @Test("a wait the agent cancels ends at once, unanswered, and frees the next dictation")
+    func cancelledWait() async {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "yaz-agent-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let started = Date()
+        let out = await serve(dir, [
+            Self.waitCall, nil,
+            #"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}"#,
+        ])
+        #expect(out.isEmpty, "\(out)")
+        #expect(AgentHandoff(directory: dir).pendingWait() == nil)
+        #expect(Date().timeIntervalSince(started) < 30)
+    }
+
+    @Test("other requests are answered while a wait runs")
+    func answersDuringWait() async {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "yaz-agent-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let out = await serve(dir, [
+            Self.waitCall, nil,
+            #"{"jsonrpc":"2.0","id":2,"method":"ping"}"#,
+            #"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}"#,
+        ])
+        #expect(out.count == 1)
+        #expect((out.first?["id"] as? NSNumber)?.intValue == 2)
+    }
+
+    @Test("when the agent goes away, the wait ends")
+    func inputClosed() async {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "yaz-agent-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let started = Date()
+        _ = await serve(dir, [Self.waitCall, nil])
+        #expect(AgentHandoff(directory: dir).pendingWait() == nil)
+        #expect(Date().timeIntervalSince(started) < 30)
+    }
+}
+
+private final class Written: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lines: [Data] = []
+    func append(_ data: Data) { lock.withLock { lines.append(data) } }
+    var messages: [[String: Any]] {
+        lock.withLock { lines.compactMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } }
+    }
 }
